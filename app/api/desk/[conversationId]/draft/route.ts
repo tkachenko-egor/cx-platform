@@ -6,10 +6,9 @@ import { AgentDefRepository } from "../../../../../src/db/repositories/agent-def
 import { getOrCreateSession } from "../../../../../src/agents/sessions-store";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
+import { DEFAULT_AGENT_KEY } from "../../../../../src/channel/turn";
 
 export const runtime = "nodejs";
-
-const DEFAULT_AGENT_KEY = "support-generalist";
 
 /**
  * FR-9.6 copilot mode: generates a suggested reply for a human to review —

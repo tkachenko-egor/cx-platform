@@ -15,6 +15,10 @@ interface MessageRow {
   created_at: string;
 }
 
+interface MessageThreadRow {
+  conversation_id: string;
+}
+
 function rowToMessage(row: MessageRow): CanonicalMessage {
   return {
     id: row.id,
@@ -42,16 +46,30 @@ export class MessageRepository extends TenantScopedRepository {
     role: MessageRole;
     content: string;
     visibility?: MessageVisibility;
+    /** Channel-threading columns (FR-3.12) — only email uses these today. */
+    channelMessageId?: string;
+    inReplyTo?: string;
   }): CanonicalMessage {
     const id = randomUUID();
     const now = new Date().toISOString();
     const sequence = this.nextSequence(input.conversationId);
     this.db
       .prepare(
-        `INSERT INTO messages (id, tenant_id, conversation_id, role, content, visibility, sequence, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, tenant_id, conversation_id, role, content, visibility, sequence, channel_message_id, in_reply_to, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.conversationId, input.role, input.content, input.visibility ?? "public", sequence, now);
+      .run(
+        id,
+        this.tenantId,
+        input.conversationId,
+        input.role,
+        input.content,
+        input.visibility ?? "public",
+        sequence,
+        input.channelMessageId ?? null,
+        input.inReplyTo ?? null,
+        now,
+      );
     return rowToMessage({
       id,
       tenant_id: this.tenantId,
@@ -62,6 +80,21 @@ export class MessageRepository extends TenantScopedRepository {
       sequence,
       created_at: now,
     });
+  }
+
+  /** Sets the outbound channel id after the fact — e.g. the email provider's Message-ID, known only once the send succeeds. */
+  setChannelMessageId(id: string, channelMessageId: string): void {
+    this.db.prepare(`UPDATE messages SET channel_message_id = ? WHERE tenant_id = ? AND id = ?`).run(channelMessageId, this.tenantId, id);
+  }
+
+  /** FR-3.12: resolve a conversation from Message-ID/In-Reply-To/References headers. */
+  findConversationIdByChannelMessageIds(channelMessageIds: string[]): string | undefined {
+    if (channelMessageIds.length === 0) return undefined;
+    const placeholders = channelMessageIds.map(() => "?").join(",");
+    const row = this.db
+      .prepare(`SELECT conversation_id FROM messages WHERE tenant_id = ? AND channel_message_id IN (${placeholders}) ORDER BY sequence DESC LIMIT 1`)
+      .get(this.tenantId, ...channelMessageIds) as MessageThreadRow | undefined;
+    return row?.conversation_id;
   }
 
   listByConversation(conversationId: string, opts: { includeInternal?: boolean } = {}): CanonicalMessage[] {

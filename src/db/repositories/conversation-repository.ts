@@ -69,4 +69,15 @@ export class ConversationRepository extends TenantScopedRepository {
       .all(this.tenantId, ...states) as ConversationRow[];
     return rows.map(rowToConversation);
   }
+
+  /** FR-3.12 subject-hash fallback: used when an inbound email carries no In-Reply-To/References match. */
+  findBySubjectHash(subjectHash: string): Conversation | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM conversations WHERE tenant_id = ? AND channel = 'email' AND json_extract(metadata, '$.subjectHash') = ?
+         ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(this.tenantId, subjectHash) as ConversationRow | undefined;
+    return row ? rowToConversation(row) : undefined;
+  }
 }

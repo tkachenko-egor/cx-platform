@@ -255,6 +255,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id);
 
+-- FR-3.17/3.18: ticket lifecycle for the email channel. One conversation
+-- has at most one ticket — the conversation tracks who's engaged (bot vs
+-- human), the ticket tracks support-ops resolution; deliberately separate
+-- state machines.
+CREATE TABLE IF NOT EXISTS tickets (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  conversation_id TEXT NOT NULL REFERENCES conversations(id),
+  subject TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','open','pending_customer','pending_internal','resolved','closed')),
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high','urgent')),
+  category TEXT,
+  assignee_id TEXT REFERENCES users(id),
+  due_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_tenant ON tickets(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_conversation ON tickets(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_tenant_status ON tickets(tenant_id, status);
+
 -- ─── Amarelle tenant business data (read-only for tools) ─────────────────
 -- Ported from amarelle-handoff's CSVs. This is tenant DATA, not platform
 -- code — see CLAUDE.md invariant #5. Only the tables the three read-only

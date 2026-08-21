@@ -51,15 +51,30 @@ this was built from — ask if you need the original doc.
 - **Cost tracking** (`src/analytics/cost.ts`) — real `cost_usd` per call,
   summed per conversation on the desk list (FR-11.6).
 
-## What's deliberately NOT here yet
+## Phase 1b — filling the deferred-but-actually-Phase-1 gaps
 
-Write tools (`create_return`, `report_product_safety_case`,
-`create_ticket`) and the tables they need; the email channel; router/
-multi-agent handoff; RBAC/auth; live presence/routing; guardrail suite;
-evals/CI gate; the embeddable `<script>`+iframe widget package (it mounts
-on a demo page for now). None of these are accidental gaps — see the
-"consequence worth flagging" note in `CLAUDE.md` invariant #7 for what an
-`ELIGIBLE` return verdict does without a write tool behind it.
+The six-week cut above deliberately skipped several things the requirements
+doc classifies as Phase 1, not Phase 2. Phase 1b is filling those in,
+milestone by milestone (see the plan this was built from for the full
+sequence):
+
+- **M1 — done.** Schema migration infra (`src/db/migrate.ts`,
+  `src/db/migrations/`) and staff RBAC/auth (`src/auth/`,
+  `users`/`sessions`/`audit_log` tables) — `/desk` and `/api/desk/*` now
+  require an authenticated staff session.
+- **M2 — done.** Email/ticketing channel (`src/channel/`) — the chat route's
+  turn-handling logic was extracted into channel-agnostic
+  `processInboundTurn` (`src/channel/turn.ts`), and a second channel
+  (`src/channel/email/`: threading, quoted-reply stripping, autoresponder
+  guard, ticket lifecycle) was built on top of it with zero changes to the
+  agent runtime or orchestrator — proving NFR-9.2's "one interface" promise.
+  Webhook receiver: `app/api/channels/email/inbound/route.ts`.
+- **Still to come:** write tools with an approval policy; the guardrail
+  suite; router/multi-agent handoff; the eval harness + CI regression gate.
+
+None of these are accidental gaps — see the "consequence worth flagging"
+note in `CLAUDE.md` invariant #7 for what an `ELIGIBLE` return verdict does
+without a write tool behind it.
 
 ## Running it
 
