@@ -70,6 +70,11 @@ export function runCheckReturnEligibility(db: Database.Database, tenant: TenantC
 
   const result = checkReturnEligibility(ctx);
 
+  // FR-6.12: no write tool exists to complete a return yet (CLAUDE.md
+  // invariant #7) — an ELIGIBLE verdict is a deliberate escalation trigger.
+  // The `escalate` field is a generic runtime convention (any tool result
+  // may carry one), not a hardcoded tool-name check in src/agents/runtime.ts.
+  if (result.verdict === "ELIGIBLE") return { ...result, escalate: { reason: "eligible_return" as const } };
   if (result.verdict !== "NOT_ELIGIBLE") return result;
 
   const doc = new KbArticleRepository(db, tenant).getByDocId(result.policy_doc);

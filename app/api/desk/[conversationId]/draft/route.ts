@@ -30,8 +30,12 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
   const agentDefs = new AgentDefRepository(db, tenant);
+  // Whichever specialist routing/handoff left this conversation pinned to
+  // (support-generalist if no router is configured) — never hardcoded,
+  // since a routed conversation's current agent may not be the default.
+  const agentKey = conversation.currentAgentId ?? DEFAULT_AGENT_KEY;
   const agentVersion = (conversation.metadata.agentVersion as number | undefined) ?? 1;
-  const agent = agentDefs.getVersion(DEFAULT_AGENT_KEY, agentVersion) ?? agentDefs.getLatestPublished(DEFAULT_AGENT_KEY);
+  const agent = agentDefs.getVersion(agentKey, agentVersion) ?? agentDefs.getLatestPublished(agentKey);
   if (!agent) return Response.json({ error: "No agent definition available" }, { status: 500 });
 
   const messages = new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });

@@ -90,8 +90,28 @@ sequence):
   per agent (`agent_defs.guardrails`, previously unused) that buffers the
   full reply and swaps in a fallback instead of ever forwarding a blocked
   one.
-- **Still to come:** router/multi-agent handoff; the eval harness + CI
-  regression gate.
+- **M5/M6 — done.** Router + specialist agents + handoff protocol.
+  `src/agents/router.ts`'s `runRouterTurn` is still an `agent_defs` row
+  (FR-6.1) but issues one non-streaming call offering a single forced-shape
+  tool, `route_to_agent`, whose enum is the router's own `handoffTargets`
+  column (FR-6.6 — constrained enum, never free text; no new gateway
+  capability needed). `src/agents/handoff.ts`'s `HandoffPackage`
+  (reason/summary/extracted entities/instructions, FR-6.7) is what one
+  agent hands another — never the raw transcript — persisted as a
+  `messages` row (`role='handoff'`) and mirrored `events` row.
+  `src/agents/loop-prevention.ts` forbids A→B→C→B-style cycles
+  (FR-6.8) against `conversations.metadata.agentPath`, and a small
+  per-request hop cap catches anything else, both escalating to a human
+  rather than looping the customer's message. `src/channel/turn.ts` routes
+  once on a conversation's first turn (tenants without a published
+  `router` agent keep the original single-agent behavior, unchanged) and
+  re-invokes the loop when a specialist requests a mid-turn handoff. Fixed
+  a real bug this forced: the desk's copilot-draft endpoint had hardcoded
+  `support-generalist` regardless of which agent a conversation was
+  actually pinned to — harmless with one agent, wrong the moment a second
+  one exists. The desk conversation page now shows an agent-path breadcrumb
+  and the FR-9.3 handoff context package.
+- **Still to come:** the eval harness + CI regression gate.
 
 None of these are accidental gaps — see the "consequence worth flagging"
 note in `CLAUDE.md` invariant #7 for what an `ELIGIBLE` return verdict does

@@ -38,6 +38,10 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
 
   const escalationReasons = events.filter((e) => e.type === "escalated").flatMap((e) => (e.payload.reasons as string[] | undefined) ?? []);
   const pendingApprovals = new ToolApprovalRepository(db, tenant).listPendingByConversation(conversationId);
+  const agentPath = (conversation.metadata.agentPath as string[] | undefined) ?? [];
+  const handoffs = events
+    .filter((e) => e.type === "handoff")
+    .map((e) => e.payload as { from: string; to: string; reason: string; summary: string; extractedEntities: Record<string, string>; instructionsForReceivingAgent: string });
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -49,6 +53,39 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
         State: <span className="font-medium text-fg">{conversation.state}</span>
         {escalationReasons.length > 0 && <> · Escalated for: {escalationReasons.join(", ")}</>}
       </p>
+      {agentPath.length > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          Agent path: {agentPath.map((key, i) => (
+            <span key={`${key}-${i}`}>
+              {i > 0 && " → "}
+              <span className={key === conversation.currentAgentId && i === agentPath.length - 1 ? "font-medium text-fg" : ""}>{key}</span>
+            </span>
+          ))}
+        </p>
+      )}
+
+      {handoffs.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-sm font-medium text-muted">Handoff context</h2>
+          <div className="mt-2 space-y-2">
+            {handoffs.map((h, i) => (
+              <div key={i} className="rounded-lg border border-border bg-surface p-3 text-xs">
+                <p className="text-fg">
+                  {h.from} → {h.to}
+                </p>
+                {h.reason && <p className="mt-1 text-muted">Reason: {h.reason}</p>}
+                {h.summary && <p className="mt-1 text-muted">Summary: {h.summary}</p>}
+                {h.extractedEntities && Object.keys(h.extractedEntities).length > 0 && (
+                  <p className="mt-1 text-muted">
+                    Known facts: {Object.entries(h.extractedEntities).map(([k, v]) => `${k}: ${v}`).join(", ")}
+                  </p>
+                )}
+                {h.instructionsForReceivingAgent && <p className="mt-1 text-muted">Instructions: {h.instructionsForReceivingAgent}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-6">
         <h2 className="text-sm font-medium text-muted">Transcript</h2>

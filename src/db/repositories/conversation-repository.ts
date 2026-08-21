@@ -60,6 +60,18 @@ export class ConversationRepository extends TenantScopedRepository {
       .run(state, new Date().toISOString(), this.tenantId, id);
   }
 
+  /** Shallow-merges `patch` into the existing metadata JSON (e.g. router/handoff's agentPath). */
+  updateMetadata(id: string, patch: Record<string, unknown>): void {
+    const current = this.get(id);
+    if (!current) return;
+    const merged = { ...current.metadata, ...patch };
+    this.db.prepare(`UPDATE conversations SET metadata = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(JSON.stringify(merged), new Date().toISOString(), this.tenantId, id);
+  }
+
+  setCurrentAgentKey(id: string, agentKey: string): void {
+    this.db.prepare(`UPDATE conversations SET current_agent_key = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(agentKey, new Date().toISOString(), this.tenantId, id);
+  }
+
   listByStates(states: ConversationState[]): Conversation[] {
     const placeholders = states.map(() => "?").join(",");
     const rows = this.db

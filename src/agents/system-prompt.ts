@@ -107,4 +107,19 @@ export function buildCorePrompt(tenantName: string): string {
   return CORE_PROMPT.replaceAll("{{TENANT_NAME}}", tenantName);
 }
 
-export { knowledgeBlock, sessionBlock };
+/** FR-6.7: the receiving agent gets this structured package instead of transcript replay. */
+function handoffBlock(pkg: { reason: string; summary: string; extractedEntities: Record<string, string>; instructionsForReceivingAgent: string }): string {
+  const entities = Object.entries(pkg.extractedEntities)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+  const lines = [`reason: ${pkg.reason}`, `summary: ${pkg.summary}`, entities ? `known_facts:\n${entities}` : "", pkg.instructionsForReceivingAgent ? `instructions: ${pkg.instructionsForReceivingAgent}` : ""].filter(Boolean);
+  return `<handoff>\nYou are picking up this conversation from another specialist. Use the context below — do not ask the customer to repeat themselves.\n${lines.join("\n")}\n</handoff>`;
+}
+
+/** FR-6.6: the router's own system prompt — classification only, never a customer-facing reply. */
+export function buildRouterPrompt(tenantName: string, targets: { key: string; description: string }[]): string {
+  const lines = targets.map((t) => `- ${t.key}: ${t.description}`).join("\n");
+  return `You are the routing classifier for ${tenantName}'s customer support. Read the customer's message and call route_to_agent with exactly one of these specialists:\n${lines}\nAlways call route_to_agent — never answer the customer directly, never explain your reasoning in text.`;
+}
+
+export { knowledgeBlock, sessionBlock, handoffBlock };
