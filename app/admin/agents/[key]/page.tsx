@@ -1,0 +1,37 @@
+import { notFound } from "next/navigation";
+import { getPlatformContext } from "../../../../src/platform/context";
+import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-repository";
+import { ToolDefRepository } from "../../../../src/db/repositories/tool-repository";
+import { AgentEditor } from "../../../../components/admin/AgentEditor";
+
+export const dynamic = "force-dynamic";
+
+export default async function AgentEditorPage(props: PageProps<"/admin/agents/[key]">) {
+  const { key } = await props.params;
+  const { db, tenant } = await getPlatformContext();
+
+  const agentDef = new AgentDefRepository(db, tenant).getLatestPublished(key);
+  if (!agentDef) notFound();
+
+  const availableTools = new ToolDefRepository(db, tenant).list().map((t) => ({ key: t.key, description: t.description }));
+
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-12">
+      <h1 className="text-2xl font-semibold text-fg">{key}</h1>
+      <p className="mt-1 text-sm text-muted">Currently v{agentDef.version}. Saving publishes v{agentDef.version + 1} — running conversations keep the version they started on.</p>
+
+      <AgentEditor
+        initial={{
+          key: agentDef.key,
+          version: agentDef.version,
+          systemPrompt: agentDef.systemPrompt,
+          modelAlias: agentDef.modelAlias,
+          toolIds: agentDef.toolIds,
+          guardrails: agentDef.guardrails,
+          skills: agentDef.skills,
+        }}
+        availableTools={availableTools}
+      />
+    </main>
+  );
+}

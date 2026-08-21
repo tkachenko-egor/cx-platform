@@ -9,6 +9,7 @@ import { SignOutButton } from "../../components/desk/SignOutButton";
 export const dynamic = "force-dynamic";
 
 const NAV_LINKS = [
+  { href: "/admin/agents", label: "Agents" },
   { href: "/admin/team", label: "Team" },
   { href: "/admin/audit-log", label: "Audit log" },
   { href: "/admin/experiments", label: "Experiments" },
