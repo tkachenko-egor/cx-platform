@@ -297,6 +297,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('owner','admin','supervisor','agent','viewer')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
   skills TEXT NOT NULL DEFAULT '[]',
+  is_platform_admin INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, email)

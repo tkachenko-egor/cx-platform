@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 
-export function SignOutButton() {
+/** endpoint/redirectTo default to the tenant-scoped logout; platform-admin pages pass the platform-admin variants (see app/platform-admin/tenants/page.tsx). */
+export function SignOutButton({ endpoint = "/api/auth/logout", redirectTo = "/login" }: { endpoint?: string; redirectTo?: string } = {}) {
   const router = useRouter();
 
   const signOut = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
+    await fetch(endpoint, { method: "POST" });
+    router.push(redirectTo);
     router.refresh();
   };
 

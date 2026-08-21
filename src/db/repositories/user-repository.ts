@@ -13,11 +13,13 @@ export interface User {
   status: "active" | "disabled";
   /** Phase 2 M6b: capability tags matched against conversations.tags for assignee suggestions (src/desk/skill-match.ts). */
   skills: string[];
+  /** Phase 3 M4: an elevated owner who can also administer tenants platform-wide (src/auth/platform-admin-lookup.ts). */
+  isPlatformAdmin: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   tenant_id: string;
   email: string;
@@ -25,11 +27,13 @@ interface UserRow {
   role: Role;
   status: "active" | "disabled";
   skills: string;
+  is_platform_admin: number;
   created_at: string;
   updated_at: string;
 }
 
-function rowToUser(row: UserRow): User {
+/** Exported so src/auth/platform-admin-lookup.ts's cross-tenant query can map rows the same way, without duplicating the shape. */
+export function rowToUser(row: UserRow): User {
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -38,6 +42,7 @@ function rowToUser(row: UserRow): User {
     role: row.role,
     status: row.status,
     skills: JSON.parse(row.skills) as string[],
+    isPlatformAdmin: Boolean(row.is_platform_admin),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -58,7 +63,7 @@ export class UserRepository extends TenantScopedRepository {
          VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
       )
       .run(id, this.tenantId, input.email, input.passwordHash, input.role, JSON.stringify(input.skills ?? []), now, now);
-    return { id, tenantId: this.tenantId, email: input.email, passwordHash: input.passwordHash, role: input.role, status: "active", skills: input.skills ?? [], createdAt: now, updatedAt: now };
+    return { id, tenantId: this.tenantId, email: input.email, passwordHash: input.passwordHash, role: input.role, status: "active", skills: input.skills ?? [], isPlatformAdmin: false, createdAt: now, updatedAt: now };
   }
 
   get(id: string): User | undefined {
@@ -93,5 +98,10 @@ export class UserRepository extends TenantScopedRepository {
       .prepare(`UPDATE users SET role = ?, status = ?, skills = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(role, status, JSON.stringify(skills), now, this.tenantId, id);
     return { ...existing, role, status, skills, updatedAt: now };
+  }
+
+  /** Phase 3 M4: grant/revoke platform-admin (tenant management crossing tenant boundaries — see src/auth/platform-admin-lookup.ts). */
+  setPlatformAdmin(id: string, value: boolean): void {
+    this.db.prepare(`UPDATE users SET is_platform_admin = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(value ? 1 : 0, new Date().toISOString(), this.tenantId, id);
   }
 }

@@ -6,7 +6,8 @@ import { SessionRepository } from "../db/repositories/session-repository";
 import { UserRepository, type User } from "../db/repositories/user-repository";
 import { hashToken } from "./token-hash";
 
-const SESSION_COOKIE = "cx_session";
+/** Exported for src/auth/platform-admin-lookup.ts, which reads the same cookie but resolves the session across tenants. */
+export const SESSION_COOKIE = "cx_session";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h — staff shift-length session, re-login after
 
 /** Only ever called from a Route Handler (cookies() only allows writes there, not in Server Components). */
