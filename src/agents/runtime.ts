@@ -9,6 +9,8 @@ import { hybridSearch, type KbScope } from "../kb/retrieval";
 import { knowledgeBlock, sessionBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
+import type { AgentGuardrailConfig } from "../guardrails/types";
+import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
 
 export interface RuntimeDeps {
   db: Database.Database;
@@ -16,7 +18,7 @@ export interface RuntimeDeps {
   embeddings: EmbeddingProvider;
 }
 
-export type EscalationReason = "severe_symptom" | "reaction_mention" | "human_request" | "eligible_return" | "loop_cap" | "approval_requested";
+export type EscalationReason = "severe_symptom" | "reaction_mention" | "human_request" | "eligible_return" | "loop_cap" | "approval_requested" | "guardrail_blocked";
 
 export interface AgentTurnResult {
   assistantText: string;
@@ -26,6 +28,8 @@ export interface AgentTurnResult {
   escalate: boolean;
   escalationReasons: EscalationReason[];
   loopCapHit: boolean;
+  guardrailBlocked: boolean;
+  guardrailReasons: string[];
   updatedHistory: ChatMessage[];
 }
 
@@ -56,6 +60,25 @@ export async function runAgentTurn(
   callbacks: AgentTurnCallbacks = {},
 ): Promise<AgentTurnResult> {
   const messages: ChatMessage[] = [...history, { role: "user", content: userText }];
+  const guardrailConfig = (agent.guardrails as AgentGuardrailConfig | undefined) ?? {};
+
+  // FR-6.13: cheap, deterministic, and worth failing fast on before spending
+  // a retrieval call or a model turn.
+  const userInputGuardrail = checkUserInputGuardrails(guardrailConfig, userText);
+  if (userInputGuardrail.blocked) {
+    const fallback = "I'm not able to help with that request.";
+    return {
+      assistantText: fallback,
+      cards: [],
+      citableDocs: [],
+      escalate: true,
+      escalationReasons: ["guardrail_blocked"],
+      loopCapHit: false,
+      guardrailBlocked: true,
+      guardrailReasons: userInputGuardrail.reasons,
+      updatedHistory: [...messages, { role: "assistant", content: fallback }],
+    };
+  }
 
   const severe = scanForSevereSymptoms(userText);
   const humanRequest = scanForHumanRequest(userText);
@@ -63,15 +86,50 @@ export async function runAgentTurn(
 
   const kbScope = (agent.kbScope as KbScope | undefined) ?? { audience: ["customer"] };
   const retrieved = await hybridSearch(deps.db, tenant, kbScope, userText, KB_TOP_K, deps.embeddings);
+
+  // FR-7.13: retrieved content is untrusted — a poisoned KB article is a
+  // real attack, screened the same way the user's own message just was.
+  const chunkGuardrail = checkRetrievedChunkGuardrails(
+    guardrailConfig,
+    retrieved.map((r) => ({ docId: r.article.docId, text: r.chunk.text })),
+  );
+  if (chunkGuardrail.blocked) {
+    const fallback = "I'm having trouble finding a reliable answer to that right now — let me get a colleague to help.";
+    return {
+      assistantText: fallback,
+      cards: [],
+      citableDocs: [],
+      escalate: true,
+      escalationReasons: ["guardrail_blocked"],
+      loopCapHit: false,
+      guardrailBlocked: true,
+      guardrailReasons: chunkGuardrail.reasons,
+      updatedHistory: [...messages, { role: "assistant", content: fallback }],
+    };
+  }
+
   const knowledge = knowledgeBlock(retrieved.map((r) => ({ docId: r.article.docId, title: r.article.title, effective: r.article.effective, text: r.chunk.text })));
   const session = sessionBlock({ today: today(), severeSymptomSignal: severe.hit });
 
   const toolDefinitions = toGatewayToolDefinitions(agent.toolIds);
   const cards: unknown[] = [];
+  const toolResultTexts: string[] = [];
   let round = 0;
   let finalText = "";
   let eligibleReturnSeen = false;
   let approvalRequested = false;
+
+  // Output guardrails need the complete reply, but text streams live —
+  // blockingMode buffers it all and releases at once once the check
+  // passes; the default forwards deltas live and only flags/escalates
+  // after the fact (the message already reached the customer by then).
+  const blockingMode = guardrailConfig.output?.blockingMode === true;
+  const bufferedDeltas: string[] = [];
+  const forwardDelta = (delta: string) => {
+    finalText += delta;
+    if (blockingMode) bufferedDeltas.push(delta);
+    else callbacks.onTextDelta?.(delta);
+  };
 
   while (round < ROUND_CAP) {
     round++;
@@ -83,10 +141,7 @@ export async function runAgentTurn(
       maxOutputTokens: MAX_OUTPUT_TOKENS,
     };
 
-    const response = await deps.gateway.chatStream(tenant, agent.modelAlias, runId, request, (delta) => {
-      finalText += delta;
-      callbacks.onTextDelta?.(delta);
-    });
+    const response = await deps.gateway.chatStream(tenant, agent.modelAlias, runId, request, forwardDelta);
 
     messages.push({ role: "assistant", content: response.content, toolCalls: response.toolCalls.length ? response.toolCalls : undefined });
 
@@ -106,22 +161,46 @@ export async function runAgentTurn(
         approvalRequested = true;
       }
 
-      messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: JSON.stringify(result) });
+      const resultText = JSON.stringify(result);
+      toolResultTexts.push(resultText);
+      messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: resultText });
     }
   }
 
   const loopCapHit = round >= ROUND_CAP;
+  const citableDocs = [...new Map(retrieved.map((r) => [r.article.docId, { docId: r.article.docId, title: r.article.title }])).values()];
+
+  const outputGuardrail = checkOutputGuardrails(guardrailConfig, finalText, citableDocs.map((d) => d.docId), toolResultTexts.join("\n"));
+
+  if (blockingMode) {
+    if (outputGuardrail.blocked) {
+      finalText = "Let me get a colleague to double-check that before I send it over.";
+      callbacks.onTextDelta?.(finalText);
+    } else {
+      for (const delta of bufferedDeltas) callbacks.onTextDelta?.(delta);
+    }
+  }
+
   const escalationReasons: EscalationReason[] = [];
   if (severe.hit) escalationReasons.push("severe_symptom");
   else if (reactionMention.hit) escalationReasons.push("reaction_mention");
   if (humanRequest.hit) escalationReasons.push("human_request");
   if (eligibleReturnSeen) escalationReasons.push("eligible_return");
   if (approvalRequested) escalationReasons.push("approval_requested");
+  if (outputGuardrail.blocked) escalationReasons.push("guardrail_blocked");
   if (loopCapHit) escalationReasons.push("loop_cap");
 
-  const citableDocs = [...new Map(retrieved.map((r) => [r.article.docId, { docId: r.article.docId, title: r.article.title }])).values()];
-
-  return { assistantText: finalText, cards, citableDocs, escalate: escalationReasons.length > 0, escalationReasons, loopCapHit, updatedHistory: messages };
+  return {
+    assistantText: finalText,
+    cards,
+    citableDocs,
+    escalate: escalationReasons.length > 0,
+    escalationReasons,
+    loopCapHit,
+    guardrailBlocked: outputGuardrail.blocked,
+    guardrailReasons: outputGuardrail.reasons,
+    updatedHistory: messages,
+  };
 }
 
 function isCardBearing(result: unknown): result is { card?: unknown } {

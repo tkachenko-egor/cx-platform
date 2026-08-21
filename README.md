@@ -79,8 +79,19 @@ sequence):
   never double-executes. Staff approve/deny parked calls at
   `app/api/desk/[conversationId]/approvals/[approvalId]/route.ts`, surfaced
   in the desk UI's new "Pending approvals" panel.
-- **Still to come:** the guardrail suite; router/multi-agent handoff; the
-  eval harness + CI regression gate.
+- **M4 — done.** Guardrail suite (`src/guardrails/`): deterministic
+  prompt-injection screening on both the user's message and every retrieved
+  KB chunk (FR-7.13 — a poisoned article is a real attack), run before the
+  model is ever called; output-side groundedness (every `[doc_id]` citation
+  must resolve to a doc retrieved this turn), a PII-leakage heuristic
+  (flags anything in the reply not sourced from this turn's tool results),
+  and a forbidden-claims marker list. Non-blocking by default — stream
+  live, flag and escalate after the fact — with an opt-in `blockingMode`
+  per agent (`agent_defs.guardrails`, previously unused) that buffers the
+  full reply and swaps in a fallback instead of ever forwarding a blocked
+  one.
+- **Still to come:** router/multi-agent handoff; the eval harness + CI
+  regression gate.
 
 None of these are accidental gaps — see the "consequence worth flagging"
 note in `CLAUDE.md` invariant #7 for what an `ELIGIBLE` return verdict does
