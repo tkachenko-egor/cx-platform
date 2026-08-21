@@ -11,6 +11,8 @@ export interface KbArticle {
   audience: string;
   effective: string | null;
   contentHash: string;
+  /** Phase 4 M3: only populated for admin-created articles — file-sourced ones keep their body on disk. */
+  body: string;
 }
 
 interface KbArticleRow {
@@ -21,6 +23,7 @@ interface KbArticleRow {
   audience: string;
   effective: string | null;
   content_hash: string;
+  body: string;
 }
 
 function rowToArticle(row: KbArticleRow): KbArticle {
@@ -32,6 +35,7 @@ function rowToArticle(row: KbArticleRow): KbArticle {
     audience: row.audience,
     effective: row.effective,
     contentHash: row.content_hash,
+    body: row.body,
   };
 }
 
@@ -41,26 +45,27 @@ export class KbArticleRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  upsert(input: { docId: string; title: string; audience: string; effective: string | null; contentHash: string }): KbArticle {
+  upsert(input: { docId: string; title: string; audience: string; effective: string | null; contentHash: string; body?: string }): KbArticle {
     const existing = this.getByDocId(input.docId);
     const now = new Date().toISOString();
+    const body = input.body ?? existing?.body ?? "";
     if (existing) {
       this.db
         .prepare(
-          `UPDATE kb_articles SET title = ?, audience = ?, effective = ?, content_hash = ?, updated_at = ?
+          `UPDATE kb_articles SET title = ?, audience = ?, effective = ?, content_hash = ?, body = ?, updated_at = ?
            WHERE id = ? AND tenant_id = ?`,
         )
-        .run(input.title, input.audience, input.effective, input.contentHash, now, existing.id, this.tenantId);
-      return { ...existing, ...input };
+        .run(input.title, input.audience, input.effective, input.contentHash, body, now, existing.id, this.tenantId);
+      return { ...existing, ...input, body };
     }
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO kb_articles (id, tenant_id, doc_id, title, audience, effective, content_hash, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO kb_articles (id, tenant_id, doc_id, title, audience, effective, content_hash, body, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.docId, input.title, input.audience, input.effective, input.contentHash, now, now);
-    return { id, tenantId: this.tenantId, ...input };
+      .run(id, this.tenantId, input.docId, input.title, input.audience, input.effective, input.contentHash, body, now, now);
+    return { id, tenantId: this.tenantId, ...input, body };
   }
 
   getByDocId(docId: string): KbArticle | undefined {
@@ -73,6 +78,11 @@ export class KbArticleRepository extends TenantScopedRepository {
   list(): KbArticle[] {
     const rows = this.db.prepare(`SELECT * FROM kb_articles WHERE tenant_id = ?`).all(this.tenantId) as KbArticleRow[];
     return rows.map(rowToArticle);
+  }
+
+  /** Phase 4 M3 admin UI: deleting an article's row; its chunks are cleaned up by the caller via KbChunkRepository. */
+  delete(docId: string): void {
+    this.db.prepare(`DELETE FROM kb_articles WHERE tenant_id = ? AND doc_id = ?`).run(this.tenantId, docId);
   }
 }
 

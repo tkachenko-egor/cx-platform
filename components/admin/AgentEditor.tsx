@@ -16,6 +16,7 @@ export interface AgentEditorInitial {
   toolIds: string[];
   guardrails: Record<string, unknown>;
   skills: string[];
+  kbScope: Record<string, unknown>;
 }
 
 export interface ModelAliasOption {
@@ -42,6 +43,7 @@ export function AgentEditor({
   const [systemPrompt, setSystemPrompt] = useState(initial.systemPrompt);
   const [modelAlias, setModelAlias] = useState(initial.modelAlias || availableModels[0]?.alias || "");
   const [toolIds, setToolIds] = useState<Set<string>>(new Set(initial.toolIds));
+  const [kbAudiences, setKbAudiences] = useState((Array.isArray(initial.kbScope.audience) ? (initial.kbScope.audience as string[]) : ["customer"]).join(", "));
   const [skills, setSkills] = useState(initial.skills.join(", "));
   const [guardrailsJson, setGuardrailsJson] = useState(JSON.stringify(initial.guardrails, null, 2));
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +89,7 @@ export function AgentEditor({
           toolIds: [...toolIds],
           guardrails,
           skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+          kbScope: { audience: kbAudiences.split(",").map((s) => s.trim()).filter(Boolean) },
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not publish");
@@ -162,6 +165,23 @@ export function AgentEditor({
             </label>
           ))}
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm text-muted">KB audiences (comma-separated)</label>
+        <input
+          value={kbAudiences}
+          onChange={(e) => setKbAudiences(e.target.value)}
+          placeholder="customer"
+          className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent"
+        />
+        <p className="mt-1 text-xs text-muted">
+          Retrieval only pulls from articles tagged with one of these. Manage articles under{" "}
+          <a href="/admin/kb" className="text-accent hover:underline">
+            Admin &gt; Knowledge base
+          </a>
+          .
+        </p>
       </div>
 
       <div>

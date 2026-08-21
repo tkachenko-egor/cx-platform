@@ -150,6 +150,10 @@ CREATE TABLE IF NOT EXISTS kb_articles (
   audience TEXT NOT NULL DEFAULT 'customer',
   effective TEXT,
   content_hash TEXT NOT NULL,
+  -- Phase 4 M3: admin-authored articles have no knowledge/*.md file, so the
+  -- body has to live here. File-sourced articles leave this '' (their body
+  -- lives on disk, read by scripts/ingest-kb.ts).
+  body TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, doc_id)

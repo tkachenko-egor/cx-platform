@@ -14,6 +14,7 @@ import { migration012UserInvitesAndPasswordResets } from "./012-user-invites-and
 import { migration013PlatformAdminFlag } from "./013-platform-admin-flag";
 import { migration014ProviderCredentials } from "./014-provider-credentials";
 import { migration015ToolDefsHttpType } from "./015-tool-defs-http-type";
+import { migration016KbArticlesBody } from "./016-kb-articles-body";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -32,4 +33,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration013PlatformAdminFlag,
   migration014ProviderCredentials,
   migration015ToolDefsHttpType,
+  migration016KbArticlesBody,
 ];

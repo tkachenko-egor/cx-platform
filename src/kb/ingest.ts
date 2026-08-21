@@ -47,6 +47,33 @@ export function loadKnowledgeDocs(dir: string = KNOWLEDGE_DIR): ParsedDoc[] {
 }
 
 /**
+ * Chunks + embeds one article's body and (re)stores its chunks — the one
+ * piece of real work either the file-based CLI ingest or the admin KB
+ * editor (Phase 4 M3) needs, kept in one place so neither reimplements
+ * chunking/embedding.
+ */
+export async function chunkAndEmbedArticle(
+  chunks: KbChunkRepository,
+  embeddings: EmbeddingProvider,
+  articleId: string,
+  body: string,
+): Promise<void> {
+  const raw = chunkMarkdown(body);
+  const vectors = await embeddings.embed(raw.map((c) => c.text));
+  chunks.replaceForArticle(
+    articleId,
+    raw.map((c, i) => ({
+      ordinal: i,
+      heading: c.heading,
+      text: c.text,
+      embedding: vectors[i],
+      embeddingModel: embeddings.model,
+      tokenCount: estimateTokenCount(c.text),
+    })),
+  );
+}
+
+/**
  * FR-7.2: only re-chunks/re-embeds an article whose content actually
  * changed (compared by content_hash). Whole-article granularity, not
  * per-chunk delta — a reasonable Phase-1 simplification given the corpus
@@ -74,20 +101,7 @@ export async function ingestKnowledgeBase(
     }
 
     const article = articles.upsert({ docId: doc.docId, title: doc.title, audience: doc.audience, effective: doc.effective, contentHash });
-    const raw = chunkMarkdown(doc.body);
-    const vectors = await embeddings.embed(raw.map((c) => c.text));
-
-    chunks.replaceForArticle(
-      article.id,
-      raw.map((c, i) => ({
-        ordinal: i,
-        heading: c.heading,
-        text: c.text,
-        embedding: vectors[i],
-        embeddingModel: embeddings.model,
-        tokenCount: estimateTokenCount(c.text),
-      })),
-    );
+    await chunkAndEmbedArticle(chunks, embeddings, article.id, doc.body);
     ingested.push(doc.docId);
   }
 

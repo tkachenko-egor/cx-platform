@@ -32,6 +32,7 @@ export async function POST(req: Request) {
     toolIds?: string[];
     skills?: string[];
     guardrails?: Record<string, unknown>;
+    kbScope?: Record<string, unknown>;
   };
   if (!body.key || !body.systemPrompt || !body.modelAlias) {
     return Response.json({ error: "key, systemPrompt, and modelAlias are required" }, { status: 400 });
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       toolIds: body.toolIds ?? [],
       skills: body.skills ?? [],
       guardrails: body.guardrails ?? {},
+      kbScope: body.kbScope ?? {},
     });
 
     new AuditLogRepository(db, tenant).record({
@@ -80,7 +82,7 @@ export async function POST(req: Request) {
     toolIds: body.toolIds ?? current.toolIds,
     skills: body.skills ?? current.skills,
     guardrails: body.guardrails ?? current.guardrails,
-    kbScope: current.kbScope,
+    kbScope: body.kbScope ?? current.kbScope,
     handoffTargets: current.handoffTargets,
     semanticCacheEnabled: current.semanticCacheEnabled,
   });

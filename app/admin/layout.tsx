@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: "/admin/agents", label: "Agents" },
   { href: "/admin/models", label: "Models" },
   { href: "/admin/tools", label: "Tools" },
+  { href: "/admin/kb", label: "Knowledge base" },
   { href: "/admin/api-keys", label: "API Keys" },
   { href: "/admin/team", label: "Team" },
   { href: "/admin/audit-log", label: "Audit log" },

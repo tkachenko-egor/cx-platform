@@ -31,6 +31,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           toolIds: agentDef.toolIds,
           guardrails: agentDef.guardrails,
           skills: agentDef.skills,
+          kbScope: agentDef.kbScope,
         }}
         availableTools={availableTools}
         availableModels={availableModels}

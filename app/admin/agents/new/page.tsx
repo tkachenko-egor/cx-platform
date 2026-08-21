@@ -31,6 +31,7 @@ export default async function NewAgentPage() {
           toolIds: [],
           guardrails: {},
           skills: [],
+          kbScope: { audience: ["customer"] },
         }}
         availableTools={availableTools}
         availableModels={availableModels}
