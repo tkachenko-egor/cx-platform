@@ -18,6 +18,16 @@ export interface Tenant extends TenantContext {
  * the scoping entity, so this is where tenant identity itself is minted
  * and looked up.
  */
+interface TenantRow {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+function rowToTenant(row: TenantRow): Tenant {
+  return { ...row, tenantId: row.id };
+}
+
 export class TenantRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -31,9 +41,26 @@ export class TenantRepository {
   }
 
   getBySlug(slug: string): Tenant | undefined {
-    const row = this.db.prepare(`SELECT id, name, slug FROM tenants WHERE slug = ?`).get(slug) as
-      | { id: string; name: string; slug: string }
-      | undefined;
-    return row ? { ...row, tenantId: row.id } : undefined;
+    const row = this.db.prepare(`SELECT id, name, slug FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
+    return row ? rowToTenant(row) : undefined;
+  }
+
+  getById(id: string): Tenant | undefined {
+    const row = this.db.prepare(`SELECT id, name, slug FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
+    return row ? rowToTenant(row) : undefined;
+  }
+
+  list(): Tenant[] {
+    const rows = this.db.prepare(`SELECT id, name, slug FROM tenants ORDER BY name`).all() as TenantRow[];
+    return rows.map(rowToTenant);
+  }
+
+  update(id: string, input: { name?: string; slug?: string }): Tenant {
+    const existing = this.getById(id);
+    if (!existing) throw new Error(`Tenant ${id} not found`);
+    const name = input.name ?? existing.name;
+    const slug = input.slug ?? existing.slug;
+    this.db.prepare(`UPDATE tenants SET name = ?, slug = ?, updated_at = ? WHERE id = ?`).run(name, slug, new Date().toISOString(), id);
+    return { id, tenantId: id, name, slug };
   }
 }

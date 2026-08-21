@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Phase 2 M7a: top-level analytics dashboard — table-based, no charting dependency in this repo yet. */
 export default async function AnalyticsPage() {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 

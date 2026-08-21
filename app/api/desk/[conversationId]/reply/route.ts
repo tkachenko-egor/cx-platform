@@ -16,7 +16,7 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
   const text = body.text?.trim();
   if (!text) return Response.json({ error: "text is required" }, { status: 400 });
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   let staffUser;
   try {
     staffUser = await requireRole(db, tenant, "agent");

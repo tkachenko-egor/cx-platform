@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  */
 export async function GET(_req: Request, context: RouteContext<"/api/conversations/[conversationId]/messages">) {
   const { conversationId } = await context.params;
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const conversation = new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) {
     return Response.json({ error: "Conversation not found" }, { status: 404 });

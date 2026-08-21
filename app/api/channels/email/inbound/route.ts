@@ -62,7 +62,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, dropped: "autoresponder" });
   }
 
-  const { db, tenant, gateway, embeddings } = getPlatformContext();
+  const { db, tenant, gateway, embeddings } = await getPlatformContext();
   const conversations = new ConversationRepository(db, tenant);
   const tickets = new TicketRepository(db, tenant);
 

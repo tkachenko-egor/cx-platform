@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "trafficSplit must be between 0 and 1" }, { status: 400 });
   }
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "admin");
   } catch (err) {

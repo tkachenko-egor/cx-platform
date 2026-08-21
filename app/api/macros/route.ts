@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 /** Phase 2 M8: list macros, optionally filtered by the composer's typeahead query. */
 export async function GET(req: Request) {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "agent");
   } catch (err) {
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   const text = body.body?.trim();
   if (!name || !text) return Response.json({ error: "name and body are required" }, { status: 400 });
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   let staffUser;
   try {
     staffUser = await requireRole(db, tenant, "agent");

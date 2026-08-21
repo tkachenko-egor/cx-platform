@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 /** Phase 2 M6a: stop a running experiment — new conversations fall back to getLatestPublished immediately. */
 export async function PATCH(_req: Request, context: RouteContext<"/api/admin/experiments/[id]">) {
   const { id } = await context.params;
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "admin");
   } catch (err) {

@@ -17,7 +17,7 @@ export const runtime = "nodejs";
  */
 export async function POST(_req: Request, context: RouteContext<"/api/desk/[conversationId]/draft">) {
   const { conversationId } = await context.params;
-  const { db, tenant, gateway, embeddings } = getPlatformContext();
+  const { db, tenant, gateway, embeddings } = await getPlatformContext();
 
   try {
     await requireRole(db, tenant, "agent");

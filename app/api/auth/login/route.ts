@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const password = body.password;
   if (!email || !password) return Response.json({ error: "email and password are required" }, { status: 400 });
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = new UserRepository(db, tenant).getByEmail(email);
   if (!user || user.status !== "active" || !(await verifyPassword(password, user.passwordHash))) {
     return Response.json({ error: "Invalid email or password" }, { status: 401 });

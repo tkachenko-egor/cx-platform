@@ -14,7 +14,7 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
     return Response.json({ error: "decision must be 'approve' or 'deny'" }, { status: 400 });
   }
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   let staffUser;
   try {
     staffUser = await requireRole(db, tenant, "agent");

@@ -51,4 +51,20 @@ describe("tenant scoping", () => {
     expect(new SessionRepository(db, tenantB).getByTokenHash("shared-token-hash")).toBeUndefined();
     expect(new SessionRepository(db, tenantA).getByTokenHash("shared-token-hash")?.userId).toBe(userA.id);
   });
+
+  it("TenantRepository.list/getById/update support platform-level tenant management", () => {
+    const db = createDb(":memory:");
+    const tenants = new TenantRepository(db);
+    const tenantA = tenants.create("Tenant A", "tenant-a");
+    tenants.create("Tenant B", "tenant-b");
+
+    expect(tenants.list().map((t) => t.slug).sort()).toEqual(["tenant-a", "tenant-b"]);
+    expect(tenants.getById(tenantA.id)?.slug).toBe("tenant-a");
+    expect(tenants.getById("nonexistent-id")).toBeUndefined();
+
+    const renamed = tenants.update(tenantA.id, { name: "Tenant A Renamed" });
+    expect(renamed.name).toBe("Tenant A Renamed");
+    expect(renamed.slug).toBe("tenant-a");
+    expect(tenants.getBySlug("tenant-a")?.name).toBe("Tenant A Renamed");
+  });
 });

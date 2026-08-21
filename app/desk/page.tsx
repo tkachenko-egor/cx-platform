@@ -29,7 +29,7 @@ function slaBadge(c: { priority: string; slaDueAt: string | null }, nowIso: stri
 }
 
 export default async function DeskPage({ searchParams }: { searchParams: Promise<{ channel?: string; view?: string }> }) {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 

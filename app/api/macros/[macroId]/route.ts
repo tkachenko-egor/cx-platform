@@ -9,7 +9,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/macros/[ma
   const { macroId } = await context.params;
   const body = (await req.json().catch(() => ({}))) as { name?: string; body?: string; tags?: string[] };
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "agent");
   } catch (err) {
@@ -29,7 +29,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/macros/[ma
 export async function DELETE(_req: Request, context: RouteContext<"/api/macros/[macroId]">) {
   const { macroId } = await context.params;
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "agent");
   } catch (err) {

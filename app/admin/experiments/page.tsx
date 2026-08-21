@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 /** Phase 2 M6a: no admin surface for agent_defs existed before this — publish is otherwise script/seed-driven. */
 export default async function ExperimentsPage() {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
   if (!roleAtLeast(user.role, "admin")) redirect("/desk");

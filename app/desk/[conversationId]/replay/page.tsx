@@ -29,7 +29,7 @@ function describeEvent(type: string, payload: Record<string, unknown>, actor: st
 /** Phase 2 M7b: replay is UI composition of two already-reliable read paths (M1's event-integrity fix) — no new schema/repository. */
 export default async function ReplayPage({ params }: PageProps<"/desk/[conversationId]/replay">) {
   const { conversationId } = await params;
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
 
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");

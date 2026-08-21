@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Phase 2 M5: a review tier distinct from escalation — conversations the bot kept handling but that are worth a human's eyes later. */
 export default async function ReviewQueuePage() {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 

@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: "message exceeds the 2000 character limit" }), { status: 400 });
   }
 
-  const { db, tenant, gateway, embeddings } = getPlatformContext();
+  const { db, tenant, gateway, embeddings } = await getPlatformContext();
   const conversations = new ConversationRepository(db, tenant);
 
   let conversation;

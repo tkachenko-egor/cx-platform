@@ -12,7 +12,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/desk/revie
     return Response.json({ error: "decision must be 'reviewed' or 'dismissed'" }, { status: 400 });
   }
 
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   let staffUser;
   try {
     staffUser = await requireRole(db, tenant, "agent");

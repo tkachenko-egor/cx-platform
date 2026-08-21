@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DeskConversationPage({ params }: PageProps<"/desk/[conversationId]">) {
   const { conversationId } = await params;
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
 
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");

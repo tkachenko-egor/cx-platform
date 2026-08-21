@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** FR-7.10/11.9: low-confidence retrievals as a worklist for KB authors — first page of the Phase 2 app/analytics/ surface. */
 export default async function CoverageGapsPage() {
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 

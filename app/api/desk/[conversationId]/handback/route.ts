@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 /** FR-9.5: hand a conversation back to the bot after a human has helped. */
 export async function POST(_req: Request, context: RouteContext<"/api/desk/[conversationId]/handback">) {
   const { conversationId } = await context.params;
-  const { db, tenant } = getPlatformContext();
+  const { db, tenant } = await getPlatformContext();
   let staffUser;
   try {
     staffUser = await requireRole(db, tenant, "agent");
