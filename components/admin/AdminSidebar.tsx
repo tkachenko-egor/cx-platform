@@ -64,10 +64,10 @@ export function AdminSidebar({ email, role }: { email: string; role: string }) {
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      <div className="flex items-center gap-2.5 px-5 py-5">
+      <Link href="/admin" className="flex items-center gap-2.5 px-5 py-5">
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-xs font-bold text-accent-fg">CX</div>
         <span className="text-sm font-semibold tracking-tight text-sidebar-fg-active">CX Platform</span>
-      </div>
+      </Link>
 
       <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-2">
         <div>
