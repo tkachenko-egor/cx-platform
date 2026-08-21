@@ -112,6 +112,11 @@ export class AmarelleRepo extends TenantScopedRepository {
     return this.db.prepare(`SELECT * FROM products WHERE tenant_id = ? AND product_id = ?`).get(this.tenantId, productId) as ProductRow | undefined;
   }
 
+  /** FR-8.5's first real write path — only a `Processing` order can still be cancelled (see cancel-order.ts). */
+  cancelOrder(orderId: string): void {
+    this.db.prepare(`UPDATE orders SET status = 'Cancelled' WHERE tenant_id = ? AND order_id = ?`).run(this.tenantId, orderId);
+  }
+
   findOrdersByCustomer(customerId: string, limit: number): { orders: OrderRow[]; total: number } {
     const orders = this.db
       .prepare(`SELECT * FROM orders WHERE tenant_id = ? AND customer_id = ? ORDER BY order_date DESC LIMIT ?`)

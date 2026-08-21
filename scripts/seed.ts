@@ -9,6 +9,7 @@ import { UserRepository } from "../src/db/repositories/user-repository";
 import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { allToolSpecs } from "../src/tools/registry";
+import type { ApprovalPolicy } from "../src/db/repositories/tool-repository";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { OpenAiEmbeddingProvider } from "../src/gateway/embeddings/openai";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
@@ -45,9 +46,19 @@ async function main() {
   });
   console.log('Model alias "support-main" -> anthropic:claude-sonnet-5 (fallback: stub:stub-a)');
 
+  // FR-8.5: every tool defaults to auto; write tools that need a human or
+  // customer in the loop are named here explicitly rather than inferred.
+  const APPROVAL_POLICY_OVERRIDES: Record<string, ApprovalPolicy> = { cancel_order: "confirm_with_customer" };
+
   const toolDefs = new ToolDefRepository(db, tenant);
   for (const spec of allToolSpecs()) {
-    toolDefs.upsert({ key: spec.key, description: spec.description, inputSchema: spec.inputSchema, writeFlag: spec.writeFlag, approvalPolicy: "auto" });
+    toolDefs.upsert({
+      key: spec.key,
+      description: spec.description,
+      inputSchema: spec.inputSchema,
+      writeFlag: spec.writeFlag,
+      approvalPolicy: APPROVAL_POLICY_OVERRIDES[spec.key] ?? "auto",
+    });
   }
   console.log(`Registered ${allToolSpecs().length} tool defs`);
 
@@ -63,7 +74,7 @@ async function main() {
     key: "support-generalist",
     systemPrompt: buildCorePrompt(tenant.name),
     modelAlias: "support-main",
-    toolIds: ["lookup_order", "search_products", "check_return_eligibility"],
+    toolIds: ["lookup_order", "search_products", "check_return_eligibility", "cancel_order"],
     kbScope: { audience: ["customer"] },
   });
   console.log(`Published agent "${agent.key}" v${agent.version}`);

@@ -84,13 +84,13 @@ describe("search_products", () => {
 describe("registry.executeTool", () => {
   it("wraps a thrown error as {ok:false} rather than throwing, and still logs the attempt", () => {
     const { db, tenant } = seededTenant();
-    const result = executeTool(db, tenant, "run-1", "lookup_order", { order_id: "not-a-valid-id" });
+    const result = executeTool(db, tenant, "CONV-1", "run-1", "lookup_order", { order_id: "not-a-valid-id" });
     expect(result.ok).toBe(false);
   });
 
   it("routes an unknown tool key to {ok:false} instead of throwing", () => {
     const { db, tenant } = seededTenant();
-    const result = executeTool(db, tenant, "run-1", "nonexistent_tool", {});
+    const result = executeTool(db, tenant, "CONV-1", "run-1", "nonexistent_tool", {});
     expect(result.ok).toBe(false);
   });
 });

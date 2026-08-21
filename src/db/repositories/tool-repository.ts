@@ -89,6 +89,7 @@ export interface ToolCallRecord {
   result: Record<string, unknown>;
   status: "ok" | "error";
   latencyMs: number;
+  idempotencyKey?: string;
 }
 
 interface ToolCallRow {
@@ -99,6 +100,7 @@ interface ToolCallRow {
   result: string;
   status: "ok" | "error";
   latency_ms: number;
+  idempotency_key: string | null;
 }
 
 function rowToToolCall(row: ToolCallRow): ToolCallRecord {
@@ -110,6 +112,7 @@ function rowToToolCall(row: ToolCallRow): ToolCallRecord {
     result: JSON.parse(row.result) as Record<string, unknown>,
     status: row.status,
     latencyMs: row.latency_ms,
+    idempotencyKey: row.idempotency_key ?? undefined,
   };
 }
 
@@ -122,8 +125,8 @@ export class ToolCallRepository extends TenantScopedRepository {
   record(entry: Omit<ToolCallRecord, "id">): void {
     this.db
       .prepare(
-        `INSERT INTO tool_calls (id, tenant_id, run_id, tool_key, arguments, result, status, latency_ms, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tool_calls (id, tenant_id, run_id, tool_key, arguments, result, status, latency_ms, idempotency_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         randomUUID(),
@@ -134,6 +137,7 @@ export class ToolCallRepository extends TenantScopedRepository {
         JSON.stringify(entry.result),
         entry.status,
         entry.latencyMs,
+        entry.idempotencyKey ?? null,
         new Date().toISOString(),
       );
   }
@@ -141,5 +145,13 @@ export class ToolCallRepository extends TenantScopedRepository {
   listByRun(runId: string): ToolCallRecord[] {
     const rows = this.db.prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`).all(this.tenantId, runId) as ToolCallRow[];
     return rows.map(rowToToolCall);
+  }
+
+  /** FR-8.6: look up a prior completed attempt so a retry with the same key never double-executes. */
+  findByIdempotencyKey(toolKey: string, idempotencyKey: string): ToolCallRecord | undefined {
+    const row = this.db
+      .prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND tool_key = ? AND idempotency_key = ? ORDER BY created_at DESC LIMIT 1`)
+      .get(this.tenantId, toolKey, idempotencyKey) as ToolCallRow | undefined;
+    return row ? rowToToolCall(row) : undefined;
   }
 }

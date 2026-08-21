@@ -69,8 +69,18 @@ sequence):
   guard, ticket lifecycle) was built on top of it with zero changes to the
   agent runtime or orchestrator — proving NFR-9.2's "one interface" promise.
   Webhook receiver: `app/api/channels/email/inbound/route.ts`.
-- **Still to come:** write tools with an approval policy; the guardrail
-  suite; router/multi-agent handoff; the eval harness + CI regression gate.
+- **M3 — done.** Write tools with an approval policy + idempotency
+  (`src/tools/registry.ts`'s `executeTool` now actually enforces
+  `tool_defs.write_flag`/`approval_policy`, which existed in the schema
+  since Phase 0 but were unenforced). First real write tool: `cancel_order`
+  (`src/tools/amarelle/cancel-order.ts`). `auto`/`confirm_with_customer`/
+  `require_human_approval` all gate on a conversation+arguments idempotency
+  key (`tool_calls.idempotency_key`, `tool_approvals` table) so a retry
+  never double-executes. Staff approve/deny parked calls at
+  `app/api/desk/[conversationId]/approvals/[approvalId]/route.ts`, surfaced
+  in the desk UI's new "Pending approvals" panel.
+- **Still to come:** the guardrail suite; router/multi-agent handoff; the
+  eval harness + CI regression gate.
 
 None of these are accidental gaps — see the "consequence worth flagging"
 note in `CLAUDE.md` invariant #7 for what an `ELIGIBLE` return verdict does

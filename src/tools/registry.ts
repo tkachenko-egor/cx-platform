@@ -1,10 +1,13 @@
 import type Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import type { TenantContext } from "../tenancy/context";
-import { ToolCallRepository } from "../db/repositories/tool-repository";
+import { ToolCallRepository, ToolDefRepository } from "../db/repositories/tool-repository";
+import { ToolApprovalRepository, type ToolApproval } from "../db/repositories/tool-approval-repository";
 import type { ToolDefinition } from "../gateway/types";
 import { lookupOrderInputSchema, lookupOrderToolDef, runLookupOrder } from "./amarelle/lookup-order";
 import { searchProductsInputSchema, searchProductsToolDef, runSearchProducts } from "./amarelle/search-products";
 import { checkReturnEligibilityInputSchema, checkReturnEligibilityToolDef, runCheckReturnEligibility } from "./amarelle/check-return-eligibility";
+import { cancelOrderInputSchema, cancelOrderToolDef, runCancelOrder } from "./amarelle/cancel-order";
 
 export interface ToolSpec {
   key: string;
@@ -18,8 +21,8 @@ export interface ToolSpec {
 /**
  * FR-8.1: the tool registry. Handlers are code (this module); tool_defs
  * rows (written by scripts/seed.ts via registerToolDefs below) carry the
- * schema/write-flag/approval-policy metadata the admin surface reads.
- * Every tool here is read-only this phase — see the Phase 1 plan for why.
+ * schema/write-flag/approval-policy metadata the admin surface reads —
+ * and that executeTool below actually enforces for write tools.
  */
 const REGISTRY: Record<string, ToolSpec> = {
   [lookupOrderToolDef.key]: {
@@ -46,6 +49,14 @@ const REGISTRY: Record<string, ToolSpec> = {
     parse: (args) => checkReturnEligibilityInputSchema.parse(args),
     run: (db, tenant, args) => runCheckReturnEligibility(db, tenant, args as ReturnType<typeof checkReturnEligibilityInputSchema.parse>),
   },
+  [cancelOrderToolDef.key]: {
+    key: cancelOrderToolDef.key,
+    description: cancelOrderToolDef.description,
+    inputSchema: cancelOrderToolDef.inputSchema,
+    writeFlag: true,
+    parse: (args) => cancelOrderInputSchema.parse(args),
+    run: (db, tenant, args) => runCancelOrder(db, tenant, args as ReturnType<typeof cancelOrderInputSchema.parse>),
+  },
 };
 
 export function allToolSpecs(): ToolSpec[] {
@@ -60,33 +71,142 @@ export function toGatewayToolDefinitions(toolKeys: string[]): ToolDefinition[] {
     .map((spec) => ({ name: spec.key, description: spec.description, parameters: spec.inputSchema }));
 }
 
+/** A stable JSON encoding (sorted object keys) so the same logical arguments always hash the same, regardless of key order. */
+function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`).join(",")}}`;
+}
+
 /**
- * FR-8.9: tool errors come back as { ok: false, error }, never a thrown
- * exception the model can't recover from. FR-8.10: every call is logged
- * regardless of outcome.
+ * FR-8.6: identity for "is this the same logical write request." Deliberately
+ * keyed on conversation + arguments rather than the model's tool_call id —
+ * a confirm_with_customer re-issue happens in a *different* model turn (and
+ * so gets a fresh tool_call id), but is still the same request and must
+ * still dedupe against the first attempt.
  */
-export function executeTool(db: Database.Database, tenant: TenantContext, runId: string, toolKey: string, args: unknown): Record<string, unknown> {
-  const spec = REGISTRY[toolKey];
+function computeIdempotencyKey(conversationId: string, args: unknown): string {
+  return createHash("sha256").update(`${conversationId}:${canonicalize(args)}`).digest("hex");
+}
+
+function logToolCall(
+  db: Database.Database,
+  tenant: TenantContext,
+  input: { runId: string; toolKey: string; arguments: unknown; result: Record<string, unknown>; status: "ok" | "error"; latencyMs: number; idempotencyKey?: string },
+): void {
+  try {
+    new ToolCallRepository(db, tenant).record({
+      runId: input.runId,
+      toolKey: input.toolKey,
+      arguments: (input.arguments ?? {}) as Record<string, unknown>,
+      result: input.result,
+      status: input.status,
+      latencyMs: input.latencyMs,
+      idempotencyKey: input.idempotencyKey,
+    });
+  } catch {
+    // Logging must never break the tool loop.
+  }
+}
+
+/** Runs an already-parsed call end to end: execute, classify ok/error, log. */
+function runAndLog(
+  db: Database.Database,
+  tenant: TenantContext,
+  spec: ToolSpec,
+  parsedArgs: unknown,
+  logInput: { runId: string; toolKey: string; arguments: unknown; idempotencyKey?: string },
+): Record<string, unknown> {
   const start = Date.now();
   let result: Record<string, unknown>;
   let status: "ok" | "error" = "ok";
-
   try {
-    if (!spec) throw new Error(`Unknown tool: ${toolKey}`);
-    const parsed = spec.parse(args);
-    result = spec.run(db, tenant, parsed);
+    result = spec.run(db, tenant, parsedArgs);
     if ((result as { ok?: unknown }).ok === false) status = "error";
   } catch (err) {
     result = { ok: false, error: err instanceof Error ? err.message : String(err) };
     status = "error";
   }
 
-  const latencyMs = Date.now() - start;
-  try {
-    new ToolCallRepository(db, tenant).record({ runId, toolKey, arguments: (args ?? {}) as Record<string, unknown>, result, status, latencyMs });
-  } catch {
-    // Logging must never break the tool loop.
+  logToolCall(db, tenant, { ...logInput, result, status, latencyMs: Date.now() - start });
+  return result;
+}
+
+/**
+ * FR-8.9: tool errors come back as { ok: false, error }, never a thrown
+ * exception the model can't recover from. FR-8.10: every call is logged
+ * regardless of outcome. FR-8.5/8.6: write tools are gated by their
+ * tool_defs.approval_policy and never double-execute on a retry.
+ */
+export function executeTool(db: Database.Database, tenant: TenantContext, conversationId: string, runId: string, toolKey: string, args: unknown): Record<string, unknown> {
+  const spec = REGISTRY[toolKey];
+  if (!spec) {
+    const result = { ok: false, error: `Unknown tool: ${toolKey}` };
+    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
+    return result;
   }
 
-  return result;
+  let parsedArgs: unknown;
+  try {
+    parsedArgs = spec.parse(args);
+  } catch (err) {
+    const result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
+    return result;
+  }
+
+  if (!spec.writeFlag) {
+    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args });
+  }
+
+  // --- write tool: idempotency + approval-policy gate (FR-8.5/8.6) ---
+  const idempotencyKey = computeIdempotencyKey(conversationId, parsedArgs);
+  const toolCalls = new ToolCallRepository(db, tenant);
+
+  const prior = toolCalls.findByIdempotencyKey(toolKey, idempotencyKey);
+  if (prior && prior.status === "ok") {
+    return prior.result; // never double-execute a retry of the same logical request
+  }
+
+  const approvalPolicy = new ToolDefRepository(db, tenant).getByKey(toolKey)?.approvalPolicy ?? "auto";
+
+  if (approvalPolicy === "auto") {
+    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
+  }
+
+  const approvals = new ToolApprovalRepository(db, tenant);
+  const existing = approvals.getByIdempotencyKey(idempotencyKey);
+
+  if (approvalPolicy === "confirm_with_customer") {
+    // Only a *later* turn re-issuing the same request counts as the
+    // customer having confirmed — re-calling within the same turn (the
+    // model looping on its own, with no new customer input) must not.
+    if (existing?.status === "pending" && existing.runId !== runId) {
+      const result = runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
+      approvals.markDecided(existing.id, "approved", null);
+      return result;
+    }
+    if (!existing) {
+      approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "confirm_with_customer" });
+    }
+    return { ok: false, needsConfirmation: true, message: "This needs the customer's explicit go-ahead before it happens — ask them, and only call this again once they've said yes." };
+  }
+
+  // require_human_approval
+  if (existing?.status === "denied") {
+    return { ok: false, denied: true, message: "A colleague reviewed this and did not approve it." };
+  }
+  if (!existing) {
+    approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "require_human_approval" });
+  }
+  return { ok: false, needsApproval: true, message: "A colleague needs to approve this before it can happen. Let the customer know you've flagged it for review." };
+}
+
+/** Executes a require_human_approval tool call once staff have approved it in the desk (FR-8.5/8.10). */
+export function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Record<string, unknown> {
+  const spec = REGISTRY[approval.toolKey];
+  if (!spec) return { ok: false, error: `Unknown tool: ${approval.toolKey}` };
+  return runAndLog(db, tenant, spec, approval.arguments, { runId: approval.runId, toolKey: approval.toolKey, arguments: approval.arguments, idempotencyKey: approval.idempotencyKey });
 }

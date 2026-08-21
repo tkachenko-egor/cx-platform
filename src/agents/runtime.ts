@@ -16,7 +16,7 @@ export interface RuntimeDeps {
   embeddings: EmbeddingProvider;
 }
 
-export type EscalationReason = "severe_symptom" | "reaction_mention" | "human_request" | "eligible_return" | "loop_cap";
+export type EscalationReason = "severe_symptom" | "reaction_mention" | "human_request" | "eligible_return" | "loop_cap" | "approval_requested";
 
 export interface AgentTurnResult {
   assistantText: string;
@@ -71,6 +71,7 @@ export async function runAgentTurn(
   let round = 0;
   let finalText = "";
   let eligibleReturnSeen = false;
+  let approvalRequested = false;
 
   while (round < ROUND_CAP) {
     round++;
@@ -95,11 +96,14 @@ export async function runAgentTurn(
 
     for (const call of response.toolCalls) {
       callbacks.onToolStart?.(call.name);
-      const result = executeTool(deps.db, tenant, runId, call.name, call.arguments);
+      const result = executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
 
       if (isCardBearing(result) && result.card) cards.push(result.card);
       if (call.name === "check_return_eligibility" && isEligibilityResult(result) && result.verdict === "ELIGIBLE") {
         eligibleReturnSeen = true;
+      }
+      if (isApprovalPendingResult(result) && result.needsApproval) {
+        approvalRequested = true;
       }
 
       messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: JSON.stringify(result) });
@@ -112,6 +116,7 @@ export async function runAgentTurn(
   else if (reactionMention.hit) escalationReasons.push("reaction_mention");
   if (humanRequest.hit) escalationReasons.push("human_request");
   if (eligibleReturnSeen) escalationReasons.push("eligible_return");
+  if (approvalRequested) escalationReasons.push("approval_requested");
   if (loopCapHit) escalationReasons.push("loop_cap");
 
   const citableDocs = [...new Map(retrieved.map((r) => [r.article.docId, { docId: r.article.docId, title: r.article.title }])).values()];
@@ -125,4 +130,8 @@ function isCardBearing(result: unknown): result is { card?: unknown } {
 
 function isEligibilityResult(result: unknown): result is { verdict: string } {
   return typeof result === "object" && result !== null && "verdict" in result;
+}
+
+function isApprovalPendingResult(result: unknown): result is { needsApproval?: boolean } {
+  return typeof result === "object" && result !== null && "needsApproval" in result;
 }

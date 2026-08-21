@@ -7,7 +7,9 @@ import { EventRepository } from "../../../src/db/repositories/event-repository";
 import { RunRepository } from "../../../src/db/repositories/run-repository";
 import { LlmCallRepository } from "../../../src/db/repositories/llm-call-repository";
 import { ToolCallRepository } from "../../../src/db/repositories/tool-repository";
+import { ToolApprovalRepository } from "../../../src/db/repositories/tool-approval-repository";
 import { DeskComposer } from "../../../components/desk/DeskComposer";
+import { ApprovalsPanel } from "../../../components/desk/ApprovalsPanel";
 import { getSessionUser } from "../../../src/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +37,7 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
   }));
 
   const escalationReasons = events.filter((e) => e.type === "escalated").flatMap((e) => (e.payload.reasons as string[] | undefined) ?? []);
+  const pendingApprovals = new ToolApprovalRepository(db, tenant).listPendingByConversation(conversationId);
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -58,6 +61,8 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
           ))}
         </div>
       </section>
+
+      <ApprovalsPanel conversationId={conversationId} approvals={pendingApprovals} />
 
       <DeskComposer conversationId={conversationId} />
 

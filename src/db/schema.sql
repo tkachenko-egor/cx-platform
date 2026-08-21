@@ -204,11 +204,42 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   result TEXT NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('ok','error')),
   latency_ms INTEGER NOT NULL,
+  idempotency_key TEXT,
   created_at TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_tool_calls_tenant ON tool_calls(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_run ON tool_calls(run_id);
+-- FR-8.6: a retry never double-executes a write tool (partial index — only
+-- non-null keys are constrained, so read-only tools are unaffected). Owned
+-- by migration 005, not created here: on a pre-existing DB, schema.sql's
+-- CREATE TABLE IF NOT EXISTS above is a no-op that leaves the old
+-- (columnless) table in place, and this index's own IF NOT EXISTS only
+-- guards the index name — it would still fail trying to reference a
+-- column the migration hasn't added yet if it ran here.
+
+-- FR-8.5: write tools with approval_policy != 'auto' park here instead of
+-- executing immediately. confirm_with_customer is "approved" by the same
+-- tool call being re-issued in a later turn (see src/tools/registry.ts);
+-- require_human_approval is approved/denied via the desk API.
+CREATE TABLE IF NOT EXISTS tool_approvals (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  run_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  tool_key TEXT NOT NULL,
+  arguments TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  policy TEXT NOT NULL CHECK (policy IN ('confirm_with_customer','require_human_approval')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','denied')),
+  decided_by TEXT REFERENCES users(id),
+  decided_at TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (tenant_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_approvals_tenant ON tool_approvals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tool_approvals_conversation ON tool_approvals(conversation_id);
 
 -- ─── Phase 1b: staff RBAC/auth ────────────────────────────────────────────
 -- FR-2.1/2.2/2.7: staff identity, roles, sessions, and the audit trail for
