@@ -1,6 +1,7 @@
 import { getPlatformContext } from "../../../../src/platform/context";
 import { ToolDefRepository } from "../../../../src/db/repositories/tool-repository";
 import { ModelAliasRepository } from "../../../../src/db/repositories/model-alias-repository";
+import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
 import { AgentEditor } from "../../../../components/admin/AgentEditor";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export default async function NewAgentPage() {
 
   const availableTools = new ToolDefRepository(db, tenant).list().map((t) => ({ key: t.key, description: t.description }));
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
+  const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -31,10 +33,11 @@ export default async function NewAgentPage() {
           toolIds: [],
           guardrails: {},
           skills: [],
-          kbScope: { audience: ["customer"] },
+          kbScope: { collectionIds: [] },
         }}
         availableTools={availableTools}
         availableModels={availableModels}
+        availableCollections={availableCollections}
       />
     </main>
   );
