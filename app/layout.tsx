@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "CX Platform",
-  description: "Phase 1 demo — model-agnostic support agent, human desk, and KB retrieval.",
+  description: "Model-agnostic, multi-tenant customer-experience platform — build, deploy, and monitor AI support agents.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
