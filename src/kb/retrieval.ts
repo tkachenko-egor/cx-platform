@@ -10,8 +10,10 @@ export interface RetrievedChunk {
 }
 
 export interface KbScope {
-  /** Audiences this agent may retrieve from. Defaults to ["customer"] — advisor-only docs stay out unless explicitly scoped in. */
+  /** Audiences this agent may retrieve from. Defaults to ["customer"] — advisor-only docs stay out unless explicitly scoped in. Only consulted when collectionIds is empty/absent (legacy path, see hybridSearch). */
   audience?: string[];
+  /** Phase 5 M1: which Knowledge Base collections this agent draws from. Takes priority over the audience filter when non-empty — new agents/edits go through this path, already-published agents (still {audience:[...]} only) keep working via the fallback. */
+  collectionIds?: string[];
 }
 
 const RRF_K = 60;
@@ -38,19 +40,25 @@ function toFtsQuery(query: string): string | null {
 
 /**
  * FR-7.4: dense (cosine over kb_chunks.embedding) + keyword (FTS5) fused via
- * Reciprocal Rank Fusion. FR-7.6/7.7: honors kb_scope's audience filter
- * before either ranking runs.
+ * Reciprocal Rank Fusion. FR-7.6/7.7: honors kb_scope's filter before either
+ * ranking runs — collectionIds when set (Phase 5 M1), else the legacy
+ * audience filter, so already-published agents keep retrieving exactly as
+ * before without a forced re-publish.
  */
 export async function hybridSearch(db: Database.Database, tenant: TenantContext, kbScope: KbScope, query: string, limit: number, embeddings: EmbeddingProvider): Promise<RetrievedChunk[]> {
   const articleRepo = new KbArticleRepository(db, tenant);
   const chunkRepo = new KbChunkRepository(db, tenant);
 
-  const allowedAudiences = new Set(kbScope.audience ?? ["customer"]);
   const articlesById = new Map(articleRepo.list().map((a) => [a.id, a]));
+
+  const useCollections = Boolean(kbScope.collectionIds && kbScope.collectionIds.length > 0);
+  const allowedCollectionIds = new Set(kbScope.collectionIds ?? []);
+  const allowedAudiences = new Set(kbScope.audience ?? ["customer"]);
 
   const candidateChunks = chunkRepo.listByTenant().filter((c) => {
     const article = articlesById.get(c.articleId);
-    return article ? allowedAudiences.has(article.audience) : false;
+    if (!article) return false;
+    return useCollections ? Boolean(article.collectionId && allowedCollectionIds.has(article.collectionId)) : allowedAudiences.has(article.audience);
   });
   if (candidateChunks.length === 0) return [];
 

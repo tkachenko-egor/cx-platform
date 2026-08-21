@@ -142,6 +142,19 @@ CREATE INDEX IF NOT EXISTS idx_runs_tenant ON runs(tenant_id);
 -- FR-7: KB. kb_chunks.embedding is a JSON-encoded float array — fine at
 -- this corpus size (NFR-3.4 headroom is 10x current, still tiny); a real
 -- vector column is a later-phase concern, not a Phase-1 one.
+-- Phase 5 M1: named, reusable Knowledge Base collections an agent picks
+-- from (agent_defs.kb_scope.collectionIds) — see migration 018.
+CREATE TABLE IF NOT EXISTS kb_collections (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_collections_tenant ON kb_collections(tenant_id);
+
 CREATE TABLE IF NOT EXISTS kb_articles (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL REFERENCES tenants(id),
@@ -154,12 +167,15 @@ CREATE TABLE IF NOT EXISTS kb_articles (
   -- body has to live here. File-sourced articles leave this '' (their body
   -- lives on disk, read by scripts/ingest-kb.ts).
   body TEXT NOT NULL DEFAULT '',
+  -- Phase 5 M1: which Knowledge Base this article belongs to.
+  collection_id TEXT REFERENCES kb_collections(id),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, doc_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_kb_articles_tenant ON kb_articles(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_kb_articles_collection ON kb_articles(collection_id);
 
 CREATE TABLE IF NOT EXISTS kb_chunks (
   id TEXT PRIMARY KEY,

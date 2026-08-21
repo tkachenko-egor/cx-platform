@@ -16,6 +16,7 @@ import { migration014ProviderCredentials } from "./014-provider-credentials";
 import { migration015ToolDefsHttpType } from "./015-tool-defs-http-type";
 import { migration016KbArticlesBody } from "./016-kb-articles-body";
 import { migration017WidgetConfigs } from "./017-widget-configs";
+import { migration018KbCollections } from "./018-kb-collections";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -36,4 +37,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration015ToolDefsHttpType,
   migration016KbArticlesBody,
   migration017WidgetConfigs,
+  migration018KbCollections,
 ];

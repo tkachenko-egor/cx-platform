@@ -5,6 +5,7 @@ import path from "node:path";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
 import type { TenantContext } from "../tenancy/context";
 import { KbArticleRepository, KbChunkRepository } from "../db/repositories/kb-repository";
+import { KbCollectionRepository } from "../db/repositories/kb-collection-repository";
 import { chunkMarkdown, estimateTokenCount } from "./chunking";
 
 const KNOWLEDGE_DIR = path.join(process.cwd(), "knowledge");
@@ -18,8 +19,8 @@ interface ParsedDoc {
   raw: string;
 }
 
-/** Same frontmatter shape as amarelle-handoff's lib/agent/knowledge.ts. */
-function parseFrontMatter(raw: string): { meta: Record<string, string>; body: string } {
+/** Same frontmatter shape as amarelle-handoff's lib/agent/knowledge.ts. Exported for reuse by the admin .md import path (Phase 5 M2). */
+export function parseFrontMatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match) return { meta: {}, body: raw };
   const meta: Record<string, string> = {};
@@ -87,10 +88,12 @@ export async function ingestKnowledgeBase(
 ): Promise<{ ingested: string[]; skipped: string[] }> {
   const articles = new KbArticleRepository(db, tenant);
   const chunks = new KbChunkRepository(db, tenant);
+  const collections = new KbCollectionRepository(db, tenant);
   const docs = loadKnowledgeDocs(dir);
 
   const ingested: string[] = [];
   const skipped: string[] = [];
+  let defaultCollectionId: string | undefined;
 
   for (const doc of docs) {
     const contentHash = createHash("sha256").update(doc.raw).digest("hex");
@@ -100,7 +103,21 @@ export async function ingestKnowledgeBase(
       continue;
     }
 
-    const article = articles.upsert({ docId: doc.docId, title: doc.title, audience: doc.audience, effective: doc.effective, contentHash });
+    // Fresh installs: migration 018's backfill only catches articles that existed at migration time,
+    // so a brand-new file-sourced article (post-seed) still needs somewhere to land. Only resolved
+    // lazily/once — most ingest runs touch zero new articles (FR-7.2's skip-unchanged path above).
+    if (!existing?.collectionId && !defaultCollectionId) {
+      defaultCollectionId = collections.ensureDefault().id;
+    }
+
+    const article = articles.upsert({
+      docId: doc.docId,
+      title: doc.title,
+      audience: doc.audience,
+      effective: doc.effective,
+      contentHash,
+      collectionId: existing?.collectionId ?? defaultCollectionId,
+    });
     await chunkAndEmbedArticle(chunks, embeddings, article.id, doc.body);
     ingested.push(doc.docId);
   }
