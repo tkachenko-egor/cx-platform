@@ -209,6 +209,8 @@ export function ensureConversation(
   existing: Conversation | undefined,
   channel: ConversationChannel,
   metadata?: Record<string, unknown>,
+  /** Phase 4 M4: an embedded widget is pinned to one specific agent (widget_configs.agent_key), not the tenant-wide default. */
+  agentKey: string = DEFAULT_AGENT_KEY,
 ): Conversation {
   if (existing) return existing;
 
@@ -216,11 +218,11 @@ export function ensureConversation(
   // Phase 2 M6a: generated up front so getForTraffic's deterministic hash
   // has a conversation id to bucket on before the row itself exists.
   const conversationId = `CONV-${randomUUID()}`;
-  const published = agentDefs.getForTraffic(DEFAULT_AGENT_KEY, conversationId);
+  const published = agentDefs.getForTraffic(agentKey, conversationId);
   if (!published) throw new Error("No published agent — run `npm run seed` first.");
 
   const conversations = new ConversationRepository(deps.db, tenant);
-  const conversation = conversations.create({ id: conversationId, channel, agentKey: DEFAULT_AGENT_KEY, metadata: { agentVersion: published.version, ...metadata } });
+  const conversation = conversations.create({ id: conversationId, channel, agentKey, metadata: { agentVersion: published.version, ...metadata } });
   new EventRepository(deps.db, tenant).append({ conversationId: conversation.id, type: "state_changed", actor: "system", payload: { to: "bot_active" } });
   return conversation;
 }

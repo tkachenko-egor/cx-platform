@@ -14,7 +14,7 @@ const PHASE_BANNER: Record<string, string> = {
 };
 
 export function ChatPanel() {
-  const { messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs } = useChat();
+  const { messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, greeting } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function ChatPanel() {
       <div ref={scrollRef} aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <div>
-            <p className="text-sm text-muted">Hello — I&apos;m an AI assistant and I can help with orders, returns, and product questions. What can I do for you?</p>
+            <p className="text-sm text-muted">{greeting}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
                 <button key={s} type="button" onClick={() => sendMessage(s)} className="rounded-full border border-border px-3 py-1.5 text-xs text-fg hover:border-accent hover:text-accent">

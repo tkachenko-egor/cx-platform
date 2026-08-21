@@ -572,3 +572,23 @@ CREATE TABLE IF NOT EXISTS provider_credentials (
 CREATE INDEX IF NOT EXISTS idx_provider_credentials_tenant ON provider_credentials(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_credentials_one_active_llm
   ON provider_credentials(tenant_id, provider) WHERE kind = 'llm_provider' AND is_active = 1;
+
+-- Phase 4 M4: embeddable web widgets. NOT versioned with agent_defs — see
+-- src/db/migrations/017-widget-configs.ts for why. public_key is a
+-- separate minted id, never agent_defs.key (see src/platform/widget-context.ts).
+CREATE TABLE IF NOT EXISTS widget_configs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  agent_key TEXT NOT NULL,
+  public_key TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL DEFAULT 'Support',
+  greeting_text TEXT NOT NULL DEFAULT '',
+  primary_color TEXT NOT NULL DEFAULT '#3454d1',
+  logo_url TEXT,
+  position TEXT NOT NULL DEFAULT 'bottom-right',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (tenant_id, agent_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_widget_configs_public_key ON widget_configs(public_key);

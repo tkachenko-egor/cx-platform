@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { getPlatformContext } from "../../../../src/platform/context";
 import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-repository";
 import { ToolDefRepository } from "../../../../src/db/repositories/tool-repository";
@@ -19,7 +20,12 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold text-fg">{key}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-fg">{key}</h1>
+        <Link href={`/admin/agents/${key}/widget`} className="text-xs text-accent hover:underline">
+          Widget →
+        </Link>
+      </div>
       <p className="mt-1 text-sm text-muted">Currently v{agentDef.version}. Saving publishes v{agentDef.version + 1} — running conversations keep the version they started on.</p>
 
       <AgentEditor

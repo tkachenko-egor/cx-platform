@@ -4,8 +4,25 @@ import { useEffect, useRef } from "react";
 import { useChat } from "./ChatProvider";
 import { ChatPanel } from "./ChatPanel";
 
-export function ChatWidget() {
+export function ChatWidget({
+  title = "Support",
+  subtitle = "AI assistant · a person can join anytime",
+  position = "bottom-right",
+  logoUrl,
+}: {
+  title?: string;
+  subtitle?: string;
+  position?: "bottom-right" | "bottom-left";
+  logoUrl?: string | null;
+}) {
   const { open, setOpen, hasUnread } = useChat();
+  // Tailwind's static scanner needs each full class token spelled out literally somewhere in
+  // this file's source — a runtime-interpolated `min-[640px]:${x}` would never get generated.
+  const panelPositionClass =
+    position === "bottom-left"
+      ? "min-[640px]:inset-auto min-[640px]:bottom-24 min-[640px]:left-6 min-[640px]:h-[640px] min-[640px]:w-[400px] min-[640px]:rounded-2xl"
+      : "min-[640px]:inset-auto min-[640px]:bottom-24 min-[640px]:right-6 min-[640px]:h-[640px] min-[640px]:w-[400px] min-[640px]:rounded-2xl";
+  const bubblePositionClass = position === "bottom-left" ? "fixed bottom-6 left-6 z-40" : "fixed bottom-6 right-6 z-40";
   const panelRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef<HTMLButtonElement>(null);
 
@@ -30,13 +47,16 @@ export function ChatWidget() {
           tabIndex={-1}
           role="dialog"
           aria-label="AI assistant"
-          className="fixed inset-0 z-50 flex flex-col border border-border bg-surface shadow-2xl outline-none min-[640px]:inset-auto min-[640px]:bottom-24 min-[640px]:right-6 min-[640px]:h-[640px] min-[640px]:w-[400px] min-[640px]:rounded-2xl"
+          className={`fixed inset-0 z-50 flex flex-col border border-border bg-surface shadow-2xl outline-none ${panelPositionClass}`}
         >
           {/* NFR-6.2: AI disclosure, visible at first interaction, not buried. */}
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-fg">Support</p>
-              <p className="text-[11px] text-muted">AI assistant · a person can join anytime</p>
+            <div className="flex items-center gap-2">
+              {logoUrl && <img src={logoUrl} alt="" className="h-6 w-6 rounded-full object-cover" />}
+              <div>
+                <p className="text-sm font-medium text-fg">{title}</p>
+                <p className="text-[11px] text-muted">{subtitle}</p>
+              </div>
             </div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close chat" className="rounded-full p-1 text-muted hover:bg-fg/5 hover:text-fg">
               ✕
@@ -53,9 +73,9 @@ export function ChatWidget() {
         type="button"
         onClick={() => setOpen(!open)}
         aria-label={open ? "Close chat" : "Open chat"}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg hover:opacity-90"
+        className={`${bubblePositionClass} flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-fg shadow-lg hover:opacity-90`}
       >
-        <span aria-hidden>💬</span>
+        {logoUrl ? <img src={logoUrl} alt="" className="h-8 w-8 rounded-full object-cover" /> : <span aria-hidden>💬</span>}
         {hasUnread && !open && <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-bg bg-danger" aria-hidden />}
       </button>
     </>

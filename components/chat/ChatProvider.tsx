@@ -25,6 +25,7 @@ type ChatContextValue = {
   phase: ConversationPhase;
   citableDocs: Record<string, string>;
   hasUnread: boolean;
+  greeting: string;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -36,12 +37,24 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const POLL_INTERVAL_MS = 3000;
+const DEFAULT_GREETING = "Hello — I'm an AI assistant and I can help with orders, returns, and product questions. What can I do for you?";
 
 function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`;
 }
 
-export function ChatProvider({ children }: { children: ReactNode }) {
+export function ChatProvider({
+  children,
+  chatEndpoint = "/api/chat",
+  messagesEndpointBase = "/api/conversations",
+  greeting = DEFAULT_GREETING,
+}: {
+  children: ReactNode;
+  /** Phase 4 M4: an embed page points these at /api/embed-chat/{publicKey} instead — same-origin demo widget (app/page.tsx) keeps the defaults untouched. */
+  chatEndpoint?: string;
+  messagesEndpointBase?: string;
+  greeting?: string;
+}) {
   const [open, setOpenState] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -82,7 +95,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const conversationId = conversationIdRef.current;
       if (!conversationId) return;
       try {
-        const res = await fetch(`/api/conversations/${conversationId}/messages`);
+        const res = await fetch(`${messagesEndpointBase}/${conversationId}/messages`);
         if (!res.ok) return;
         const body = (await res.json()) as { state: ConversationPhase; messages: { id: string; role: string; content: string }[] };
         setPhase(body.state);
@@ -97,7 +110,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         // transient — next tick retries
       }
     }, POLL_INTERVAL_MS);
-  }, [stopPolling]);
+  }, [stopPolling, messagesEndpointBase]);
 
   useEffect(() => stopPolling, [stopPolling]);
 
@@ -117,7 +130,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await fetch(chatEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ conversationId: conversationIdRef.current, message: trimmed }),
@@ -192,7 +205,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         setToolLabel(null);
       }
     },
-    [startPolling],
+    [startPolling, chatEndpoint],
   );
 
   const retryMessage = useCallback(
@@ -209,7 +222,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, hasUnread }}>
+    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, hasUnread, greeting }}>
       {children}
     </ChatContext.Provider>
   );

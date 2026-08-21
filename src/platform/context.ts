@@ -58,7 +58,8 @@ const cacheBySlug = new Map<string, PlatformContext>();
  * Admin > API Keys entry (src/db/repositories/provider-credential-repository.ts)
  * takes precedence once one exists.
  */
-function buildContext(tenant: Tenant, db: Database.Database): PlatformContext {
+/** Exported for src/platform/widget-context.ts — an embed resolves its tenant from a public widget key instead of the Host header, but needs the exact same gateway/embeddings construction once it has one. */
+export function buildContext(tenant: Tenant, db: Database.Database): PlatformContext {
   const credentials = new ProviderCredentialRepository(db, tenant);
   const providers: Record<string, ProviderAdapter> = { stub: new StubProvider() };
 
