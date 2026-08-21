@@ -2,9 +2,7 @@
 
 A model-agnostic, multi-tenant customer-experience platform. See
 [README.md](README.md) for current scope (Phase 0: foundation only, no
-channels/agents/UI yet). Full requirements are the CX platform requirements
-spec this repo was scaffolded from — ask the user if you need the source
-file, it isn't checked in here.
+channels/agents/UI yet). Full requirements: [`docs/00-requirements.md`](docs/00-requirements.md).
 
 ## Invariants — do not change these without being asked
 

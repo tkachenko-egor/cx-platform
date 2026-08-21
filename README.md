@@ -1,8 +1,8 @@
 # CX Platform — Phase 0
 
 A model-agnostic, multi-tenant foundation for a customer-experience
-platform, built per `docs/cx-platform-requirements.md` (not checked in here
-yet — see below). This repo is deliberately separate from the
+platform, built per [`docs/00-requirements.md`](docs/00-requirements.md).
+This repo is deliberately separate from the
 [amarelle-handoff](../amarelle-handoff) demo bot: that repo is a fictional
 brand's fixed-business-rules chatbot with its own settled invariants; this
 one is general-purpose platform infrastructure. Working pieces (KB
