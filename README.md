@@ -111,7 +111,31 @@ sequence):
   actually pinned to — harmless with one agent, wrong the moment a second
   one exists. The desk conversation page now shows an agent-path breadcrumb
   and the FR-9.3 handoff context package.
-- **Still to come:** the eval harness + CI regression gate.
+- **M7 — done.** Eval harness + golden dataset + CI regression gate
+  (FR-12.1/12.2/12.4). `tests/eval/golden-conversations.json` is a
+  versioned, hand-authored set of scripted conversations — each turn
+  states what the model would say and what the system must then do
+  (route/tool-call/escalate/guardrail-block/never mention a forbidden
+  phrase). `scripts/eval/run-eval.ts` (`npm run eval`) drives every case
+  through the real `processInboundTurn` pipeline with a scripted provider
+  — no API key, no network — and `scripts/eval/scoring.ts`'s pure functions
+  (unit-tested in `tests/eval-runner.test.ts`) score per-tag accuracy
+  against `scripts/eval/thresholds.json`, failing the build on a miss.
+  `src/testing/seed-fixtures.ts` factors the tenant/business-data/
+  model-alias/tool-def/KB/agent-def bootstrap shared by `scripts/seed.ts`
+  and the eval harness into one place. `.github/workflows/ci.yml` is the
+  repo's first CI config: typecheck → lint → test → eval, all blocking.
+  Verified the gate actually gates: a deliberately broken router
+  `handoffTargets` array made the routing-accuracy metric fail exactly as
+  expected, then was reverted.
+- **Phase 1b is now complete** — all six items from §6 of the requirements
+  doc that the original six-week cut deferred are built: schema migrations
+  + staff RBAC, the email/ticketing channel, write tools with an approval
+  policy, the guardrail suite, router/handoff, and this eval + CI gate.
+  What's still deferred is the doc's actual §6 **Phase 2** list (sentiment
+  escalation, SLA engine, macros, agent-performance analytics, A/B testing,
+  semantic caching, coverage-gap reporting, human review queue) and Phase 3
+  (messaging channels, voice, self-serve onboarding, visual flow builder).
 
 None of these are accidental gaps — see the "consequence worth flagging"
 note in `CLAUDE.md` invariant #7 for what an `ELIGIBLE` return verdict does

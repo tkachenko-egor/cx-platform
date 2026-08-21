@@ -40,11 +40,18 @@ mode, cost tracking, tracing). Full requirements:
    date windows (e.g. `tests/tools.test.ts`'s REACTION-window case) must
    pin `process.env.DEMO_DATE`, or they silently start failing months
    later exactly like amarelle-handoff's own ORD-100001 case did.
-7. **No write tools exist yet.** `check_return_eligibility` resolving
-   `ELIGIBLE` is a deliberate escalation trigger (`src/agents/runtime.ts`),
-   not a bug — there is nothing downstream that can act on the verdict
-   until a write tool with an approval policy exists. Don't "fix" this by
-   having the agent claim it completed a return.
+7. **Write tools require an approval policy, enforced in
+   `src/tools/registry.ts`'s `executeTool`, never bypassed.** A write-flagged
+   tool's `tool_defs.approval_policy` (`auto` / `confirm_with_customer` /
+   `require_human_approval`) is checked before it ever mutates anything, and
+   every write executes behind a conversation+arguments idempotency key
+   (`tool_calls.idempotency_key`) so a retry can't double-execute. Don't add
+   a write tool that runs without going through this gate. `cancel_order`
+   is the first one — see `src/tools/amarelle/cancel-order.ts`.
+   `check_return_eligibility` resolving `ELIGIBLE` still escalates
+   (`escalate: {reason}` on the tool result, a generic convention any tool
+   can use) rather than claiming a return was completed — no
+   `create_return` tool exists yet.
 8. **The in-memory session store is a known, deliberate simplification**
    (`src/agents/sessions-store.ts`) — full gateway-shape turn history
    (tool_use/tool_result blocks) lives in-process, not the DB. Fine for a
@@ -54,7 +61,14 @@ mode, cost tracking, tracing). Full requirements:
 ## Before committing
 
 ```
-npm test         # tenancy, gateway swap/fallback, KB retrieval, tools, agent runtime
+npm test         # tenancy, gateway swap/fallback, KB retrieval, tools, agent runtime, guardrails, router/handoff
 npm run typecheck
 npm run lint
+npm run eval      # golden-dataset regression gate (routing/tool-selection/escalation/guardrail accuracy)
 ```
+
+If a change touches `src/db/schema.sql` or `src/db/migrations/`, also run
+`npm run seed` against the real `cx-platform.db` (not just `:memory:`
+tests) — `schema.sql`'s `CREATE TABLE IF NOT EXISTS` is a no-op against a
+pre-existing DB file, so a bug where `schema.sql` itself references a
+migration-added column only surfaces there, not in any test.

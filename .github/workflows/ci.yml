@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run lint
+
+      - run: npm test
+
+      # FR-12.4: the deterministic regression gate — routing/tool-selection/
+      # escalation/guardrail accuracy against the golden dataset, driven by
+      # ScriptedProvider/StubProvider so it needs no API key and is fully
+      # blocking. (An optional real-model LLM-as-judge subset, FR-12.3, is
+      # a "Should" not built yet — see docs/00-requirements.md.)
+      - run: npm run eval
