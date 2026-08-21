@@ -1,16 +1,13 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import type Database from "better-sqlite3";
 import type { Tenant } from "../db/repositories/tenant-repository";
 import { SessionRepository } from "../db/repositories/session-repository";
 import { UserRepository, type User } from "../db/repositories/user-repository";
+import { hashToken } from "./token-hash";
 
 const SESSION_COOKIE = "cx_session";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h — staff shift-length session, re-login after
-
-function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
-}
 
 /** Only ever called from a Route Handler (cookies() only allows writes there, not in Server Components). */
 export async function createSession(db: Database.Database, tenant: Tenant, userId: string): Promise<void> {

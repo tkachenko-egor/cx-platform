@@ -75,4 +75,9 @@ export class UserRepository extends TenantScopedRepository {
     const rows = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? ORDER BY created_at ASC`).all(this.tenantId) as UserRow[];
     return rows.map(rowToUser);
   }
+
+  /** Phase 3 M2: password reset. */
+  setPasswordHash(id: string, passwordHash: string): void {
+    this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(passwordHash, new Date().toISOString(), this.tenantId, id);
+  }
 }

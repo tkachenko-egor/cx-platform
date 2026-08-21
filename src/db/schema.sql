@@ -315,6 +315,33 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id);
 
+-- Phase 3 M2: staff invite + password-reset tokens.
+CREATE TABLE IF NOT EXISTS user_invites (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  email TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('owner','admin','supervisor','agent','viewer')),
+  token_hash TEXT NOT NULL UNIQUE,
+  invited_by TEXT REFERENCES users(id),
+  expires_at TEXT NOT NULL,
+  accepted_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_invites_tenant ON user_invites(tenant_id);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_tenant ON password_reset_tokens(tenant_id);
+
 -- FR-2.7: audit log of privileged actions (config change, PII access,
 -- conversation export, tool-write approvals).
 CREATE TABLE IF NOT EXISTS audit_log (

@@ -5,9 +5,7 @@ import { TicketRepository } from "../../../../../src/db/repositories/ticket-repo
 import { EmailChannelAdapter } from "../../../../../src/channel/email/adapter";
 import { resolveEmailConversationId, normalizedSubjectHash } from "../../../../../src/channel/email/threading";
 import { ensureConversation, processInboundTurn } from "../../../../../src/channel/turn";
-import { StubEmailProvider } from "../../../../../src/channel/email/providers/stub";
-import { SmtpEmailProvider } from "../../../../../src/channel/email/providers/smtp";
-import type { EmailProviderAdapter } from "../../../../../src/channel/email/provider";
+import { selectEmailProvider } from "../../../../../src/channel/email/select-provider";
 
 export const runtime = "nodejs";
 
@@ -26,18 +24,6 @@ function headersToRecord(headers: { Name: string; Value: string }[] = []): Recor
   return record;
 }
 
-function emailProvider(): EmailProviderAdapter {
-  const host = process.env.SMTP_HOST;
-  if (!host) return new StubEmailProvider();
-  return new SmtpEmailProvider({
-    host,
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: { user: process.env.SMTP_USER ?? "", pass: process.env.SMTP_PASS ?? "" },
-    fromAddress: process.env.SMTP_FROM ?? "support@example.com",
-  });
-}
-
 /** FR-3.11-3.17: webhook receiver — inbound email in, threaded conversation + ticket + agent reply out. */
 export async function POST(req: Request) {
   const payload = (await req.json().catch(() => null)) as PostmarkInboundPayload | null;
@@ -46,7 +32,7 @@ export async function POST(req: Request) {
   }
 
   const headers = headersToRecord(payload.Headers);
-  const adapter = new EmailChannelAdapter(emailProvider());
+  const adapter = new EmailChannelAdapter(selectEmailProvider());
   const inbound = adapter.receive({
     messageId: payload.MessageID,
     inReplyTo: headers["in-reply-to"],

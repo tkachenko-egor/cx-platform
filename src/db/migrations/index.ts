@@ -10,6 +10,7 @@ import { migration008SlaPolicies } from "./008-sla-policies";
 import { migration009ReviewQueue } from "./009-review-queue";
 import { migration010AgentExperiments } from "./010-agent-experiments";
 import { migration011Macros } from "./011-macros";
+import { migration012UserInvitesAndPasswordResets } from "./012-user-invites-and-password-resets";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -24,4 +25,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration009ReviewQueue,
   migration010AgentExperiments,
   migration011Macros,
+  migration012UserInvitesAndPasswordResets,
 ];
