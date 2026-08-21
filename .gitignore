@@ -8,3 +8,6 @@ dist/
 .env.local
 .next/
 *.tsbuildinfo
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/cache/
