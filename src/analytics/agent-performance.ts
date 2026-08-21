@@ -6,12 +6,19 @@ export interface AgentVolumeRow {
   runCount: number;
 }
 
-/** Volume per agent — a straight COUNT over `runs`, the join point every debugging/cost question already uses. */
-export function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { since?: string } = {}): AgentVolumeRow[] {
-  const query = options.since
-    ? `SELECT agent_key as agentKey, COUNT(*) as runCount FROM runs WHERE tenant_id = ? AND started_at >= ? GROUP BY agent_key ORDER BY runCount DESC`
-    : `SELECT agent_key as agentKey, COUNT(*) as runCount FROM runs WHERE tenant_id = ? GROUP BY agent_key ORDER BY runCount DESC`;
-  const params = options.since ? [tenant.tenantId, options.since] : [tenant.tenantId];
+/** Volume per agent — a straight COUNT over `runs`, the join point every debugging/cost question already uses. Phase 5 M6: optional agentKey scopes this to one agent's own page instead of the tenant-wide breakdown. */
+export function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): AgentVolumeRow[] {
+  const conditions = ["tenant_id = ?"];
+  const params: unknown[] = [tenant.tenantId];
+  if (options.agentKey) {
+    conditions.push("agent_key = ?");
+    params.push(options.agentKey);
+  }
+  if (options.since) {
+    conditions.push("started_at >= ?");
+    params.push(options.since);
+  }
+  const query = `SELECT agent_key as agentKey, COUNT(*) as runCount FROM runs WHERE ${conditions.join(" AND ")} GROUP BY agent_key ORDER BY runCount DESC`;
   return db.prepare(query).all(...params) as AgentVolumeRow[];
 }
 
@@ -26,11 +33,18 @@ export interface EscalationReasonCount {
  * on the desk detail page, never aggregated. Small enough at this scale to
  * tally in JS rather than reaching for SQLite's json_each.
  */
-export function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { since?: string } = {}): EscalationReasonCount[] {
-  const query = options.since
-    ? `SELECT payload FROM events WHERE tenant_id = ? AND type = 'escalated' AND created_at >= ?`
-    : `SELECT payload FROM events WHERE tenant_id = ? AND type = 'escalated'`;
-  const params = options.since ? [tenant.tenantId, options.since] : [tenant.tenantId];
+export function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): EscalationReasonCount[] {
+  const conditions = ["tenant_id = ?", "type = 'escalated'"];
+  const params: unknown[] = [tenant.tenantId];
+  if (options.agentKey) {
+    conditions.push("conversation_id IN (SELECT DISTINCT conversation_id FROM runs WHERE tenant_id = ? AND agent_key = ?)");
+    params.push(tenant.tenantId, options.agentKey);
+  }
+  if (options.since) {
+    conditions.push("created_at >= ?");
+    params.push(options.since);
+  }
+  const query = `SELECT payload FROM events WHERE ${conditions.join(" AND ")}`;
   const rows = db.prepare(query).all(...params) as { payload: string }[];
 
   const counts = new Map<string, number>();
@@ -59,10 +73,23 @@ export interface ContainmentRate {
  * at all" is the honest substitute, and M1's event-integrity fix is what
  * makes it reliable.
  */
-export function getContainmentRate(db: Database.Database, tenant: TenantContext, options: { since?: string } = {}): ContainmentRate {
-  const query = options.since ? `SELECT id FROM conversations WHERE tenant_id = ? AND created_at >= ?` : `SELECT id FROM conversations WHERE tenant_id = ?`;
-  const params = options.since ? [tenant.tenantId, options.since] : [tenant.tenantId];
-  const conversationIds = (db.prepare(query).all(...params) as { id: string }[]).map((r) => r.id);
+export function getContainmentRate(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): ContainmentRate {
+  let conversationIds: string[];
+  if (options.agentKey) {
+    // Scoped to one agent: a conversation counts if that agent handled at least one run in it — runs.agent_key, not
+    // conversations.current_agent_key, which only reflects who's holding it now, not the full handoff history.
+    const conditions = ["tenant_id = ?", "agent_key = ?"];
+    const params: unknown[] = [tenant.tenantId, options.agentKey];
+    if (options.since) {
+      conditions.push("started_at >= ?");
+      params.push(options.since);
+    }
+    conversationIds = (db.prepare(`SELECT DISTINCT conversation_id as id FROM runs WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
+  } else {
+    const query = options.since ? `SELECT id FROM conversations WHERE tenant_id = ? AND created_at >= ?` : `SELECT id FROM conversations WHERE tenant_id = ?`;
+    const params = options.since ? [tenant.tenantId, options.since] : [tenant.tenantId];
+    conversationIds = (db.prepare(query).all(...params) as { id: string }[]).map((r) => r.id);
+  }
   if (conversationIds.length === 0) return { totalConversations: 0, containedConversations: 0, rate: 0 };
 
   const placeholders = conversationIds.map(() => "?").join(",");

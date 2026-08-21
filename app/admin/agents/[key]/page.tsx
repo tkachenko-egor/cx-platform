@@ -24,9 +24,14 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-fg">{key}</h1>
-        <Link href={`/admin/agents/${key}/widget`} className="text-xs text-accent hover:underline">
-          Widget →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href={`/admin/agents/${key}/analytics`} className="text-xs text-accent hover:underline">
+            Analytics →
+          </Link>
+          <Link href={`/admin/agents/${key}/widget`} className="text-xs text-accent hover:underline">
+            Widget →
+          </Link>
+        </div>
       </div>
       <p className="mt-1 text-sm text-muted">Currently v{agentDef.version}. Saving publishes v{agentDef.version + 1} — running conversations keep the version they started on.</p>
 
