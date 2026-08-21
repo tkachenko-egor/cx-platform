@@ -8,7 +8,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 }
 
 export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={`${FIELD_CLASSES} font-mono text-xs ${className}`} />;
+  return <textarea {...props} className={`${FIELD_CLASSES} ${className}`} />;
 }
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {

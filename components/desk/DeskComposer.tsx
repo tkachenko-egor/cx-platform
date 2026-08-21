@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Textarea, Input } from "../ui/Input";
 
 interface Macro {
   id: string;
@@ -83,55 +86,44 @@ export function DeskComposer({ conversationId }: { conversationId: string }) {
 
   return (
     <section className="mt-6">
-      <h2 className="text-sm font-medium text-muted">Reply</h2>
-      <textarea
+      <h2 className="text-sm font-semibold text-fg">Reply</h2>
+      <Textarea
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder="Click “Suggest a reply” for a bot-drafted starting point, or write your own."
         rows={5}
-        className="mt-2 w-full resize-none rounded-lg border border-border bg-surface p-3 text-sm text-fg outline-none focus:border-accent"
+        className="mt-3 resize-none text-sm"
       />
       {error && <p className="mt-1 text-xs text-danger">{error}</p>}
       <div className="relative mt-2 flex flex-wrap gap-2">
-        <button type="button" onClick={requestDraft} disabled={loadingDraft} className="rounded-lg border border-border px-3 py-1.5 text-sm text-fg disabled:opacity-50">
+        <Button variant="secondary" onClick={requestDraft} disabled={loadingDraft} className="text-sm">
           {loadingDraft ? "Drafting…" : "Suggest a reply"}
-        </button>
-        <button type="button" onClick={() => setShowMacros((v) => !v)} className="rounded-lg border border-border px-3 py-1.5 text-sm text-fg">
+        </Button>
+        <Button variant="secondary" onClick={() => setShowMacros((v) => !v)} className="text-sm">
           Macros
-        </button>
-        <button type="button" onClick={send} disabled={sending || !draft.trim()} className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg disabled:opacity-40">
+        </Button>
+        <Button onClick={send} disabled={sending || !draft.trim()} className="text-sm">
           {sending ? "Sending…" : "Send"}
-        </button>
-        <button type="button" onClick={handBack} className="rounded-lg border border-border px-3 py-1.5 text-sm text-muted">
+        </Button>
+        <Button variant="ghost" onClick={handBack} className="text-sm">
           Hand back to bot
-        </button>
+        </Button>
         {showMacros && (
-          <div className="absolute left-0 top-full z-10 mt-1 w-72 rounded-lg border border-border bg-surface p-2 shadow-lg">
-            <input
-              autoFocus
-              value={macroQuery}
-              onChange={(e) => setMacroQuery(e.target.value)}
-              placeholder="Search macros…"
-              className="w-full rounded border border-border bg-surface px-2 py-1 text-xs text-fg outline-none focus:border-accent"
-            />
+          <Card className="absolute left-0 top-full z-10 mt-1 w-72 p-2 shadow-lg">
+            <Input autoFocus value={macroQuery} onChange={(e) => setMacroQuery(e.target.value)} placeholder="Search macros…" className="py-1 text-xs" />
             <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
               {filteredMacros.length === 0 ? (
                 <p className="px-1 py-2 text-xs text-muted">No macros found.</p>
               ) : (
                 filteredMacros.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => insertMacro(m)}
-                    className="block w-full rounded px-2 py-1.5 text-left text-xs text-fg hover:bg-accent/10"
-                  >
+                  <button key={m.id} type="button" onClick={() => insertMacro(m)} className="block w-full rounded-lg px-2 py-1.5 text-left text-xs text-fg hover:bg-accent-soft">
                     <p className="font-medium">{m.name}</p>
                     <p className="truncate text-muted">{m.body}</p>
                   </button>
                 ))
               )}
             </div>
-          </div>
+          </Card>
         )}
       </div>
     </section>

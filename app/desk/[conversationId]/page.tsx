@@ -11,6 +11,8 @@ import { ToolApprovalRepository } from "../../../src/db/repositories/tool-approv
 import { DeskComposer } from "../../../components/desk/DeskComposer";
 import { ApprovalsPanel } from "../../../components/desk/ApprovalsPanel";
 import { getSessionUser } from "../../../src/auth/session";
+import { Card } from "../../../components/ui/Card";
+import { Badge } from "../../../components/ui/Badge";
 
 export const dynamic = "force-dynamic";
 
@@ -69,13 +71,13 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
 
       {handoffs.length > 0 && (
         <section className="mt-6">
-          <h2 className="text-sm font-medium text-muted">Handoff context</h2>
-          <div className="mt-2 space-y-2">
+          <h2 className="text-sm font-semibold text-fg">Handoff context</h2>
+          <div className="mt-3 space-y-2">
             {handoffs.map((h, i) => (
-              <div key={i} className="rounded-lg border border-border bg-surface p-3 text-xs">
-                <p className="text-fg">
+              <Card key={i} className="p-4 text-xs">
+                <p className="flex items-center gap-2 text-fg">
                   {h.from} → {h.to}
-                  {h.sentiment === "negative" && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">negative sentiment</span>}
+                  {h.sentiment === "negative" && <Badge variant="danger">Negative sentiment</Badge>}
                 </p>
                 {h.reason && <p className="mt-1 text-muted">Reason: {h.reason}</p>}
                 {h.summary && <p className="mt-1 text-muted">Summary: {h.summary}</p>}
@@ -85,22 +87,22 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
                   </p>
                 )}
                 {h.instructionsForReceivingAgent && <p className="mt-1 text-muted">Instructions: {h.instructionsForReceivingAgent}</p>}
-              </div>
+              </Card>
             ))}
           </div>
         </section>
       )}
 
       <section className="mt-6">
-        <h2 className="text-sm font-medium text-muted">Transcript</h2>
-        <div className="mt-2 space-y-3 rounded-xl border border-border bg-surface p-4">
+        <h2 className="text-sm font-semibold text-fg">Transcript</h2>
+        <Card className="mt-3 space-y-3 p-5">
           {messages.map((m) => (
             <div key={m.id} className={m.visibility === "internal" ? "opacity-60" : ""}>
               <p className="text-[11px] font-medium uppercase tracking-wide text-muted">{m.role}</p>
               <p className="whitespace-pre-wrap text-sm text-fg">{m.content}</p>
             </div>
           ))}
-        </div>
+        </Card>
       </section>
 
       <ApprovalsPanel conversationId={conversationId} approvals={pendingApprovals} />
@@ -108,35 +110,37 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
       <DeskComposer conversationId={conversationId} />
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium text-muted">Trace — why did it say that?</h2>
-        <div className="mt-2 space-y-3">
+        <h2 className="text-sm font-semibold text-fg">Trace — why did it say that?</h2>
+        <div className="mt-3 space-y-3">
           {trace.length === 0 && <p className="text-xs text-muted">No runs yet.</p>}
           {trace.map(({ run, llmCalls: calls, toolCalls: tCalls }) => (
-            <details key={run.id} className="rounded-xl border border-border bg-surface p-3 text-xs">
-              <summary className="cursor-pointer text-fg">
-                {run.trigger} · {run.status} · {run.agentKey} v{run.agentVersion}
-              </summary>
-              <div className="mt-2 space-y-2">
-                {calls.map((c) => (
-                  <div key={c.id} className="rounded-lg border border-border p-2">
-                    <p className="text-fg">
-                      {c.provider}:{c.model} {c.fallbackUsed && "(fallback)"}
-                    </p>
-                    <p className="text-muted">
-                      {c.promptTokens}+{c.completionTokens} tok · ${c.costUsd.toFixed(5)} · {c.latencyMs}ms {c.errorType && `· ${c.errorType}`}
-                    </p>
-                  </div>
-                ))}
-                {tCalls.map((t) => (
-                  <div key={t.id} className="rounded-lg border border-border p-2">
-                    <p className="text-fg">
-                      tool: {t.toolKey} ({t.status})
-                    </p>
-                    <p className="text-muted">{t.latencyMs}ms</p>
-                  </div>
-                ))}
-              </div>
-            </details>
+            <Card key={run.id} className="p-4 text-xs">
+              <details>
+                <summary className="cursor-pointer text-fg">
+                  {run.trigger} · {run.status} · {run.agentKey} v{run.agentVersion}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {calls.map((c) => (
+                    <div key={c.id} className="rounded-lg border border-border p-2">
+                      <p className="text-fg">
+                        {c.provider}:{c.model} {c.fallbackUsed && "(fallback)"}
+                      </p>
+                      <p className="text-muted">
+                        {c.promptTokens}+{c.completionTokens} tok · ${c.costUsd.toFixed(5)} · {c.latencyMs}ms {c.errorType && `· ${c.errorType}`}
+                      </p>
+                    </div>
+                  ))}
+                  {tCalls.map((t) => (
+                    <div key={t.id} className="rounded-lg border border-border p-2">
+                      <p className="text-fg">
+                        tool: {t.toolKey} ({t.status})
+                      </p>
+                      <p className="text-muted">{t.latencyMs}ms</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </Card>
           ))}
         </div>
       </section>

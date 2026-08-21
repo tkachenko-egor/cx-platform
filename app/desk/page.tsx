@@ -9,6 +9,8 @@ import { SignOutButton } from "../../components/desk/SignOutButton";
 import { now } from "../../src/core/clock";
 import { suggestAssignees } from "../../src/desk/skill-match";
 import type { ConversationChannel } from "../../src/core/types";
+import { Card } from "../../components/ui/Card";
+import { Badge } from "../../components/ui/Badge";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +23,7 @@ const CHANNEL_FILTERS: { label: string; value: ConversationChannel | "all" }[] =
 function slaBadge(c: { priority: string; slaDueAt: string | null }, nowIso: string) {
   if (!c.slaDueAt) return null;
   const breaching = c.slaDueAt < nowIso;
-  return (
-    <span className={`ml-1 rounded border px-1.5 py-0.5 text-[10px] uppercase ${breaching ? "border-red-300 bg-red-100 text-red-800" : "border-border text-muted"}`}>
-      {breaching ? "SLA breached" : `due ${new Date(c.slaDueAt).toLocaleTimeString()}`}
-    </span>
-  );
+  return <Badge variant={breaching ? "danger" : "neutral"}>{breaching ? "SLA breached" : `due ${new Date(c.slaDueAt).toLocaleTimeString()}`}</Badge>;
 }
 
 export default async function DeskPage({ searchParams }: { searchParams: Promise<{ channel?: string; view?: string }> }) {
@@ -101,33 +99,32 @@ export default async function DeskPage({ searchParams }: { searchParams: Promise
       {conversations.length === 0 ? (
         <p className="mt-8 text-sm text-muted">{slaOnly ? "No conversations are currently breaching their SLA." : "Nothing needs attention right now."}</p>
       ) : (
-        <ul className="mt-6 divide-y divide-border rounded-xl border border-border bg-surface">
+        <Card className="mt-6 divide-y divide-border overflow-hidden p-0">
           {conversations.map((c) => {
             const cost = costs.get(c.id);
             const suggested = suggestAssignees(c.tags, staffUsers)[0];
             return (
-              <li key={c.id}>
-                <Link href={`/desk/${c.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-bg">
-                  <div>
-                    <p className="text-sm font-medium text-fg">
-                      {c.id} <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted">{c.channel}</span>
-                      {c.priority !== "normal" && <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted">{c.priority}</span>}
-                      {slaBadge(c, nowIso)}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {c.state} · updated {new Date(c.updatedAt).toLocaleString()}
-                      {suggested && <span className="ml-1 text-accent">· suggested: {suggested.email}</span>}
-                    </p>
-                  </div>
-                  <div className="text-right text-xs text-muted">
-                    <p>{cost?.turnCount ?? 0} turn(s)</p>
-                    <p>${(cost?.totalCostUsd ?? 0).toFixed(4)}</p>
-                  </div>
-                </Link>
-              </li>
+              <Link key={c.id} href={`/desk/${c.id}`} className="flex items-center justify-between px-5 py-3.5 hover:bg-bg">
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-fg">
+                    {c.id}
+                    <Badge>{c.channel}</Badge>
+                    {c.priority !== "normal" && <Badge>{c.priority}</Badge>}
+                    {slaBadge(c, nowIso)}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {c.state} · updated {new Date(c.updatedAt).toLocaleString()}
+                    {suggested && <span className="ml-1 text-accent">· suggested: {suggested.email}</span>}
+                  </p>
+                </div>
+                <div className="text-right text-xs text-muted">
+                  <p>{cost?.turnCount ?? 0} turn(s)</p>
+                  <p>${(cost?.totalCostUsd ?? 0).toFixed(4)}</p>
+                </div>
+              </Link>
             );
           })}
-        </ul>
+        </Card>
       )}
     </main>
   );

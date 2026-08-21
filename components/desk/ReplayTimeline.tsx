@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Card } from "../ui/Card";
+import { Badge } from "../ui/Badge";
 
 export interface ReplayItem {
   id: string;
@@ -39,17 +41,17 @@ export function ReplayTimeline({ items }: { items: ReplayItem[] }) {
       </div>
       <p className="mt-1 text-xs text-muted">{current.time}</p>
 
-      <div className="mt-3 space-y-2 rounded-xl border border-border bg-surface p-4">
+      <Card className="mt-3 space-y-2 p-5">
         {visible.map((item, i) => (
-          <div key={item.id} className={`rounded-lg p-2 text-sm ${i === cursor ? "bg-accent/10 ring-1 ring-accent" : ""}`}>
+          <div key={item.id} className={`rounded-lg p-2 text-sm ${i === cursor ? "bg-accent-soft ring-1 ring-accent" : ""}`}>
             <p className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-muted">
-              <span className={item.kind === "event" ? "rounded border border-border px-1 py-0.5" : ""}>{item.label}</span>
+              {item.kind === "event" ? <Badge>{item.label}</Badge> : <span>{item.label}</span>}
               <span className="normal-case">{item.time}</span>
             </p>
             <p className={`whitespace-pre-wrap text-fg ${item.dimmed ? "opacity-60" : ""} ${item.kind === "event" ? "text-xs text-muted" : "text-sm"}`}>{item.detail}</p>
           </div>
         ))}
-      </div>
+      </Card>
     </div>
   );
 }

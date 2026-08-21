@@ -3,6 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Badge } from "../ui/Badge";
 
 export interface ReviewQueueItem {
   id: string;
@@ -39,35 +42,25 @@ export function ReviewQueueList({ items }: { items: ReviewQueueItem[] }) {
   };
 
   return (
-    <div className="mt-6 space-y-2">
+    <div className="mt-6 space-y-3">
       {items.map((item) => (
-        <div key={item.id} className="rounded-lg border border-border bg-surface p-3 text-sm">
+        <Card key={item.id} className="p-4">
           <div className="flex items-center justify-between">
             <Link href={`/desk/${item.conversationId}`} className="font-medium text-fg hover:underline">
               {item.conversationId}
             </Link>
-            <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted">{item.reason}</span>
+            <Badge>{item.reason}</Badge>
           </div>
           <p className="mt-1 text-xs text-muted">flagged {item.flaggedAt}</p>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              disabled={busyId === item.id}
-              onClick={() => decide(item.id, "reviewed")}
-              className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50"
-            >
+          <div className="mt-3 flex gap-2">
+            <Button disabled={busyId === item.id} onClick={() => decide(item.id, "reviewed")} className="px-3 py-1.5 text-xs">
               Mark reviewed
-            </button>
-            <button
-              type="button"
-              disabled={busyId === item.id}
-              onClick={() => decide(item.id, "dismissed")}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="secondary" disabled={busyId === item.id} onClick={() => decide(item.id, "dismissed")} className="px-3 py-1.5 text-xs">
               Dismiss
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       ))}
       {error && <p className="mt-1 text-xs text-danger">{error}</p>}
     </div>

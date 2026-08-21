@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
 
 export interface PendingApproval {
   id: string;
@@ -37,31 +39,21 @@ export function ApprovalsPanel({ conversationId, approvals }: { conversationId: 
 
   return (
     <section className="mt-6">
-      <h2 className="text-sm font-medium text-muted">Pending approvals</h2>
-      <div className="mt-2 space-y-2">
+      <h2 className="text-sm font-semibold text-fg">Pending approvals</h2>
+      <div className="mt-3 space-y-2">
         {approvals.map((a) => (
-          <div key={a.id} className="rounded-lg border border-warning/40 bg-surface p-3 text-sm">
+          <Card key={a.id} className="border-warning/40 p-4">
             <p className="font-medium text-fg">{a.toolKey}</p>
             <pre className="mt-1 whitespace-pre-wrap text-xs text-muted">{JSON.stringify(a.arguments)}</pre>
-            <div className="mt-2 flex gap-2">
-              <button
-                type="button"
-                disabled={busyId === a.id}
-                onClick={() => decide(a.id, "approve")}
-                className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50"
-              >
+            <div className="mt-3 flex gap-2">
+              <Button disabled={busyId === a.id} onClick={() => decide(a.id, "approve")} className="px-3 py-1.5 text-xs">
                 Approve
-              </button>
-              <button
-                type="button"
-                disabled={busyId === a.id}
-                onClick={() => decide(a.id, "deny")}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg disabled:opacity-50"
-              >
+              </Button>
+              <Button variant="secondary" disabled={busyId === a.id} onClick={() => decide(a.id, "deny")} className="px-3 py-1.5 text-xs">
                 Deny
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
       {error && <p className="mt-1 text-xs text-danger">{error}</p>}
