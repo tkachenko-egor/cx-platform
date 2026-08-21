@@ -20,9 +20,22 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
+/**
+ * Phase 6 M3: provider-hosted tools that execute server-side on the
+ * provider's own infrastructure, as opposed to ToolDefinition entries
+ * (which we execute ourselves via src/tools/registry.ts). Generic/vendor-
+ * neutral shape — only OpenAiProvider currently reads this; other adapters
+ * ignore it, so it's safe to populate unconditionally from agent config.
+ */
+export type NativeToolConfig =
+  | { type: "web_search" }
+  | { type: "file_search"; vectorStoreIds: string[] }
+  | { type: "mcp"; serverLabel: string; serverUrl: string; headers?: Record<string, string> };
+
 export interface ChatRequest {
   messages: ChatMessage[];
   tools?: ToolDefinition[];
+  nativeTools?: NativeToolConfig[];
   maxOutputTokens?: number;
   temperature?: number;
   stopSequences?: string[];

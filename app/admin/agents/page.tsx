@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getPlatformContext } from "../../../src/platform/context";
 import { AgentDefRepository } from "../../../src/db/repositories/agent-def-repository";
+import { ModelAliasRepository } from "../../../src/db/repositories/model-alias-repository";
+import { displayNameForAlias } from "../../../src/gateway/model-catalog";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function AgentsPage() {
   const { db, tenant } = await getPlatformContext();
   const defs = new AgentDefRepository(db, tenant).listAllPublished();
+  const aliasLookup = new Map(new ModelAliasRepository(db, tenant).list().map((a) => [a.alias, a]));
 
   const latestByKey = new Map<string, (typeof defs)[number]>();
   for (const def of defs) {
@@ -23,9 +26,6 @@ export default async function AgentsPage() {
         <div className="flex items-center gap-4">
           <Link href="/admin/agents/new" className="text-xs text-accent hover:underline">
             + New agent
-          </Link>
-          <Link href="/admin/agents/flow" className="text-xs text-accent hover:underline">
-            Flow builder →
           </Link>
         </div>
       </div>
@@ -50,7 +50,12 @@ export default async function AgentsPage() {
                 </Link>
               </td>
               <td className="py-2 pr-4 text-xs text-muted">v{agent.version}</td>
-              <td className="py-2 pr-4 font-mono text-xs">{agent.modelAlias}</td>
+              <td className="py-2 pr-4 text-xs text-fg">
+                {(() => {
+                  const resolved = aliasLookup.get(agent.modelAlias);
+                  return resolved ? displayNameForAlias(resolved.provider, resolved.model) : agent.modelAlias;
+                })()}
+              </td>
               <td className="py-2 pr-4 text-xs text-muted">{agent.toolIds.length}</td>
               <td className="py-2 text-xs text-muted">{agent.handoffTargets.length > 0 ? agent.handoffTargets.join(", ") : "—"}</td>
             </tr>

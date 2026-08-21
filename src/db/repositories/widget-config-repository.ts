@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { randomUUID, randomBytes } from "node:crypto";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
+import type { WidgetFontKey } from "../../platform/widget-fonts";
 
 export type WidgetPosition = "bottom-right" | "bottom-left";
 
@@ -15,6 +16,9 @@ export interface WidgetConfig {
   primaryColor: string;
   logoUrl: string | null;
   position: WidgetPosition;
+  fontFamily: WidgetFontKey;
+  userBubbleColor: string;
+  botBubbleColor: string;
 }
 
 interface WidgetConfigRow {
@@ -27,6 +31,9 @@ interface WidgetConfigRow {
   primary_color: string;
   logo_url: string | null;
   position: WidgetPosition;
+  font_family: WidgetFontKey;
+  user_bubble_color: string;
+  bot_bubble_color: string;
 }
 
 function rowToConfig(row: WidgetConfigRow): WidgetConfig {
@@ -40,6 +47,9 @@ function rowToConfig(row: WidgetConfigRow): WidgetConfig {
     primaryColor: row.primary_color,
     logoUrl: row.logo_url,
     position: row.position,
+    fontFamily: row.font_family,
+    userBubbleColor: row.user_bubble_color,
+    botBubbleColor: row.bot_bubble_color,
   };
 }
 
@@ -59,16 +69,38 @@ export class WidgetConfigRepository extends TenantScopedRepository {
   }
 
   /** Creates on first save for an agent that has none yet; updates (never rotates the public_key) otherwise. */
-  upsert(input: { agentKey: string; title: string; greetingText: string; primaryColor: string; logoUrl: string | null; position: WidgetPosition }): WidgetConfig {
+  upsert(input: {
+    agentKey: string;
+    title: string;
+    greetingText: string;
+    primaryColor: string;
+    logoUrl: string | null;
+    position: WidgetPosition;
+    fontFamily: WidgetFontKey;
+    userBubbleColor: string;
+    botBubbleColor: string;
+  }): WidgetConfig {
     const existing = this.getByAgentKey(input.agentKey);
     const now = new Date().toISOString();
     if (existing) {
       this.db
         .prepare(
-          `UPDATE widget_configs SET title = ?, greeting_text = ?, primary_color = ?, logo_url = ?, position = ?, updated_at = ?
+          `UPDATE widget_configs SET title = ?, greeting_text = ?, primary_color = ?, logo_url = ?, position = ?, font_family = ?, user_bubble_color = ?, bot_bubble_color = ?, updated_at = ?
            WHERE id = ? AND tenant_id = ?`,
         )
-        .run(input.title, input.greetingText, input.primaryColor, input.logoUrl, input.position, now, existing.id, this.tenantId);
+        .run(
+          input.title,
+          input.greetingText,
+          input.primaryColor,
+          input.logoUrl,
+          input.position,
+          input.fontFamily,
+          input.userBubbleColor,
+          input.botBubbleColor,
+          now,
+          existing.id,
+          this.tenantId,
+        );
       return { ...existing, ...input };
     }
 
@@ -76,10 +108,25 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     const publicKey = mintPublicKey();
     this.db
       .prepare(
-        `INSERT INTO widget_configs (id, tenant_id, agent_key, public_key, title, greeting_text, primary_color, logo_url, position, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO widget_configs (id, tenant_id, agent_key, public_key, title, greeting_text, primary_color, logo_url, position, font_family, user_bubble_color, bot_bubble_color, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.agentKey, publicKey, input.title, input.greetingText, input.primaryColor, input.logoUrl, input.position, now, now);
+      .run(
+        id,
+        this.tenantId,
+        input.agentKey,
+        publicKey,
+        input.title,
+        input.greetingText,
+        input.primaryColor,
+        input.logoUrl,
+        input.position,
+        input.fontFamily,
+        input.userBubbleColor,
+        input.botBubbleColor,
+        now,
+        now,
+      );
     return { id, tenantId: this.tenantId, publicKey, ...input };
   }
 

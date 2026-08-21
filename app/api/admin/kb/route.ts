@@ -5,6 +5,7 @@ import { KbCollectionRepository } from "../../../../src/db/repositories/kb-colle
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
 import { chunkAndEmbedArticle } from "../../../../src/kb/ingest";
+import { syncArticleToVectorStore } from "../../../../src/kb/openai-vector-store-sync";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,8 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  if (!new KbCollectionRepository(db, tenant).getById(body.collectionId)) {
+  const collection = new KbCollectionRepository(db, tenant).getById(body.collectionId);
+  if (!collection) {
     return Response.json({ error: `No Knowledge Base found for id "${body.collectionId}"` }, { status: 404 });
   }
 
@@ -76,6 +78,10 @@ export async function POST(req: Request) {
   });
 
   await chunkAndEmbedArticle(new KbChunkRepository(db, tenant), embeddings, article.id, body.body);
+
+  if (collection.openaiVectorStoreId) {
+    await syncArticleToVectorStore(db, tenant, collection.openaiVectorStoreId, article).catch((err) => console.error(`File Search sync failed for article "${article.docId}":`, err));
+  }
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

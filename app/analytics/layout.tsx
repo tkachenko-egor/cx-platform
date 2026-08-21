@@ -7,8 +7,8 @@ import { AdminSidebar } from "../../components/admin/AdminSidebar";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 3 M3, redesigned in the Phase 4 design pass: shared admin shell — auth/role gate + sidebar nav, so individual admin pages only own their own content. */
-export default async function AdminLayout({ children }: { children: ReactNode }) {
+/** Mirrors app/admin/layout.tsx — /analytics predates the Phase 4 sidebar and lived outside it, so it rendered with no nav chrome at all. */
+export default async function AnalyticsLayout({ children }: { children: ReactNode }) {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");

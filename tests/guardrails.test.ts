@@ -73,6 +73,8 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     guardrails,
     skills: [],
     semanticCacheEnabled: false,
+    nativeTools: {},
+    quickReplies: [],
   };
 
   return { db, tenant, gateway, embeddings, agent, provider };
@@ -164,6 +166,8 @@ describe("runAgentTurn — input guardrails", () => {
       guardrails: {},
       skills: [],
       semanticCacheEnabled: false,
+      nativeTools: {},
+      quickReplies: [],
     };
 
     const articles = new KbArticleRepository(db, tenant);

@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   guardrails TEXT NOT NULL DEFAULT '{}',
   skills TEXT NOT NULL DEFAULT '[]',
   semantic_cache_enabled INTEGER NOT NULL DEFAULT 0,
+  native_tools TEXT NOT NULL DEFAULT '{}',
+  quick_replies TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)
@@ -149,6 +151,9 @@ CREATE TABLE IF NOT EXISTS kb_collections (
   tenant_id TEXT NOT NULL REFERENCES tenants(id),
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
+  -- Phase 6 M3: lazily provisioned the first time an agent turns on OpenAI
+  -- File Search against this collection (src/kb/openai-vector-store-sync.ts).
+  openai_vector_store_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -169,6 +174,9 @@ CREATE TABLE IF NOT EXISTS kb_articles (
   body TEXT NOT NULL DEFAULT '',
   -- Phase 5 M1: which Knowledge Base this article belongs to.
   collection_id TEXT REFERENCES kb_collections(id),
+  -- Phase 6 M3: set only when this article's collection has File Search
+  -- enabled — the OpenAI file id it was uploaded as, for edit/delete sync.
+  openai_file_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, doc_id)
@@ -602,6 +610,9 @@ CREATE TABLE IF NOT EXISTS widget_configs (
   primary_color TEXT NOT NULL DEFAULT '#3454d1',
   logo_url TEXT,
   position TEXT NOT NULL DEFAULT 'bottom-right',
+  font_family TEXT NOT NULL DEFAULT 'inter',
+  user_bubble_color TEXT NOT NULL DEFAULT '#13141a',
+  bot_bubble_color TEXT NOT NULL DEFAULT '#f1f2f6',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, agent_key)

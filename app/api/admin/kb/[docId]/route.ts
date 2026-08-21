@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { getPlatformContext } from "../../../../../src/platform/context";
 import { KbArticleRepository, KbChunkRepository } from "../../../../../src/db/repositories/kb-repository";
+import { KbCollectionRepository } from "../../../../../src/db/repositories/kb-collection-repository";
 import { AuditLogRepository } from "../../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { chunkAndEmbedArticle } from "../../../../../src/kb/ingest";
+import { syncArticleToVectorStore, removeArticleFromVectorStore } from "../../../../../src/kb/openai-vector-store-sync";
 
 export const runtime = "nodejs";
 
@@ -46,6 +48,13 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/kb/[docI
     await chunkAndEmbedArticle(new KbChunkRepository(db, tenant), embeddings, article.id, body.body);
   }
 
+  if (article.collectionId) {
+    const collection = new KbCollectionRepository(db, tenant).getById(article.collectionId);
+    if (collection?.openaiVectorStoreId) {
+      await syncArticleToVectorStore(db, tenant, collection.openaiVectorStoreId, article).catch((err) => console.error(`File Search sync failed for article "${article.docId}":`, err));
+    }
+  }
+
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "kb_article_updated",
@@ -71,6 +80,13 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/kb/[do
   const articles = new KbArticleRepository(db, tenant);
   const existing = articles.getByDocId(docId);
   if (!existing) return Response.json({ error: `No article found for doc id "${docId}"` }, { status: 404 });
+
+  if (existing.collectionId && existing.openaiFileId) {
+    const collection = new KbCollectionRepository(db, tenant).getById(existing.collectionId);
+    if (collection?.openaiVectorStoreId) {
+      await removeArticleFromVectorStore(db, tenant, collection.openaiVectorStoreId, existing.openaiFileId).catch((err) => console.error(`File Search removal failed for article "${docId}":`, err));
+    }
+  }
 
   new KbChunkRepository(db, tenant).replaceForArticle(existing.id, []);
   articles.delete(docId);

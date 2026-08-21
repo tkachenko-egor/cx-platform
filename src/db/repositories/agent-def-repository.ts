@@ -26,6 +26,16 @@ export interface AgentDef {
   skills: string[];
   /** Phase 2 M3b: opt-in per-agent semantic response cache (default off — see src/kb/semantic-cache.ts). */
   semanticCacheEnabled: boolean;
+  /** Phase 6 M3: OpenAI native-hosted-tool config — only meaningful when modelAlias resolves to the openai provider. */
+  nativeTools: AgentNativeToolsConfig;
+  /** Phase 6 M5: admin-authored canned reply chips shown at the start of a conversation. */
+  quickReplies: string[];
+}
+
+export interface AgentNativeToolsConfig {
+  webSearch?: boolean;
+  fileSearch?: boolean;
+  mcp?: { enabled: boolean; serverLabel?: string; serverUrl?: string; headers?: Record<string, string> };
 }
 
 interface AgentDefRow {
@@ -42,6 +52,8 @@ interface AgentDefRow {
   guardrails: string;
   skills: string;
   semantic_cache_enabled: number;
+  native_tools: string;
+  quick_replies: string;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -59,6 +71,8 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     guardrails: JSON.parse(row.guardrails) as Record<string, unknown>,
     skills: JSON.parse(row.skills) as string[],
     semanticCacheEnabled: row.semantic_cache_enabled === 1,
+    nativeTools: JSON.parse(row.native_tools) as AgentNativeToolsConfig,
+    quickReplies: JSON.parse(row.quick_replies) as string[],
   };
 }
 
@@ -78,6 +92,8 @@ export class AgentDefRepository extends TenantScopedRepository {
     guardrails?: Record<string, unknown>;
     skills?: string[];
     semanticCacheEnabled?: boolean;
+    nativeTools?: AgentNativeToolsConfig;
+    quickReplies?: string[];
   }): AgentDef {
     const nextVersion = this.latestVersion(input.key) + 1;
     const id = randomUUID();
@@ -86,8 +102,9 @@ export class AgentDefRepository extends TenantScopedRepository {
       .prepare(
         `INSERT INTO agent_defs (
            id, tenant_id, key, version, status, system_prompt, model_alias,
-           tool_ids, kb_scope, handoff_targets, guardrails, skills, semantic_cache_enabled, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           tool_ids, kb_scope, handoff_targets, guardrails, skills, semantic_cache_enabled,
+           native_tools, quick_replies, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -102,6 +119,8 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(input.guardrails ?? {}),
         JSON.stringify(input.skills ?? []),
         input.semanticCacheEnabled ? 1 : 0,
+        JSON.stringify(input.nativeTools ?? {}),
+        JSON.stringify(input.quickReplies ?? []),
         now,
         now,
       );
@@ -119,6 +138,8 @@ export class AgentDefRepository extends TenantScopedRepository {
       guardrails: input.guardrails ?? {},
       skills: input.skills ?? [],
       semanticCacheEnabled: input.semanticCacheEnabled ?? false,
+      nativeTools: input.nativeTools ?? {},
+      quickReplies: input.quickReplies ?? [],
     };
   }
 
@@ -167,6 +188,14 @@ export class AgentDefRepository extends TenantScopedRepository {
   /** Phase 2 M6a admin UI: every published version of every agent, for building a "pick a variant" form. */
   listAllPublished(): AgentDef[] {
     const rows = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND status = 'published' ORDER BY key, version`).all(this.tenantId) as AgentDefRow[];
+    return rows.map(rowToAgentDef);
+  }
+
+  /** Phase 6 M4: every published version of one agent, newest first — powers the Prompt card's version history dropdown. */
+  listVersions(key: string): AgentDef[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND status = 'published' ORDER BY version DESC`)
+      .all(this.tenantId, key) as AgentDefRow[];
     return rows.map(rowToAgentDef);
   }
 

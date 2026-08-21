@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { TenantRepository, type Tenant } from "../db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../db/repositories/model-alias-repository";
+import { MODEL_CATALOG } from "../gateway/model-catalog";
 import { AgentDefRepository } from "../db/repositories/agent-def-repository";
 import { ToolDefRepository, type ApprovalPolicy } from "../db/repositories/tool-repository";
 import { seedAmarelleBusinessData } from "../tools/amarelle/seed-data";
@@ -23,9 +24,9 @@ export interface SeedFixturesOptions {
   tenantSlug?: string;
   /** Providers keyed by name, e.g. { anthropic, stub } for real seeding or { scripted, stub } for evals/tests. */
   providers: Record<string, ProviderAdapter>;
-  /** What "support-main" resolves to. Defaults to a zero-network stub. */
+  /** What the support-generalist/billing/technical agents' model alias resolves to. Defaults to a zero-network stub. The alias itself is named after this target's model id (Phase 6 M2). */
   supportMain?: ModelTarget;
-  /** What "triage-fast" (the router's alias, NFR-1.2) resolves to. Defaults to the same target as supportMain. */
+  /** What the router's model alias (NFR-1.2) resolves to. Defaults to the same target as supportMain. */
   triageFast?: ModelTarget;
   embeddings?: EmbeddingProvider;
   /** Overrides tool_defs.approval_policy per tool key; unlisted tools default to 'auto'. */
@@ -62,8 +63,23 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   const triageFast = opts.triageFast ?? supportMain;
 
   const modelAliases = new ModelAliasRepository(db, tenant);
-  modelAliases.upsert({ alias: "support-main", provider: supportMain.provider, model: supportMain.model, fallbackChain: [DEFAULT_TARGET] });
-  modelAliases.upsert({ alias: "triage-fast", provider: triageFast.provider, model: triageFast.model, fallbackChain: [DEFAULT_TARGET] });
+  // Phase 6 M2: alias name = the target model id itself (not a fixed
+  // "support-main"/"triage-fast" role name), so the admin UI shows a real
+  // model name instead of an opaque role string. opts.supportMain/
+  // triageFast keep working exactly as before — a test injecting a
+  // "scripted" provider still gets an alias pointed at it, just named
+  // after whatever model id it passed.
+  const supportMainAlias = supportMain.model;
+  const triageFastAlias = triageFast.model;
+  modelAliases.upsert({ alias: supportMainAlias, provider: supportMain.provider, model: supportMain.model, fallbackChain: [DEFAULT_TARGET] });
+  modelAliases.upsert({ alias: triageFastAlias, provider: triageFast.provider, model: triageFast.model, fallbackChain: [DEFAULT_TARGET] });
+
+  // Every catalog model gets its own alias too, so a freshly seeded
+  // tenant's Agent Editor has every known model to pick from without an
+  // admin hand-authoring one first.
+  for (const entry of MODEL_CATALOG) {
+    modelAliases.upsert({ alias: entry.model, provider: entry.provider, model: entry.model });
+  }
 
   const toolDefs = new ToolDefRepository(db, tenant);
   for (const spec of allToolSpecs()) {
@@ -84,7 +100,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
     key: "support-generalist",
     systemPrompt: buildCorePrompt(tenant.name),
     toolIds: ["lookup_order", "search_products", "check_return_eligibility", "cancel_order"],
-    modelAlias: "support-main",
+    modelAlias: supportMainAlias,
     kbScope: { audience: ["customer"] },
     handoffTargets: opts.skipRouterAndSpecialists ? [] : ["billing-specialist", "technical-specialist"],
   });
@@ -94,7 +110,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
       key: "billing-specialist",
       systemPrompt: `# SPECIALTY\nYou handle billing, payments, charges and refund-status questions. Hand off anything outside that scope to the right specialist rather than guessing.\n\n${buildCorePrompt(tenant.name)}`,
       toolIds: ["lookup_order", "check_return_eligibility", "cancel_order"],
-      modelAlias: "support-main",
+      modelAlias: supportMainAlias,
       kbScope: { audience: ["customer"] },
       handoffTargets: ["technical-specialist", "support-generalist"],
     });
@@ -102,7 +118,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
       key: "technical-specialist",
       systemPrompt: `# SPECIALTY\nYou handle product defects, technical order problems and troubleshooting. Hand off anything outside that scope to the right specialist rather than guessing.\n\n${buildCorePrompt(tenant.name)}`,
       toolIds: ["lookup_order", "search_products"],
-      modelAlias: "support-main",
+      modelAlias: supportMainAlias,
       kbScope: { audience: ["customer"] },
       handoffTargets: ["billing-specialist", "support-generalist"],
     });
@@ -114,7 +130,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
         { key: "support-generalist", description: "Orders, shipping, returns, product questions, and anything else" },
       ]),
       toolIds: [],
-      modelAlias: "triage-fast",
+      modelAlias: triageFastAlias,
       kbScope: {},
       handoffTargets: ["billing-specialist", "technical-specialist", "support-generalist"],
     });

@@ -3,10 +3,12 @@ import { WidgetConfigRepository, type WidgetPosition } from "../../../../src/db/
 import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
+import { isWidgetFontKey, type WidgetFontKey } from "../../../../src/platform/widget-fonts";
 
 export const runtime = "nodejs";
 
 const VALID_POSITIONS: WidgetPosition[] = ["bottom-right", "bottom-left"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 export async function GET(req: Request) {
   const { db, tenant } = await getPlatformContext();
@@ -33,13 +35,25 @@ export async function POST(req: Request) {
     primaryColor?: string;
     logoUrl?: string | null;
     position?: WidgetPosition;
+    fontFamily?: string;
+    userBubbleColor?: string;
+    botBubbleColor?: string;
   };
   if (!body.agentKey?.trim()) return Response.json({ error: "agentKey is required" }, { status: 400 });
   if (body.position && !VALID_POSITIONS.includes(body.position)) {
     return Response.json({ error: `position must be one of ${VALID_POSITIONS.join(", ")}` }, { status: 400 });
   }
-  if (body.primaryColor && !/^#[0-9a-fA-F]{6}$/.test(body.primaryColor)) {
+  if (body.primaryColor && !HEX_COLOR.test(body.primaryColor)) {
     return Response.json({ error: "primaryColor must be a 6-digit hex color, e.g. #3454d1" }, { status: 400 });
+  }
+  if (body.userBubbleColor && !HEX_COLOR.test(body.userBubbleColor)) {
+    return Response.json({ error: "userBubbleColor must be a 6-digit hex color, e.g. #13141a" }, { status: 400 });
+  }
+  if (body.botBubbleColor && !HEX_COLOR.test(body.botBubbleColor)) {
+    return Response.json({ error: "botBubbleColor must be a 6-digit hex color, e.g. #f1f2f6" }, { status: 400 });
+  }
+  if (body.fontFamily && !isWidgetFontKey(body.fontFamily)) {
+    return Response.json({ error: "fontFamily is not a supported font" }, { status: 400 });
   }
 
   const { db, tenant } = await getPlatformContext();
@@ -64,6 +78,9 @@ export async function POST(req: Request) {
     primaryColor: body.primaryColor || "#3454d1",
     logoUrl: body.logoUrl?.trim() || null,
     position: body.position ?? "bottom-right",
+    fontFamily: (body.fontFamily as WidgetFontKey | undefined) ?? "inter",
+    userBubbleColor: body.userBubbleColor || "#13141a",
+    botBubbleColor: body.botBubbleColor || "#f1f2f6",
   });
 
   new AuditLogRepository(db, tenant).record({

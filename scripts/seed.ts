@@ -46,7 +46,7 @@ async function main() {
   });
 
   console.log(`Tenant "${tenant.slug}" ready (${tenant.id})`);
-  console.log("Seeded business data, model aliases (support-main, triage-fast), tool defs, KB, and router + billing/technical/support-generalist agent defs.");
+  console.log("Seeded business data, model aliases (one per catalog model, plus the router/support-main targets), tool defs, KB, and router + billing/technical/support-generalist agent defs.");
 
   const users = new UserRepository(db, tenant);
   const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@amarelle.demo";

@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useChat } from "./ChatProvider";
 import { Composer } from "./Composer";
 import { MessageContent } from "./MessageContent";
+import { MessageBubble } from "./MessageBubble";
 import { CardRenderer } from "../cards/CardRenderer";
 
 const SUGGESTIONS = ["Where's my order?", "I'd like to return something", "Help me choose a product", "My skin reacted to a product", "How long does shipping take?"];
@@ -14,8 +15,9 @@ const PHASE_BANNER: Record<string, string> = {
 };
 
 export function ChatPanel() {
-  const { messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, greeting } = useChat();
+  const { messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, greeting, quickReplies } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const suggestions = quickReplies && quickReplies.length > 0 ? quickReplies : SUGGESTIONS;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -32,7 +34,7 @@ export function ChatPanel() {
           <div>
             <p className="text-sm text-muted">{greeting}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -49,17 +51,21 @@ export function ChatPanel() {
         {messages.map((m) => (
           <div key={m.id} tabIndex={-1} className={m.role === "user" ? "flex justify-end" : ""}>
             {m.role === "user" ? (
-              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-fg px-3 py-2 text-sm text-bg shadow-sm">{m.text}</div>
+              <MessageBubble role="user">{m.text}</MessageBubble>
             ) : (
               <div className="max-w-full space-y-2">
                 {m.role === "agent_human" && <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Colleague</p>}
-                {m.text && <MessageContent text={m.text} citableDocs={citableDocs} />}
-                {m.streaming && !m.text && (
-                  <span className="inline-flex gap-1" role="status" aria-label="Thinking">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.3s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.15s]" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" />
-                  </span>
+                {(m.text || m.streaming) && (
+                  <MessageBubble role="bot">
+                    {m.text && <MessageContent text={m.text} citableDocs={citableDocs} />}
+                    {m.streaming && !m.text && (
+                      <span className="inline-flex gap-1" role="status" aria-label="Thinking">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.3s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted [animation-delay:-0.15s]" />
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" />
+                      </span>
+                    )}
+                  </MessageBubble>
                 )}
                 {m.error && (
                   <p className="text-xs text-danger">

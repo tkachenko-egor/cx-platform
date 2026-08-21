@@ -2,6 +2,7 @@ import { getDb } from "../db/client";
 import { TenantRepository } from "../db/repositories/tenant-repository";
 import { buildContext, type PlatformContext } from "./context";
 import type { WidgetPosition } from "../db/repositories/widget-config-repository";
+import type { WidgetFontKey } from "./widget-fonts";
 
 export interface WidgetContext extends PlatformContext {
   widgetConfig: {
@@ -11,6 +12,9 @@ export interface WidgetContext extends PlatformContext {
     primaryColor: string;
     logoUrl: string | null;
     position: WidgetPosition;
+    fontFamily: WidgetFontKey;
+    userBubbleColor: string;
+    botBubbleColor: string;
   };
 }
 
@@ -24,6 +28,9 @@ interface WidgetConfigRow {
   primary_color: string;
   logo_url: string | null;
   position: WidgetPosition;
+  font_family: WidgetFontKey;
+  user_bubble_color: string;
+  bot_bubble_color: string;
 }
 
 /**
@@ -64,6 +71,9 @@ export function getWidgetContext(publicKey: string): WidgetContext | undefined {
       primaryColor: row.primary_color,
       logoUrl: row.logo_url,
       position: row.position,
+      fontFamily: row.font_family,
+      userBubbleColor: row.user_bubble_color,
+      botBubbleColor: row.bot_bubble_color,
     },
   };
 }

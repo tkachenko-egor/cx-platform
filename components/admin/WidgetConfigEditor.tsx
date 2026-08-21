@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { WidgetMockPreview } from "./WidgetMockPreview";
+import { WIDGET_FONTS, type WidgetFontKey } from "../../src/platform/widget-fonts";
 
 type Position = "bottom-right" | "bottom-left";
 
@@ -12,6 +14,9 @@ export interface WidgetConfigInitial {
   logoUrl: string | null;
   position: Position;
   publicKey: string;
+  fontFamily: WidgetFontKey;
+  userBubbleColor: string;
+  botBubbleColor: string;
 }
 
 export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; initial: WidgetConfigInitial | null }) {
@@ -22,9 +27,11 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
   const [logoUrl, setLogoUrl] = useState(initial?.logoUrl ?? "");
   const [position, setPosition] = useState<Position>(initial?.position ?? "bottom-right");
   const [publicKey, setPublicKey] = useState(initial?.publicKey ?? "");
+  const [fontFamily, setFontFamily] = useState<WidgetFontKey>(initial?.fontFamily ?? "inter");
+  const [userBubbleColor, setUserBubbleColor] = useState(initial?.userBubbleColor ?? "#13141a");
+  const [botBubbleColor, setBotBubbleColor] = useState(initial?.botBubbleColor ?? "#f1f2f6");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [previewNonce, setPreviewNonce] = useState(0);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const snippet = publicKey ? `<script src="${origin}/widget.js" data-widget-key="${publicKey}" data-position="${position}"></script>` : null;
@@ -36,12 +43,11 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
       const res = await fetch("/api/admin/widget-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentKey, title, greetingText, primaryColor, logoUrl: logoUrl || null, position }),
+        body: JSON.stringify({ agentKey, title, greetingText, primaryColor, logoUrl: logoUrl || null, position, fontFamily, userBubbleColor, botBubbleColor }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not save widget config");
       const { config } = await res.json();
       setPublicKey(config.publicKey);
-      setPreviewNonce((n) => n + 1);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -63,7 +69,6 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not rotate key");
       const { config } = await res.json();
       setPublicKey(config.publicKey);
-      setPreviewNonce((n) => n + 1);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -84,23 +89,43 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
             <span className="text-xs text-muted">Greeting (shown before the first message)</span>
             <textarea value={greetingText} onChange={(e) => setGreetingText(e.target.value)} rows={3} placeholder="Hello! How can I help?" className="rounded border border-border bg-bg px-2 py-1" />
           </label>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-muted">Primary color</span>
               <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-9 w-16 rounded border border-border bg-bg" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Your messages</span>
+              <input type="color" value={userBubbleColor} onChange={(e) => setUserBubbleColor(e.target.value)} className="h-9 w-16 rounded border border-border bg-bg" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted">Bot messages</span>
+              <input type="color" value={botBubbleColor} onChange={(e) => setBotBubbleColor(e.target.value)} className="h-9 w-16 rounded border border-border bg-bg" />
             </label>
             <label className="flex flex-1 flex-col gap-1">
               <span className="text-xs text-muted">Logo URL (optional)</span>
               <input value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://…" className="rounded border border-border bg-bg px-2 py-1" />
             </label>
           </div>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Position</span>
-            <select value={position} onChange={(e) => setPosition(e.target.value as Position)} className="rounded border border-border bg-bg px-2 py-1">
-              <option value="bottom-right">Bottom right</option>
-              <option value="bottom-left">Bottom left</option>
-            </select>
-          </label>
+          <div className="flex gap-3">
+            <label className="flex flex-1 flex-col gap-1">
+              <span className="text-xs text-muted">Font</span>
+              <select value={fontFamily} onChange={(e) => setFontFamily(e.target.value as WidgetFontKey)} className="rounded border border-border bg-bg px-2 py-1">
+                {Object.entries(WIDGET_FONTS).map(([key, font]) => (
+                  <option key={key} value={key}>
+                    {font.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-1 flex-col gap-1">
+              <span className="text-xs text-muted">Position</span>
+              <select value={position} onChange={(e) => setPosition(e.target.value as Position)} className="rounded border border-border bg-bg px-2 py-1">
+                <option value="bottom-right">Bottom right</option>
+                <option value="bottom-left">Bottom left</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div className="mt-4 flex items-center gap-3">
           <button type="button" disabled={busy} onClick={save} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
@@ -123,14 +148,26 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">Live preview</h2>
-        {publicKey ? (
-          <div className="relative mt-3 h-[520px] overflow-hidden rounded-lg border border-border bg-bg">
-            <iframe key={previewNonce} src={`/embed/${publicKey}`} title="Widget preview" className="h-full w-full border-none" />
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-muted">Save once to get an embed key, then the live preview and snippet appear here.</p>
-        )}
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-fg">Preview</h2>
+          {publicKey && (
+            <a href={`/embed/${publicKey}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-accent hover:underline">
+              Open live preview ↗
+            </a>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-muted">Updates instantly as you edit — save to publish these changes to the live widget.</p>
+        <div className="mt-3">
+          <WidgetMockPreview
+            title={title}
+            greetingText={greetingText}
+            logoUrl={logoUrl}
+            primaryColor={primaryColor}
+            userBubbleColor={userBubbleColor}
+            botBubbleColor={botBubbleColor}
+            fontFamily={fontFamily}
+          />
+        </div>
       </section>
     </div>
   );

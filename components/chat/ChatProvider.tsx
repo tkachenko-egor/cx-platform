@@ -26,6 +26,7 @@ type ChatContextValue = {
   citableDocs: Record<string, string>;
   hasUnread: boolean;
   greeting: string;
+  quickReplies?: string[];
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -48,12 +49,15 @@ export function ChatProvider({
   chatEndpoint = "/api/chat",
   messagesEndpointBase = "/api/conversations",
   greeting = DEFAULT_GREETING,
+  quickReplies,
 }: {
   children: ReactNode;
   /** Phase 4 M4: an embed page points these at /api/embed-chat/{publicKey} instead — same-origin demo widget (app/page.tsx) keeps the defaults untouched. */
   chatEndpoint?: string;
   messagesEndpointBase?: string;
   greeting?: string;
+  /** Phase 6 M5: the agent's admin-authored quick-reply chips — undefined (not just empty) falls back to ChatPanel's hardcoded SUGGESTIONS. */
+  quickReplies?: string[];
 }) {
   const [open, setOpenState] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -222,7 +226,7 @@ export function ChatProvider({
   );
 
   return (
-    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, hasUnread, greeting }}>
+    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, hasUnread, greeting, quickReplies }}>
       {children}
     </ChatContext.Provider>
   );

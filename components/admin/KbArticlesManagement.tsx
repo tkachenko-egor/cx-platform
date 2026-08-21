@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, Pencil, Trash2, FileText } from "lucide-react";
+import { Upload, Pencil, Trash2, FileText, Search } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input } from "../ui/Input";
@@ -34,9 +34,13 @@ export function KbArticlesManagement({ collectionId, articles }: { collectionId:
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(0);
+  const [search, setSearch] = useState("");
 
-  const pageCount = Math.max(1, Math.ceil(articles.length / PAGE_SIZE));
-  const visible = articles.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+  const filtered = search.trim()
+    ? articles.filter((a) => a.title.toLowerCase().includes(search.trim().toLowerCase()) || a.docId.toLowerCase().includes(search.trim().toLowerCase()))
+    : articles;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visible = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
 
   const resetForm = () => {
     setEditingDocId(null);
@@ -129,6 +133,18 @@ export function KbArticlesManagement({ collectionId, articles }: { collectionId:
         <Button variant="secondary" disabled={busy} onClick={() => fileInputRef.current?.click()}>
           <Upload size={15} /> Import .md / .pdf
         </Button>
+        <div className="relative ml-auto w-56">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(0);
+            }}
+            placeholder="Search articles…"
+            className="w-full rounded-lg border border-border bg-bg py-2 pl-8 pr-3 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+          />
+        </div>
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
 
@@ -177,8 +193,8 @@ export function KbArticlesManagement({ collectionId, articles }: { collectionId:
         </Card>
       )}
 
-      {articles.length === 0 ? (
-        <Card className="p-8 text-center text-sm text-muted">No articles in this Knowledge Base yet.</Card>
+      {filtered.length === 0 ? (
+        <Card className="p-8 text-center text-sm text-muted">{articles.length === 0 ? "No articles in this Knowledge Base yet." : `No articles match "${search}".`}</Card>
       ) : (
         <>
           <ul className="divide-y divide-border rounded-2xl border border-border bg-surface shadow-sm">
@@ -194,16 +210,16 @@ export function KbArticlesManagement({ collectionId, articles }: { collectionId:
                     <p className="truncate font-mono text-xs text-muted">[{row.docId}]</p>
                   </div>
                 </div>
-                {!row.isFileSourced && (
-                  <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {!row.isFileSourced && (
                     <button type="button" onClick={() => edit(row)} aria-label="Edit" className="rounded-lg p-1.5 text-muted hover:bg-bg hover:text-fg">
                       <Pencil size={14} />
                     </button>
-                    <button type="button" disabled={busy} onClick={() => remove(row.docId)} aria-label="Delete" className="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                )}
+                  )}
+                  <button type="button" disabled={busy} onClick={() => remove(row.docId)} aria-label="Delete" className="rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

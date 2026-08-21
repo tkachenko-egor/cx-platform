@@ -1,132 +1,118 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { TrendingUp, Timer, MessageSquare, AlertTriangle, DollarSign } from "lucide-react";
 import { getPlatformContext } from "../../src/platform/context";
 import { getSessionUser } from "../../src/auth/session";
-import { SignOutButton } from "../../components/desk/SignOutButton";
 import { AgentDefRepository } from "../../src/db/repositories/agent-def-repository";
 import { getAgentVolume, getContainmentRate, getEscalationReasonBreakdown, getLatencyPercentiles, getAgentVersionPerformance } from "../../src/analytics/agent-performance";
+import { Card } from "../../components/ui/Card";
+import { StatTile } from "../../components/ui/StatTile";
+import { BarList } from "../../components/ui/BarList";
+import { Tabs } from "../../components/ui/Tabs";
+import { AgentPicker } from "../../components/admin/AgentPicker";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 2 M7a: top-level analytics dashboard — table-based, no charting dependency in this repo yet. */
-export default async function AnalyticsPage() {
+/** Phase 2 M7a, chrome fixed up later: table-based, no charting dependency in this repo yet. Phase 6 M8: optional ?agent= scopes every number on this page to one agent instead of the tenant. */
+export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ agent?: string }> }) {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 
-  const volume = getAgentVolume(db, tenant);
-  const containment = getContainmentRate(db, tenant);
-  const escalationReasons = getEscalationReasonBreakdown(db, tenant);
-  const latency = getLatencyPercentiles(db, tenant);
+  const { agent: agentKey } = await searchParams;
+  const options = agentKey ? { agentKey } : {};
+
+  const volume = getAgentVolume(db, tenant, options);
+  const containment = getContainmentRate(db, tenant, options);
+  const escalationReasons = getEscalationReasonBreakdown(db, tenant, options);
+  const latency = getLatencyPercentiles(db, tenant, options);
   const agentKeys = [...new Set(new AgentDefRepository(db, tenant).listAllPublished().map((a) => a.key))];
-  const versionPerformance = agentKeys.map((key) => ({ key, versions: getAgentVersionPerformance(db, tenant, key) })).filter((v) => v.versions.length > 0);
+  const versionPerformance = (agentKey ? [agentKey] : agentKeys)
+    .map((key) => ({ key, versions: getAgentVersionPerformance(db, tenant, key) }))
+    .filter((v) => v.versions.length > 0);
+  const totalRuns = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.runCount, 0), 0);
+  const totalCost = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.avgCostUsd * v.runCount, 0), 0);
+  const avgCostPerRun = totalRuns > 0 ? totalCost / totalRuns : null;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
+    <main className="mx-auto max-w-5xl px-6 py-12">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-fg">Analytics</h1>
-        <p className="flex items-center gap-2 text-xs text-muted">
-          {user.email} · {user.role}
-          <SignOutButton />
-        </p>
-      </div>
-      <div className="mt-1 flex gap-3 text-xs">
-        <Link href="/analytics/coverage-gaps" className="text-accent hover:underline">
-          Coverage gaps →
-        </Link>
-        <Link href="/desk" className="text-accent hover:underline">
-          Human desk →
-        </Link>
+        <div>
+          <h1 className="text-2xl font-semibold text-fg">Analytics</h1>
+          <p className="mt-1 text-sm text-muted">{agentKey ? `Performance for ${agentKey}.` : "Tenant-wide performance across every agent."}</p>
+        </div>
+        <AgentPicker agentKeys={agentKeys} selected={agentKey} />
       </div>
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">Containment</h2>
-        <p className="mt-1 text-2xl font-semibold text-fg">{(containment.rate * 100).toFixed(1)}%</p>
-        <p className="text-xs text-muted">
-          {containment.containedConversations} of {containment.totalConversations} conversations never escalated
-        </p>
-      </section>
+      <div className="mt-4">
+        <Tabs active={agentKey ? `/analytics?agent=${agentKey}` : "/analytics"} items={[{ href: agentKey ? `/analytics?agent=${agentKey}` : "/analytics", label: "Overview" }, { href: "/analytics/coverage-gaps", label: "Coverage gaps" }]} />
+      </div>
 
-      <section className="mt-6 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">Model latency</h2>
-        <p className="mt-1 text-xs text-muted">
-          p50: {latency.p50}ms · p95: {latency.p95}ms · {latency.count} calls
-        </p>
-      </section>
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <StatTile
+          icon={TrendingUp}
+          label="Containment"
+          value={containment.totalConversations > 0 ? `${Math.round(containment.rate * 100)}%` : "—"}
+          hint={`${containment.containedConversations} of ${containment.totalConversations} conversations`}
+        />
+        <StatTile icon={Timer} label="Model latency (p50 / p95)" value={latency.count > 0 ? `${latency.p50}ms / ${latency.p95}ms` : "—"} hint={`${latency.count} calls`} />
+        <StatTile icon={MessageSquare} label="Total runs" value={String(volume.reduce((sum, v) => sum + v.runCount, 0))} />
+        <StatTile icon={DollarSign} label="Avg cost / run" value={avgCostPerRun !== null ? `$${avgCostPerRun.toFixed(4)}` : "—"} />
+      </div>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-medium text-muted">Volume by agent</h2>
-        <table className="mt-2 w-full overflow-x-auto rounded-xl border border-border bg-surface text-sm">
-          <tbody>
-            {volume.length === 0 ? (
-              <tr>
-                <td className="px-4 py-3 text-muted">No runs yet.</td>
-              </tr>
-            ) : (
-              volume.map((v) => (
-                <tr key={v.agentKey} className="border-t border-border first:border-t-0">
-                  <td className="px-4 py-2 text-fg">{v.agentKey}</td>
-                  <td className="px-4 py-2 text-right text-muted">{v.runCount} run(s)</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </section>
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Card className="p-6">
+          <h2 className="text-sm font-semibold text-fg">Volume by agent</h2>
+          <div className="mt-4">
+            <BarList rows={volume.map((v) => ({ label: v.agentKey, value: v.runCount }))} />
+          </div>
+        </Card>
 
-      <section className="mt-6">
-        <h2 className="text-sm font-medium text-muted">Escalation reasons</h2>
-        <table className="mt-2 w-full overflow-x-auto rounded-xl border border-border bg-surface text-sm">
-          <tbody>
-            {escalationReasons.length === 0 ? (
-              <tr>
-                <td className="px-4 py-3 text-muted">No escalations recorded yet.</td>
-              </tr>
-            ) : (
-              escalationReasons.map((r) => (
-                <tr key={r.reason} className="border-t border-border first:border-t-0">
-                  <td className="px-4 py-2 text-fg">{r.reason}</td>
-                  <td className="px-4 py-2 text-right text-muted">{r.count}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </section>
+        <Card className="p-6">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} className="text-muted" />
+            <h2 className="text-sm font-semibold text-fg">Escalation reasons</h2>
+          </div>
+          <div className="mt-4">
+            <BarList rows={escalationReasons.map((r) => ({ label: r.reason, value: r.count }))} />
+          </div>
+        </Card>
+      </div>
 
       {versionPerformance.length > 0 && (
-        <section className="mt-6">
-          <h2 className="text-sm font-medium text-muted">Per-version performance</h2>
-          <div className="mt-2 space-y-4">
+        <Card className="mt-6 p-6">
+          <h2 className="text-sm font-semibold text-fg">Per-version performance</h2>
+          <div className="mt-4 space-y-4">
             {versionPerformance.map(({ key, versions }) => (
-              <div key={key} className="rounded-xl border border-border bg-surface p-3">
+              <div key={key}>
                 <p className="text-sm font-medium text-fg">{key}</p>
-                <table className="mt-2 w-full text-xs">
-                  <thead>
-                    <tr className="text-left text-muted">
-                      <th className="pb-1 font-normal">Version</th>
-                      <th className="pb-1 font-normal">Runs</th>
-                      <th className="pb-1 font-normal">Avg cost</th>
-                      <th className="pb-1 font-normal">Avg latency</th>
-                      <th className="pb-1 font-normal">Escalation rate</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {versions.map((v) => (
-                      <tr key={v.agentVersion} className="border-t border-border">
-                        <td className="py-1 text-fg">v{v.agentVersion}</td>
-                        <td className="py-1 text-muted">{v.runCount}</td>
-                        <td className="py-1 text-muted">${v.avgCostUsd.toFixed(4)}</td>
-                        <td className="py-1 text-muted">{Math.round(v.avgLatencyMs)}ms</td>
-                        <td className="py-1 text-muted">{(v.escalationRate * 100).toFixed(1)}%</td>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border text-muted">
+                        <th className="py-1.5 pr-3 font-medium">Version</th>
+                        <th className="py-1.5 pr-3 font-medium">Runs</th>
+                        <th className="py-1.5 pr-3 font-medium">Avg cost</th>
+                        <th className="py-1.5 pr-3 font-medium">Avg latency</th>
+                        <th className="py-1.5 font-medium">Escalation</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {versions.map((v) => (
+                        <tr key={v.agentVersion}>
+                          <td className="py-1.5 pr-3 text-fg">v{v.agentVersion}</td>
+                          <td className="py-1.5 pr-3 text-fg">{v.runCount}</td>
+                          <td className="py-1.5 pr-3 text-fg">${v.avgCostUsd.toFixed(4)}</td>
+                          <td className="py-1.5 pr-3 text-fg">{Math.round(v.avgLatencyMs)}ms</td>
+                          <td className="py-1.5 text-fg">{Math.round(v.escalationRate * 100)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>
-        </section>
+        </Card>
       )}
     </main>
   );

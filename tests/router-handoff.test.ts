@@ -75,6 +75,8 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     guardrails: {},
     skills: [],
     semanticCacheEnabled: false,
+    nativeTools: {},
+    quickReplies: [],
   };
 }
 
@@ -93,6 +95,8 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     guardrails: {},
     skills: [],
     semanticCacheEnabled: false,
+    nativeTools: {},
+    quickReplies: [],
   };
 }
 

@@ -8,6 +8,8 @@ export interface KbCollection {
   tenantId: string;
   name: string;
   description: string;
+  /** Phase 6 M3: set once File Search is first enabled for an agent using this collection — see src/kb/openai-vector-store-sync.ts. */
+  openaiVectorStoreId: string | null;
 }
 
 interface KbCollectionRow {
@@ -15,10 +17,11 @@ interface KbCollectionRow {
   tenant_id: string;
   name: string;
   description: string;
+  openai_vector_store_id: string | null;
 }
 
 function rowToCollection(row: KbCollectionRow): KbCollection {
-  return { id: row.id, tenantId: row.tenant_id, name: row.name, description: row.description };
+  return { id: row.id, tenantId: row.tenant_id, name: row.name, description: row.description, openaiVectorStoreId: row.openai_vector_store_id };
 }
 
 /** Phase 5 M1: named, reusable Knowledge Base collections an agent picks from (agent_defs.kb_scope.collectionIds) — see migration 018 for the backfill of pre-existing articles into a "General" collection. */
@@ -33,7 +36,7 @@ export class KbCollectionRepository extends TenantScopedRepository {
     this.db
       .prepare(`INSERT INTO kb_collections (id, tenant_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(id, this.tenantId, input.name, input.description ?? "", now, now);
-    return { id, tenantId: this.tenantId, name: input.name, description: input.description ?? "" };
+    return { id, tenantId: this.tenantId, name: input.name, description: input.description ?? "", openaiVectorStoreId: null };
   }
 
   getById(id: string): KbCollection | undefined {
@@ -56,6 +59,11 @@ export class KbCollectionRepository extends TenantScopedRepository {
     if (this.countArticles(id) > 0) return { ok: false, error: "Move or delete its articles first" };
     this.db.prepare(`DELETE FROM kb_collections WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
     return { ok: true };
+  }
+
+  /** Phase 6 M3: called once by ensureVectorStore() after provisioning — never overwrites an already-set id. */
+  setOpenAiVectorStoreId(id: string, vectorStoreId: string): void {
+    this.db.prepare(`UPDATE kb_collections SET openai_vector_store_id = ? WHERE tenant_id = ? AND id = ?`).run(vectorStoreId, this.tenantId, id);
   }
 
   /** Covers fresh installs: migration 018's backfill only catches articles that existed at migration time, so scripts/ingest-kb.ts (run after seeding on an empty DB) needs somewhere to put new file-sourced articles too. */

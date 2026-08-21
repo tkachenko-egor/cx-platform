@@ -5,6 +5,7 @@ import { TenantRepository, type Tenant } from "../db/repositories/tenant-reposit
 import { ProviderCredentialRepository } from "../db/repositories/provider-credential-repository";
 import { ModelGateway } from "../gateway/gateway";
 import { AnthropicProvider } from "../gateway/providers/anthropic";
+import { OpenAiProvider } from "../gateway/providers/openai";
 import { StubProvider } from "../gateway/providers/stub";
 import { OpenAiEmbeddingProvider } from "../gateway/embeddings/openai";
 import { StubEmbeddingProvider } from "../gateway/embeddings/stub";
@@ -69,6 +70,9 @@ export function buildContext(tenant: Tenant, db: Database.Database): PlatformCon
   }
 
   const openaiKey = credentials.getActiveLlmKey("openai")?.decryptedKey ?? process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    providers.openai = new OpenAiProvider(openaiKey);
+  }
   const embeddings: EmbeddingProvider = openaiKey ? new OpenAiEmbeddingProvider(openaiKey) : new StubEmbeddingProvider();
 
   return { db, tenant, gateway: new ModelGateway({ db, providers }), embeddings };

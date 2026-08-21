@@ -15,6 +15,8 @@ export interface KbArticle {
   body: string;
   /** Phase 5 M1: which Knowledge Base this article belongs to — see kb-collection-repository.ts. */
   collectionId: string | null;
+  /** Phase 6 M3: set only when this article's collection has File Search enabled — see src/kb/openai-vector-store-sync.ts. */
+  openaiFileId: string | null;
 }
 
 interface KbArticleRow {
@@ -27,6 +29,7 @@ interface KbArticleRow {
   content_hash: string;
   body: string;
   collection_id: string | null;
+  openai_file_id: string | null;
 }
 
 function rowToArticle(row: KbArticleRow): KbArticle {
@@ -40,6 +43,7 @@ function rowToArticle(row: KbArticleRow): KbArticle {
     contentHash: row.content_hash,
     body: row.body,
     collectionId: row.collection_id,
+    openaiFileId: row.openai_file_id,
   };
 }
 
@@ -70,7 +74,12 @@ export class KbArticleRepository extends TenantScopedRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, this.tenantId, input.docId, input.title, input.audience, input.effective, input.contentHash, body, collectionId, now, now);
-    return { id, tenantId: this.tenantId, ...input, body, collectionId };
+    return { id, tenantId: this.tenantId, ...input, body, collectionId, openaiFileId: null };
+  }
+
+  /** Phase 6 M3: called by the vector-store sync helpers after uploading/re-uploading this article's file. */
+  setOpenAiFileId(docId: string, fileId: string | null): void {
+    this.db.prepare(`UPDATE kb_articles SET openai_file_id = ? WHERE tenant_id = ? AND doc_id = ?`).run(fileId, this.tenantId, docId);
   }
 
   getByDocId(docId: string): KbArticle | undefined {

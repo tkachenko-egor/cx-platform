@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, BookOpen, FileText } from "lucide-react";
+import { Plus, BookOpen, FileText, Trash2 } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input } from "../ui/Input";
@@ -29,6 +29,20 @@ export function KbCollectionsManagement({ collections }: { collections: KbCollec
 
   const pageCount = Math.max(1, Math.ceil(collections.length / PAGE_SIZE));
   const visible = collections.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+  const remove = async (id: string) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/kb-collections/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Could not delete Knowledge Base");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const create = async () => {
     setError(null);
@@ -82,18 +96,29 @@ export function KbCollectionsManagement({ collections }: { collections: KbCollec
         </Button>
       )}
 
+      {error && <p className="text-xs text-danger">{error}</p>}
+
       {collections.length === 0 ? (
         <Card className="p-8 text-center text-sm text-muted">No Knowledge Bases yet — create one to start adding articles.</Card>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {visible.map((c) => (
-              <Link key={c.id} href={`/admin/kb/${c.id}`}>
-                <Card className="flex h-full flex-col gap-3 p-5 transition-shadow hover:shadow-md">
+              <Card key={c.id} className="relative flex h-full flex-col gap-3 p-5 transition-shadow hover:shadow-md">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => remove(c.id)}
+                  aria-label="Delete"
+                  className="absolute right-3 top-3 rounded-lg p-1.5 text-muted hover:bg-danger/10 hover:text-danger disabled:opacity-50"
+                >
+                  <Trash2 size={14} />
+                </button>
+                <Link href={`/admin/kb/${c.id}`} className="flex h-full flex-col gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-soft text-accent">
                     <BookOpen size={17} />
                   </div>
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 pr-6">
                     <p className="truncate font-medium text-fg">{c.name}</p>
                     <p className="mt-0.5 line-clamp-2 text-xs text-muted">{c.description || "No description"}</p>
                   </div>
@@ -101,8 +126,8 @@ export function KbCollectionsManagement({ collections }: { collections: KbCollec
                     <FileText size={12} />
                     {c.articleCount} {c.articleCount === 1 ? "article" : "articles"}
                   </p>
-                </Card>
-              </Link>
+                </Link>
+              </Card>
             ))}
           </div>
           <Pagination page={page} pageCount={pageCount} onChange={setPage} />

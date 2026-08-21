@@ -3,6 +3,7 @@ import { ToolDefRepository } from "../../../../src/db/repositories/tool-reposito
 import { ModelAliasRepository } from "../../../../src/db/repositories/model-alias-repository";
 import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
 import { AgentEditor } from "../../../../components/admin/AgentEditor";
+import { Tabs } from "../../../../components/ui/Tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +15,27 @@ Be concise and friendly. Cite knowledge-base sources with [doc_id] when you use 
 export default async function NewAgentPage() {
   const { db, tenant } = await getPlatformContext();
 
-  const availableTools = new ToolDefRepository(db, tenant).list().map((t) => ({ key: t.key, description: t.description }));
+  const availableTools = new ToolDefRepository(db, tenant)
+    .list()
+    .map((t) => ({ key: t.key, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
+    <main className="mx-auto max-w-7xl px-6 py-12">
       <h1 className="text-2xl font-semibold text-fg">New agent</h1>
-      <p className="mt-1 text-sm text-muted">Creates the first published version (v1). KB scope and handoff targets can be set up afterward from the agent&apos;s page and the flow builder.</p>
+      <p className="mt-1 text-sm text-muted">Creates the first published version (v1). KB scope and handoff targets can be set up afterward from the agent&apos;s page.</p>
+
+      <div className="mt-4">
+        <Tabs
+          active="/admin/agents/new"
+          items={[
+            { href: "/admin/agents/new", label: "Builder" },
+            { href: "#", label: "Analytics", disabled: true },
+            { href: "#", label: "Widget", disabled: true },
+          ]}
+        />
+      </div>
 
       <AgentEditor
         mode="create"
@@ -34,6 +48,8 @@ export default async function NewAgentPage() {
           guardrails: {},
           skills: [],
           kbScope: { collectionIds: [] },
+          nativeTools: {},
+          quickReplies: [],
         }}
         availableTools={availableTools}
         availableModels={availableModels}

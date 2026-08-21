@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bot,
-  Cpu,
   Wrench,
   BookOpen,
   BarChart3,
@@ -25,7 +24,6 @@ interface NavItem {
 
 const BUILD_ITEMS: NavItem[] = [
   { href: "/admin/agents", label: "Agents", icon: Bot },
-  { href: "/admin/models", label: "Models", icon: Cpu },
   { href: "/admin/tools", label: "Tools", icon: Wrench },
   { href: "/admin/kb", label: "Knowledge base", icon: BookOpen },
 ];

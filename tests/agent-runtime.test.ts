@@ -63,6 +63,8 @@ async function setup(providerScript: ChatResponse[]) {
     guardrails: {},
     skills: [],
     semanticCacheEnabled: false,
+    nativeTools: {},
+    quickReplies: [],
   };
 
   return { db, tenant, gateway, embeddings, agent };

@@ -1,8 +1,9 @@
 import type Database from "better-sqlite3";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
 import { ModelGateway } from "../gateway/gateway";
-import type { ChatMessage, ChatRequest } from "../gateway/types";
+import type { ChatMessage, ChatRequest, NativeToolConfig } from "../gateway/types";
 import type { AgentDef } from "../db/repositories/agent-def-repository";
+import { KbCollectionRepository } from "../db/repositories/kb-collection-repository";
 import type { TenantContext } from "../tenancy/context";
 import { today } from "../core/clock";
 import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval";
@@ -189,6 +190,8 @@ export async function runAgentTurn(
       toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
     }
 
+    const nativeTools = buildNativeTools(deps.db, tenant, agent);
+
     while (round < ROUND_CAP) {
       round++;
       finalText = "";
@@ -199,6 +202,7 @@ export async function runAgentTurn(
       const request: ChatRequest = {
         messages: [...systemMessages, ...messages],
         tools: toolDefinitions,
+        nativeTools,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       };
 
@@ -285,6 +289,31 @@ export async function runAgentTurn(
     lowKbConfidence,
     updatedHistory: messages,
   };
+}
+
+/**
+ * Phase 6 M3: translates an agent's admin-configured native_tools into the
+ * generic NativeToolConfig shape the gateway carries through to whichever
+ * provider adapter reads it (only OpenAiProvider currently does — this is
+ * harmless to compute for an Anthropic-backed agent, it just never applies).
+ */
+function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: AgentDef): NativeToolConfig[] {
+  const config = agent.nativeTools;
+  const tools: NativeToolConfig[] = [];
+  if (config.webSearch) tools.push({ type: "web_search" });
+
+  if (config.fileSearch) {
+    const collectionIds = Array.isArray((agent.kbScope as { collectionIds?: unknown })?.collectionIds) ? ((agent.kbScope as { collectionIds: string[] }).collectionIds ?? []) : [];
+    const collections = new KbCollectionRepository(db, tenant);
+    const vectorStoreIds = collectionIds.map((id) => collections.getById(id)?.openaiVectorStoreId).filter((id): id is string => Boolean(id));
+    if (vectorStoreIds.length > 0) tools.push({ type: "file_search", vectorStoreIds });
+  }
+
+  if (config.mcp?.enabled && config.mcp.serverUrl) {
+    tools.push({ type: "mcp", serverLabel: config.mcp.serverLabel || "mcp", serverUrl: config.mcp.serverUrl, headers: config.mcp.headers });
+  }
+
+  return tools;
 }
 
 function isCardBearing(result: unknown): result is { card?: unknown } {

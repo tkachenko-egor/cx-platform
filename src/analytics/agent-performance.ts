@@ -6,9 +6,12 @@ export interface AgentVolumeRow {
   runCount: number;
 }
 
+/** Every 'runs'/'conversations'/'events'/'llm_calls' query below excludes 'test_harness' conversations — those are agent-builder live-preview turns (see app/api/admin/agents/preview/route.ts), not real traffic, and shouldn't inflate volume/containment/cost/latency numbers. */
+const EXCLUDE_PREVIEW_RUNS = `NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = runs.conversation_id AND pc.channel = 'test_harness')`;
+
 /** Volume per agent — a straight COUNT over `runs`, the join point every debugging/cost question already uses. Phase 5 M6: optional agentKey scopes this to one agent's own page instead of the tenant-wide breakdown. */
 export function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): AgentVolumeRow[] {
-  const conditions = ["tenant_id = ?"];
+  const conditions = ["tenant_id = ?", EXCLUDE_PREVIEW_RUNS];
   const params: unknown[] = [tenant.tenantId];
   if (options.agentKey) {
     conditions.push("agent_key = ?");
@@ -34,7 +37,11 @@ export interface EscalationReasonCount {
  * tally in JS rather than reaching for SQLite's json_each.
  */
 export function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): EscalationReasonCount[] {
-  const conditions = ["tenant_id = ?", "type = 'escalated'"];
+  const conditions = [
+    "tenant_id = ?",
+    "type = 'escalated'",
+    "NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = events.conversation_id AND pc.channel = 'test_harness')",
+  ];
   const params: unknown[] = [tenant.tenantId];
   if (options.agentKey) {
     conditions.push("conversation_id IN (SELECT DISTINCT conversation_id FROM runs WHERE tenant_id = ? AND agent_key = ?)");
@@ -78,7 +85,7 @@ export function getContainmentRate(db: Database.Database, tenant: TenantContext,
   if (options.agentKey) {
     // Scoped to one agent: a conversation counts if that agent handled at least one run in it — runs.agent_key, not
     // conversations.current_agent_key, which only reflects who's holding it now, not the full handoff history.
-    const conditions = ["tenant_id = ?", "agent_key = ?"];
+    const conditions = ["tenant_id = ?", "agent_key = ?", EXCLUDE_PREVIEW_RUNS];
     const params: unknown[] = [tenant.tenantId, options.agentKey];
     if (options.since) {
       conditions.push("started_at >= ?");
@@ -86,9 +93,13 @@ export function getContainmentRate(db: Database.Database, tenant: TenantContext,
     }
     conversationIds = (db.prepare(`SELECT DISTINCT conversation_id as id FROM runs WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
   } else {
-    const query = options.since ? `SELECT id FROM conversations WHERE tenant_id = ? AND created_at >= ?` : `SELECT id FROM conversations WHERE tenant_id = ?`;
-    const params = options.since ? [tenant.tenantId, options.since] : [tenant.tenantId];
-    conversationIds = (db.prepare(query).all(...params) as { id: string }[]).map((r) => r.id);
+    const conditions = ["tenant_id = ?", "channel != 'test_harness'"];
+    const params: unknown[] = [tenant.tenantId];
+    if (options.since) {
+      conditions.push("created_at >= ?");
+      params.push(options.since);
+    }
+    conversationIds = (db.prepare(`SELECT id FROM conversations WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
   }
   if (conversationIds.length === 0) return { totalConversations: 0, containedConversations: 0, rate: 0 };
 
@@ -112,12 +123,11 @@ export interface LatencyPercentiles {
 
 /** No PERCENTILE_CONT in SQLite — small enough at this scale to sort in JS rather than reach for a window-function approximation. */
 export function getLatencyPercentiles(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): LatencyPercentiles {
-  const conditions = ["lc.tenant_id = ?"];
+  const conditions = ["lc.tenant_id = ?", "NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = r.conversation_id AND pc.channel = 'test_harness')"];
   const params: unknown[] = [tenant.tenantId];
-  let query = `SELECT lc.latency_ms as latencyMs FROM llm_calls lc`;
+  let query = `SELECT lc.latency_ms as latencyMs FROM llm_calls lc JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id`;
 
   if (options.agentKey) {
-    query += ` JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id`;
     conditions.push("r.agent_key = ?");
     params.push(options.agentKey);
   }
@@ -144,14 +154,14 @@ export interface AgentVersionPerformance {
 export function getAgentVersionPerformance(db: Database.Database, tenant: TenantContext, agentKey: string, options: { since?: string } = {}): AgentVersionPerformance[] {
   const sinceClause = options.since ? "AND started_at >= ?" : "";
   const listParams = options.since ? [tenant.tenantId, agentKey, options.since] : [tenant.tenantId, agentKey];
-  const versions = (db.prepare(`SELECT DISTINCT agent_version FROM runs WHERE tenant_id = ? AND agent_key = ? ${sinceClause}`).all(...listParams) as { agent_version: number }[]).map(
-    (r) => r.agent_version,
-  );
+  const versions = (
+    db.prepare(`SELECT DISTINCT agent_version FROM runs WHERE tenant_id = ? AND agent_key = ? AND ${EXCLUDE_PREVIEW_RUNS} ${sinceClause}`).all(...listParams) as { agent_version: number }[]
+  ).map((r) => r.agent_version);
 
   return versions
     .map((agentVersion) => {
       const runRows = db
-        .prepare(`SELECT id, conversation_id FROM runs WHERE tenant_id = ? AND agent_key = ? AND agent_version = ? ${sinceClause}`)
+        .prepare(`SELECT id, conversation_id FROM runs WHERE tenant_id = ? AND agent_key = ? AND agent_version = ? AND ${EXCLUDE_PREVIEW_RUNS} ${sinceClause}`)
         .all(...(options.since ? [tenant.tenantId, agentKey, agentVersion, options.since] : [tenant.tenantId, agentKey, agentVersion])) as { id: string; conversation_id: string }[];
       const runIds = runRows.map((r) => r.id);
       const conversationIds = [...new Set(runRows.map((r) => r.conversation_id))];

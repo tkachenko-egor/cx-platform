@@ -53,12 +53,16 @@ export class KbRetrievalLogRepository extends TenantScopedRepository {
       .run(randomUUID(), this.tenantId, input.conversationId, input.runId, input.queryText, input.bestScore, JSON.stringify(input.retrievedDocIds), new Date().toISOString());
   }
 
+  /** Excludes 'test_harness' conversations (agent-builder live-preview turns) — coverage gaps should reflect real traffic, not draft testing. */
   listLowConfidence(thresholdScore: number, since?: string): KbRetrievalLogEntry[] {
+    const previewExclusion = `NOT EXISTS (SELECT 1 FROM conversations c WHERE c.id = kb_retrieval_log.conversation_id AND c.channel = 'test_harness')`;
     const rows = since
       ? (this.db
-          .prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? AND created_at >= ? ORDER BY created_at DESC`)
+          .prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? AND created_at >= ? AND ${previewExclusion} ORDER BY created_at DESC`)
           .all(this.tenantId, thresholdScore, since) as KbRetrievalLogRow[])
-      : (this.db.prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? ORDER BY created_at DESC`).all(this.tenantId, thresholdScore) as KbRetrievalLogRow[]);
+      : (this.db
+          .prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? AND ${previewExclusion} ORDER BY created_at DESC`)
+          .all(this.tenantId, thresholdScore) as KbRetrievalLogRow[]);
     return rows.map(rowToEntry);
   }
 }
