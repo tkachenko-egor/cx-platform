@@ -1,63 +1,79 @@
-# CX Platform — Phase 0
+# CX Platform — Phase 1 (six-week cut)
 
-A model-agnostic, multi-tenant foundation for a customer-experience
-platform, built per [`docs/00-requirements.md`](docs/00-requirements.md).
-This repo is deliberately separate from the
-[amarelle-handoff](../amarelle-handoff) demo bot: that repo is a fictional
-brand's fixed-business-rules chatbot with its own settled invariants; this
-one is general-purpose platform infrastructure. Working pieces (KB
-retrieval, the tool-calling loop, prompt assembly) will be lifted over
-deliberately as later phases need them — nothing here inherits
-amarelle-handoff's rules or constraints.
+A model-agnostic, multi-tenant customer-experience platform, built per
+[`docs/00-requirements.md`](docs/00-requirements.md). This repo is
+deliberately separate from the [amarelle-handoff](../amarelle-handoff) demo
+bot: that repo is a fictional brand's fixed-business-rules chatbot with its
+own settled invariants; this one is general-purpose platform
+infrastructure. Amarelle Botanique's KB, seed data and tool logic were
+ported in as this platform's **first tenant's data/config** — see
+`CLAUDE.md` invariant #5 for the line between "tenant data" and "platform
+code."
 
-## What "Phase 0" means
+## What "Phase 1 (six-week cut)" means
 
-Per the requirements doc's phased roadmap, Phase 0 is "refactor the
-foundation... no new features." Its exit criterion:
-
-> You can swap the underlying model by editing one config row, and nothing
-> else in the codebase changes.
-
-That's a real, executable test here: [`tests/gateway-swap.test.ts`](tests/gateway-swap.test.ts).
+Phase 0 built the foundation (model gateway, tenancy, agent-def records —
+no channel, no KB, no tools, no UI). This slice is the doc's own trimmed
+Phase 1: **widget only** (no email), **one agent** (no router), **KB with
+hybrid retrieval**, **read-only tools**, **human takeover in copilot
+mode**, **cost tracking**, **tracing**. Full scope notes, what's
+deliberately deferred, and the reasoning behind each cut live in the plan
+this was built from — ask if you need the original doc.
 
 ## What's in this slice
 
-- **Canonical types** (`src/core/types.ts`) — `CanonicalMessage`,
-  `Conversation`, `ConversationEvent`. Channel- and model-agnostic (FR-4.1).
-- **Model gateway** (`src/gateway/`) — canonical `ChatRequest`/`ChatResponse`
-  (FR-5.1), a capability matrix (FR-5.3), two provider adapters (Anthropic +
-  a zero-network stub, FR-5.2), alias-based model binding with fallback
-  chains (FR-5.6/5.7), and a normalised error taxonomy (FR-5.8). No provider
-  SDK type crosses the gateway boundary — enforced by `eslint.config.mjs`,
-  not just convention.
-- **Tenancy** (`src/tenancy/`) — every repository is a
-  `TenantScopedRepository` subclass that cannot be constructed without a
-  `TenantContext` (FR-1.1's design note, made structural rather than a rule
-  to remember).
-- **Agent defs as data** (`src/db/repositories/agent-def-repository.ts`) —
-  versioned, published records, not code (FR-6.1/6.3).
-- **Basic tracing + usage accounting** (`src/tracing/trace.ts`,
-  `llm_calls` table) — one row/line per provider call attempt, including
-  failed attempts before a fallback (FR-5.10, a slice of FR-13.1).
+- **Streaming model gateway** (`src/gateway/`) — Phase 0's `chat()` plus a
+  `chatStream()` for token-by-token delivery (NFR-1.1), a real per-model
+  cost estimate, and an embedding-provider abstraction (`src/gateway/embeddings/`,
+  OpenAI + a zero-network stub) separate from the chat abstraction (FR-5.12).
+- **Hybrid-retrieval KB** (`src/kb/`) — structure-aware chunking, dense
+  (cosine) + keyword (SQLite FTS5, porter-stemmed) retrieval fused with
+  Reciprocal Rank Fusion, `kb_scope` audience filtering (FR-7.4/7.6/7.7),
+  citations resolved back to the customer as chips.
+- **Tool registry** (`src/tools/`) — JSON-Schema-backed `tool_defs` +
+  code-side handlers, `{ok:false}` on error rather than a throw (FR-8.9),
+  every call logged to `tool_calls` (FR-8.10). Amarelle's three read-only
+  tools (`lookup_order`, `search_products`, `check_return_eligibility`)
+  live under `src/tools/amarelle/`.
+- **Agent runtime** (`src/agents/`) — the tool-calling loop, a templated
+  system prompt (FR-6.2), and deterministic escalation triggers (FR-6.12):
+  a severe-symptom keyword scan, an explicit human request, an eligible
+  return with no write tool to complete it, or a loop-cap hit.
+- **Web widget** (`components/chat/`, `app/api/chat/route.ts`) — SSE
+  streaming, cards, citation chips, AI disclosure in the header (NFR-6.2),
+  and a `handoff` event + polling fallback so a human's reply reaches the
+  customer once escalated.
+- **Human desk in copilot mode** (`app/desk/`, `app/api/desk/`) — list of
+  conversations needing attention, a bot-drafted suggested reply the human
+  edits and sends (FR-9.6), hand-back-to-bot, and a per-turn trace panel
+  (model/tokens/cost/latency/tool calls — FR-13.2, folded into the desk
+  rather than a separate module).
+- **Cost tracking** (`src/analytics/cost.ts`) — real `cost_usd` per call,
+  summed per conversation on the desk list (FR-11.6).
 
 ## What's deliberately NOT here yet
 
-Everything else in the requirements doc: orchestrator/router, multi-agent
-handoff, channels (widget/email), human desk, KB/retrieval, tools registry,
-control plane UI, analytics, evals, guardrails. Those are Phase 1 (see the
-doc's "six-week cut" for the actual next slice) — building them on a shaky
-foundation is the mistake Phase 0 exists to prevent.
+Write tools (`create_return`, `report_product_safety_case`,
+`create_ticket`) and the tables they need; the email channel; router/
+multi-agent handoff; RBAC/auth; live presence/routing; guardrail suite;
+evals/CI gate; the embeddable `<script>`+iframe widget package (it mounts
+on a demo page for now). None of these are accidental gaps — see the
+"consequence worth flagging" note in `CLAUDE.md` invariant #7 for what an
+`ELIGIBLE` return verdict does without a write tool behind it.
 
 ## Running it
 
 ```bash
 npm install
-cp .env.example .env   # set ANTHROPIC_API_KEY if you want the real provider to work
-npm test               # tenancy isolation + capability matrix + the swap exit criterion
+cp .env.example .env    # ANTHROPIC_API_KEY + OPENAI_API_KEY for the real experience
+npm run seed             # tenant, business data, tool defs, KB ingest, published agent
+npm test
 npm run typecheck
 npm run lint
-npm run seed            # creates a demo tenant, a model alias, and a published agent def
+npm run dev               # demo widget at /, human desk at /desk
 ```
 
-Local dev and the full test suite run with zero cloud dependencies: the
-stub provider and an in-memory/local SQLite DB satisfy NFR-9.5.
+Without API keys, the app still runs end-to-end: the model gateway falls
+back to its zero-network stub provider, and KB retrieval falls back to
+stub (non-semantic) embeddings — structurally complete, just not
+meaningfully "smart," per NFR-9.5's zero-cloud-dependency local dev.

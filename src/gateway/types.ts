@@ -7,8 +7,11 @@
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** role: "tool" only — which tool_use this result responds to. */
   toolCallId?: string;
   toolName?: string;
+  /** role: "assistant" only — tool calls this message made, so history replay can reconstruct them. */
+  toolCalls?: ToolCallRequest[];
 }
 
 export interface ToolDefinition {
@@ -82,4 +85,10 @@ export interface ModelCapabilities {
 export interface ProviderAdapter {
   readonly provider: string;
   chat(model: string, request: ChatRequest): Promise<ChatResponse>;
+  /**
+   * FR-3.2/NFR-1.1: token-by-token streaming. Optional because not every
+   * provider adapter needs to implement it — ModelGateway.chatStream()
+   * falls back to chat() (and a single synthetic delta) when absent.
+   */
+  chatStream?(model: string, request: ChatRequest, onDelta: (text: string) => void): Promise<ChatResponse>;
 }

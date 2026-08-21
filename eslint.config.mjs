@@ -1,12 +1,13 @@
-import js from "@eslint/js";
-import tseslint from "typescript-eslint";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
 
 // FR-5.1 / Risk #1 (requirements doc): no provider SDK type may cross the
 // model-gateway boundary. This rule is the enforcement mechanism, not a
 // convention — provider SDK imports are only legal inside providers/.
-export default tseslint.config(
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
+export default defineConfig([
+  ...nextVitals,
+  ...nextTs,
   {
     rules: {
       "no-restricted-imports": [
@@ -29,4 +30,5 @@ export default tseslint.config(
       "no-restricted-imports": "off",
     },
   },
-);
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),
+]);

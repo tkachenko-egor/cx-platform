@@ -1,0 +1,19 @@
+import { getPlatformContext } from "../../../../../src/platform/context";
+import { ConversationRepository } from "../../../../../src/db/repositories/conversation-repository";
+import { EventRepository } from "../../../../../src/db/repositories/event-repository";
+
+export const runtime = "nodejs";
+
+/** FR-9.5: hand a conversation back to the bot after a human has helped. */
+export async function POST(_req: Request, context: RouteContext<"/api/desk/[conversationId]/handback">) {
+  const { conversationId } = await context.params;
+  const { db, tenant } = getPlatformContext();
+  const conversations = new ConversationRepository(db, tenant);
+  const conversation = conversations.get(conversationId);
+  if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
+
+  conversations.setState(conversationId, "bot_active");
+  new EventRepository(db, tenant).append({ conversationId, type: "state_changed", actor: "human", payload: { to: "bot_active" } });
+
+  return Response.json({ ok: true });
+}
