@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export interface ToolOption {
   key: string;
@@ -148,9 +149,9 @@ export function AgentEditor({
         </select>
         <p className="mt-1 text-xs text-muted">
           Switching this republishes immediately — no redeploy. Manage what each option points to under{" "}
-          <a href="/admin/models" className="text-accent hover:underline">
+          <Link href="/admin/models" className="text-accent hover:underline">
             Admin &gt; Models
-          </a>
+          </Link>
           .
         </p>
       </div>
@@ -177,9 +178,9 @@ export function AgentEditor({
         />
         <p className="mt-1 text-xs text-muted">
           Retrieval only pulls from articles tagged with one of these. Manage articles under{" "}
-          <a href="/admin/kb" className="text-accent hover:underline">
+          <Link href="/admin/kb" className="text-accent hover:underline">
             Admin &gt; Knowledge base
-          </a>
+          </Link>
           .
         </p>
       </div>

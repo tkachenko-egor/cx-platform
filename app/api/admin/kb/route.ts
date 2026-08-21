@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getPlatformContext } from "../../../../src/platform/context";
 import { KbArticleRepository, KbChunkRepository } from "../../../../src/db/repositories/kb-repository";
+import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
 import { chunkAndEmbedArticle } from "../../../../src/kb/ingest";
@@ -15,7 +16,7 @@ function slugify(title: string): string {
     .slice(0, 64);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const { db, tenant } = await getPlatformContext();
   try {
     await requireRole(db, tenant, "admin");
@@ -24,11 +25,12 @@ export async function GET() {
     throw err;
   }
 
-  const articles = new KbArticleRepository(db, tenant).list();
+  const collectionId = new URL(req.url).searchParams.get("collectionId") ?? undefined;
+  const articles = new KbArticleRepository(db, tenant).list(collectionId ? { collectionId } : undefined);
   return Response.json({ articles });
 }
 
-/** Phase 4 M3: KB content had no admin UI before this — articles were file-only, ingested via scripts/ingest-kb.ts. Chunking/embedding reuses src/kb/ingest.ts's chunkAndEmbedArticle, not reimplemented here. */
+/** Phase 4 M3: KB content had no admin UI before this — articles were file-only, ingested via scripts/ingest-kb.ts. Chunking/embedding reuses src/kb/ingest.ts's chunkAndEmbedArticle, not reimplemented here. Phase 5 M2: every article now belongs to a Knowledge Base collection. */
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     docId?: string;
@@ -36,9 +38,10 @@ export async function POST(req: Request) {
     audience?: string;
     effective?: string | null;
     body?: string;
+    collectionId?: string;
   };
-  if (!body.title?.trim() || !body.body?.trim()) {
-    return Response.json({ error: "title and body are required" }, { status: 400 });
+  if (!body.title?.trim() || !body.body?.trim() || !body.collectionId?.trim()) {
+    return Response.json({ error: "title, body, and collectionId are required" }, { status: 400 });
   }
 
   const { db, tenant, embeddings } = await getPlatformContext();
@@ -48,6 +51,10 @@ export async function POST(req: Request) {
   } catch (err) {
     if (err instanceof AuthError) return Response.json({ error: err.message }, { status: err.status });
     throw err;
+  }
+
+  if (!new KbCollectionRepository(db, tenant).getById(body.collectionId)) {
+    return Response.json({ error: `No Knowledge Base found for id "${body.collectionId}"` }, { status: 404 });
   }
 
   const articles = new KbArticleRepository(db, tenant);
@@ -65,6 +72,7 @@ export async function POST(req: Request) {
     effective: body.effective?.trim() || null,
     contentHash,
     body: body.body,
+    collectionId: body.collectionId,
   });
 
   await chunkAndEmbedArticle(new KbChunkRepository(db, tenant), embeddings, article.id, body.body);
