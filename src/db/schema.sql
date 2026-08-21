@@ -230,6 +230,12 @@ CREATE TABLE IF NOT EXISTS tool_defs (
   input_schema TEXT NOT NULL,
   write_flag INTEGER NOT NULL DEFAULT 0,
   approval_policy TEXT NOT NULL DEFAULT 'auto' CHECK (approval_policy IN ('auto','confirm_with_customer','require_human_approval')),
+  -- Phase 3 M7: 'http' tools are admin-authored (no code handler) — their
+  -- request config (url/method/auth/etc, see src/tools/http-tool-executor.ts)
+  -- lives in handler_config. 'code' tools ignore handler_config; their
+  -- handler is REGISTRY-defined in src/tools/registry.ts as before.
+  type TEXT NOT NULL DEFAULT 'code' CHECK (type IN ('code','http')),
+  handler_config TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   UNIQUE (tenant_id, key)
 );
@@ -539,3 +545,26 @@ CREATE TABLE IF NOT EXISTS macros (
 );
 
 CREATE INDEX IF NOT EXISTS idx_macros_tenant ON macros(tenant_id);
+
+-- Phase 3 M7: DB-backed provider API keys, per-tenant, replacing the single
+-- shared process env var. `kind` distinguishes LLM provider keys (one active
+-- per tenant+provider, resolved by buildContext()) from HTTP-tool
+-- integration credentials (many simultaneously active, addressed by id).
+-- Each row is attributed to the staff user who added it for audit purposes.
+CREATE TABLE IF NOT EXISTS provider_credentials (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  kind TEXT NOT NULL CHECK (kind IN ('llm_provider','tool_integration')),
+  provider TEXT NOT NULL,
+  label TEXT NOT NULL,
+  encrypted_key TEXT NOT NULL,
+  key_last4 TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL REFERENCES users(id),
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  rotated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_credentials_tenant ON provider_credentials(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_credentials_one_active_llm
+  ON provider_credentials(tenant_id, provider) WHERE kind = 'llm_provider' AND is_active = 1;

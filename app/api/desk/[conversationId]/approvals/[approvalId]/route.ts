@@ -36,7 +36,7 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
     return Response.json({ ok: true, status: "denied" });
   }
 
-  const result = executeApprovedTool(db, tenant, approval);
+  const result = await executeApprovedTool(db, tenant, approval);
   approvals.markDecided(approval.id, "approved", staffUser.id);
   audit.record({ actorUserId: staffUser.id, action: "tool_approval_approved", target: approval.id, before: { toolKey: approval.toolKey }, after: { result } });
 

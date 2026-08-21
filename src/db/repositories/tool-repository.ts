@@ -4,6 +4,7 @@ import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
 export type ApprovalPolicy = "auto" | "confirm_with_customer" | "require_human_approval";
+export type ToolType = "code" | "http";
 
 export interface ToolDef {
   id: string;
@@ -13,6 +14,10 @@ export interface ToolDef {
   inputSchema: Record<string, unknown>;
   writeFlag: boolean;
   approvalPolicy: ApprovalPolicy;
+  /** 'code' = REGISTRY-defined handler (src/tools/registry.ts), unchanged. 'http' = admin-authored, see src/tools/http-tool-executor.ts. */
+  type: ToolType;
+  /** HttpToolConfig shape when type === 'http'; {} for 'code'. */
+  handlerConfig: Record<string, unknown>;
 }
 
 interface ToolDefRow {
@@ -23,6 +28,8 @@ interface ToolDefRow {
   input_schema: string;
   write_flag: number;
   approval_policy: ApprovalPolicy;
+  type: ToolType;
+  handler_config: string;
 }
 
 function rowToToolDef(row: ToolDefRow): ToolDef {
@@ -34,6 +41,8 @@ function rowToToolDef(row: ToolDefRow): ToolDef {
     inputSchema: JSON.parse(row.input_schema) as Record<string, unknown>,
     writeFlag: Boolean(row.write_flag),
     approvalPolicy: row.approval_policy,
+    type: row.type,
+    handlerConfig: JSON.parse(row.handler_config) as Record<string, unknown>,
   };
 }
 
@@ -49,25 +58,29 @@ export class ToolDefRepository extends TenantScopedRepository {
     inputSchema: Record<string, unknown>;
     writeFlag: boolean;
     approvalPolicy: ApprovalPolicy;
+    type?: ToolType;
+    handlerConfig?: Record<string, unknown>;
   }): ToolDef {
+    const type = input.type ?? "code";
+    const handlerConfig = input.handlerConfig ?? {};
     const existing = this.getByKey(input.key);
     if (existing) {
       this.db
         .prepare(
-          `UPDATE tool_defs SET description = ?, input_schema = ?, write_flag = ?, approval_policy = ?
+          `UPDATE tool_defs SET description = ?, input_schema = ?, write_flag = ?, approval_policy = ?, type = ?, handler_config = ?
            WHERE id = ? AND tenant_id = ?`,
         )
-        .run(input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, existing.id, this.tenantId);
-      return { ...existing, ...input };
+        .run(input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), existing.id, this.tenantId);
+      return { ...existing, ...input, type, handlerConfig };
     }
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO tool_defs (id, tenant_id, key, description, input_schema, write_flag, approval_policy, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tool_defs (id, tenant_id, key, description, input_schema, write_flag, approval_policy, type, handler_config, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.key, input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, new Date().toISOString());
-    return { id, tenantId: this.tenantId, ...input };
+      .run(id, this.tenantId, input.key, input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), new Date().toISOString());
+    return { id, tenantId: this.tenantId, key: input.key, description: input.description, inputSchema: input.inputSchema, writeFlag: input.writeFlag, approvalPolicy: input.approvalPolicy, type, handlerConfig };
   }
 
   getByKey(key: string): ToolDef | undefined {
@@ -78,6 +91,11 @@ export class ToolDefRepository extends TenantScopedRepository {
   list(): ToolDef[] {
     const rows = this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ?`).all(this.tenantId) as ToolDefRow[];
     return rows.map(rowToToolDef);
+  }
+
+  /** Only ever called for type === 'http' rows — code tools have no admin lifecycle (enforced by the caller route, not here). */
+  delete(key: string): void {
+    this.db.prepare(`DELETE FROM tool_defs WHERE tenant_id = ? AND key = ?`).run(this.tenantId, key);
   }
 }
 

@@ -184,7 +184,7 @@ export async function runAgentTurn(
     const session = sessionBlock({ today: today(), severeSymptomSignal: severe.hit });
     const handoff = handoffContext ? handoffBlock(handoffContext) : null;
 
-    const toolDefinitions = toGatewayToolDefinitions(agent.toolIds);
+    const toolDefinitions = toGatewayToolDefinitions(deps.db, tenant, agent.toolIds);
     if (agent.handoffTargets.length > 0) {
       toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
     }
@@ -219,7 +219,7 @@ export async function runAgentTurn(
         }
 
         callbacks.onToolStart?.(call.name);
-        const result = executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
+        const result = await executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
 
         if (isCardBearing(result) && result.card) cards.push(result.card);
         if (isEscalatingResult(result) && result.escalate?.reason) {

@@ -12,6 +12,8 @@ import { migration010AgentExperiments } from "./010-agent-experiments";
 import { migration011Macros } from "./011-macros";
 import { migration012UserInvitesAndPasswordResets } from "./012-user-invites-and-password-resets";
 import { migration013PlatformAdminFlag } from "./013-platform-admin-flag";
+import { migration014ProviderCredentials } from "./014-provider-credentials";
+import { migration015ToolDefsHttpType } from "./015-tool-defs-http-type";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -28,4 +30,6 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration011Macros,
   migration012UserInvitesAndPasswordResets,
   migration013PlatformAdminFlag,
+  migration014ProviderCredentials,
+  migration015ToolDefsHttpType,
 ];

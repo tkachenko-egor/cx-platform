@@ -40,13 +40,13 @@ describe("runCancelOrder", () => {
 });
 
 describe("executeTool — write-tool idempotency (FR-8.6)", () => {
-  it("never re-executes a retry with the same conversation + arguments once the first attempt succeeded", () => {
+  it("never re-executes a retry with the same conversation + arguments once the first attempt succeeded", async () => {
     const { db, tenant } = seededTenant();
     // Default approval_policy is 'auto' when no tool_defs row exists.
-    const first = executeTool(db, tenant, "CONV-1", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    const first = await executeTool(db, tenant, "CONV-1", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(first.ok).toBe(true);
 
-    const second = executeTool(db, tenant, "CONV-1", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
+    const second = await executeTool(db, tenant, "CONV-1", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(second).toEqual(first);
 
     // Only one tool_calls row should exist for this idempotency key — the retry must not have re-run or re-logged.
@@ -60,36 +60,36 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
     new ToolDefRepository(db, tenant).upsert({ key: cancelOrderToolDef.key, description: cancelOrderToolDef.description, inputSchema: cancelOrderToolDef.inputSchema, writeFlag: true, approvalPolicy: "confirm_with_customer" });
   }
 
-  it("defers on the first attempt without mutating anything", () => {
+  it("defers on the first attempt without mutating anything", async () => {
     const { db, tenant } = seededTenant();
     withConfirmPolicy(db, tenant);
 
-    const result = executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    const result = await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(result).toMatchObject({ ok: false, needsConfirmation: true });
     expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
   });
 
-  it("still defers on a same-turn retry — the model looping is not the customer confirming", () => {
+  it("still defers on a same-turn retry — the model looping is not the customer confirming", async () => {
     const { db, tenant } = seededTenant();
     withConfirmPolicy(db, tenant);
 
-    executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
-    const secondSameTurn = executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    const secondSameTurn = await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
 
     expect(secondSameTurn).toMatchObject({ ok: false, needsConfirmation: true });
     expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
   });
 
-  it("executes once the same request is re-issued in a later turn (the customer's confirmation)", () => {
+  it("executes once the same request is re-issued in a later turn (the customer's confirmation)", async () => {
     const { db, tenant } = seededTenant();
     withConfirmPolicy(db, tenant);
     const approvals = new ToolApprovalRepository(db, tenant);
 
-    executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     const pendingApproval = approvals.listPendingByConversation("CONV-2")[0];
     expect(pendingApproval).toBeDefined();
 
-    const confirmed = executeTool(db, tenant, "CONV-2", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
+    const confirmed = await executeTool(db, tenant, "CONV-2", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
 
     expect(confirmed).toEqual({ ok: true, order_id: PROCESSING_ORDER, status: "Cancelled" });
     expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Cancelled");
@@ -105,11 +105,11 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
     new ToolDefRepository(db, tenant).upsert({ key: cancelOrderToolDef.key, description: cancelOrderToolDef.description, inputSchema: cancelOrderToolDef.inputSchema, writeFlag: true, approvalPolicy: "require_human_approval" });
   }
 
-  it("parks the call for a human instead of executing or asking the customer", () => {
+  it("parks the call for a human instead of executing or asking the customer", async () => {
     const { db, tenant } = seededTenant();
     withHumanApprovalPolicy(db, tenant);
 
-    const result = executeTool(db, tenant, "CONV-3", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    const result = await executeTool(db, tenant, "CONV-3", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(result).toMatchObject({ ok: false, needsApproval: true });
     expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
 
@@ -118,37 +118,37 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
     expect(pending[0].toolKey).toBe("cancel_order");
   });
 
-  it("executes exactly once when staff approve it, and a subsequent executeTool retry returns the cached result", () => {
+  it("executes exactly once when staff approve it, and a subsequent executeTool retry returns the cached result", async () => {
     const { db, tenant } = seededTenant();
     withHumanApprovalPolicy(db, tenant);
     const staff = new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
 
-    executeTool(db, tenant, "CONV-4", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    await executeTool(db, tenant, "CONV-4", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     const approvals = new ToolApprovalRepository(db, tenant);
     const approval = approvals.listPendingByConversation("CONV-4")[0];
 
-    const result = executeApprovedTool(db, tenant, approval);
+    const result = await executeApprovedTool(db, tenant, approval);
     approvals.markDecided(approval.id, "approved", staff.id);
 
     expect(result).toEqual({ ok: true, order_id: PROCESSING_ORDER, status: "Cancelled" });
     expect(approvals.get(approval.id)?.status).toBe("approved");
 
     // The agent's tool loop might call the same tool again in a later turn before it learns the outcome — must not re-cancel.
-    const retry = executeTool(db, tenant, "CONV-4", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
+    const retry = await executeTool(db, tenant, "CONV-4", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(retry).toEqual(result);
   });
 
-  it("tells the model the request was denied, without executing it", () => {
+  it("tells the model the request was denied, without executing it", async () => {
     const { db, tenant } = seededTenant();
     withHumanApprovalPolicy(db, tenant);
     const staff = new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
 
-    executeTool(db, tenant, "CONV-5", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
+    await executeTool(db, tenant, "CONV-5", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     const approvals = new ToolApprovalRepository(db, tenant);
     const approval = approvals.listPendingByConversation("CONV-5")[0];
     approvals.markDecided(approval.id, "denied", staff.id);
 
-    const retry = executeTool(db, tenant, "CONV-5", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
+    const retry = await executeTool(db, tenant, "CONV-5", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(retry).toMatchObject({ ok: false, denied: true });
     expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
   });

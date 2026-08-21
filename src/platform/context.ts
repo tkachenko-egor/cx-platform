@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { headers } from "next/headers";
 import { getDb } from "../db/client";
 import { TenantRepository, type Tenant } from "../db/repositories/tenant-repository";
+import { ProviderCredentialRepository } from "../db/repositories/provider-credential-repository";
 import { ModelGateway } from "../gateway/gateway";
 import { AnthropicProvider } from "../gateway/providers/anthropic";
 import { StubProvider } from "../gateway/providers/stub";
@@ -51,12 +52,24 @@ export function resolveTenantSlugFromHost(host: string | null | undefined): stri
 
 const cacheBySlug = new Map<string, PlatformContext>();
 
+/**
+ * DB-stored key first, env var fallback — keeps `npm run dev` zero-config
+ * (NFR-9.5) for tenants with no credential set yet, while a tenant admin's
+ * Admin > API Keys entry (src/db/repositories/provider-credential-repository.ts)
+ * takes precedence once one exists.
+ */
 function buildContext(tenant: Tenant, db: Database.Database): PlatformContext {
+  const credentials = new ProviderCredentialRepository(db, tenant);
   const providers: Record<string, ProviderAdapter> = { stub: new StubProvider() };
-  if (process.env.ANTHROPIC_API_KEY) {
-    providers.anthropic = new AnthropicProvider(process.env.ANTHROPIC_API_KEY);
+
+  const anthropicKey = credentials.getActiveLlmKey("anthropic")?.decryptedKey ?? process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    providers.anthropic = new AnthropicProvider(anthropicKey);
   }
-  const embeddings: EmbeddingProvider = process.env.OPENAI_API_KEY ? new OpenAiEmbeddingProvider(process.env.OPENAI_API_KEY) : new StubEmbeddingProvider();
+
+  const openaiKey = credentials.getActiveLlmKey("openai")?.decryptedKey ?? process.env.OPENAI_API_KEY;
+  const embeddings: EmbeddingProvider = openaiKey ? new OpenAiEmbeddingProvider(openaiKey) : new StubEmbeddingProvider();
+
   return { db, tenant, gateway: new ModelGateway({ db, providers }), embeddings };
 }
 
@@ -86,4 +99,14 @@ export async function getPlatformContext(): Promise<PlatformContext> {
   const context = buildContext(tenant, db);
   cacheBySlug.set(slug, context);
   return context;
+}
+
+/**
+ * `cacheBySlug` holds the already-constructed ModelGateway/providers for the
+ * life of the process. Without evicting a slug here, an admin setting a new
+ * active provider_credentials row would silently have no effect until the
+ * process restarted — call this right after a credential is set/deactivated.
+ */
+export function invalidatePlatformContext(slug: string): void {
+  cacheBySlug.delete(slug);
 }

@@ -1,13 +1,15 @@
 import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import type { TenantContext } from "../tenancy/context";
-import { ToolCallRepository, ToolDefRepository } from "../db/repositories/tool-repository";
+import { ToolCallRepository, ToolDefRepository, type ToolDef } from "../db/repositories/tool-repository";
 import { ToolApprovalRepository, type ToolApproval } from "../db/repositories/tool-approval-repository";
 import type { ToolDefinition } from "../gateway/types";
 import { lookupOrderInputSchema, lookupOrderToolDef, runLookupOrder } from "./amarelle/lookup-order";
 import { searchProductsInputSchema, searchProductsToolDef, runSearchProducts } from "./amarelle/search-products";
 import { checkReturnEligibilityInputSchema, checkReturnEligibilityToolDef, runCheckReturnEligibility } from "./amarelle/check-return-eligibility";
 import { cancelOrderInputSchema, cancelOrderToolDef, runCancelOrder } from "./amarelle/cancel-order";
+import { parseHttpToolConfig, runHttpTool } from "./http-tool-executor";
+import { validateAgainstJsonSchema } from "./json-schema-lite";
 
 export interface ToolSpec {
   key: string;
@@ -15,7 +17,7 @@ export interface ToolSpec {
   inputSchema: Record<string, unknown>;
   writeFlag: boolean;
   parse: (args: unknown) => unknown;
-  run: (db: Database.Database, tenant: TenantContext, args: unknown) => Record<string, unknown>;
+  run: (db: Database.Database, tenant: TenantContext, args: unknown) => Record<string, unknown> | Promise<Record<string, unknown>>;
 }
 
 /**
@@ -63,12 +65,42 @@ export function allToolSpecs(): ToolSpec[] {
   return Object.values(REGISTRY);
 }
 
-/** Converts an agent's tool_ids allowlist into the gateway's canonical ToolDefinition shape. */
-export function toGatewayToolDefinitions(toolKeys: string[]): ToolDefinition[] {
-  return toolKeys
-    .map((key) => REGISTRY[key])
-    .filter((spec): spec is ToolSpec => Boolean(spec))
-    .map((spec) => ({ name: spec.key, description: spec.description, parameters: spec.inputSchema }));
+/** Builds a ToolSpec for a DB-defined 'http' tool_defs row — no code handler, no redeploy needed to add one. */
+function buildHttpToolSpec(def: ToolDef): ToolSpec {
+  const config = parseHttpToolConfig(def.handlerConfig);
+  return {
+    key: def.key,
+    description: def.description,
+    inputSchema: def.inputSchema,
+    writeFlag: def.writeFlag,
+    parse: (args) => validateAgainstJsonSchema(def.inputSchema, args),
+    run: (db, tenant, args) => runHttpTool(db, tenant, config, args as Record<string, unknown>),
+  };
+}
+
+/** REGISTRY (code tools) first, then a DB lookup for admin-authored 'http' tools — so a new HTTP tool needs no code change or redeploy. */
+function resolveToolSpec(db: Database.Database, tenant: TenantContext, toolKey: string): ToolSpec | undefined {
+  const staticSpec = REGISTRY[toolKey];
+  if (staticSpec) return staticSpec;
+  const def = new ToolDefRepository(db, tenant).getByKey(toolKey);
+  if (!def || def.type !== "http") return undefined;
+  return buildHttpToolSpec(def);
+}
+
+/** Converts an agent's tool_ids allowlist into the gateway's canonical ToolDefinition shape. Unknown keys (a stale reference to a deleted tool) are silently dropped, same as a removed REGISTRY entry always has been. */
+export function toGatewayToolDefinitions(db: Database.Database, tenant: TenantContext, toolKeys: string[]): ToolDefinition[] {
+  const toolDefs = new ToolDefRepository(db, tenant);
+  const defs: ToolDefinition[] = [];
+  for (const key of toolKeys) {
+    const staticSpec = REGISTRY[key];
+    if (staticSpec) {
+      defs.push({ name: staticSpec.key, description: staticSpec.description, parameters: staticSpec.inputSchema });
+      continue;
+    }
+    const def = toolDefs.getByKey(key);
+    if (def) defs.push({ name: def.key, description: def.description, parameters: def.inputSchema });
+  }
+  return defs;
 }
 
 /** A stable JSON encoding (sorted object keys) so the same logical arguments always hash the same, regardless of key order. */
@@ -112,18 +144,18 @@ function logToolCall(
 }
 
 /** Runs an already-parsed call end to end: execute, classify ok/error, log. */
-function runAndLog(
+async function runAndLog(
   db: Database.Database,
   tenant: TenantContext,
   spec: ToolSpec,
   parsedArgs: unknown,
   logInput: { runId: string; toolKey: string; arguments: unknown; idempotencyKey?: string },
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const start = Date.now();
   let result: Record<string, unknown>;
   let status: "ok" | "error" = "ok";
   try {
-    result = spec.run(db, tenant, parsedArgs);
+    result = await spec.run(db, tenant, parsedArgs);
     if ((result as { ok?: unknown }).ok === false) status = "error";
   } catch (err) {
     result = { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -140,8 +172,8 @@ function runAndLog(
  * regardless of outcome. FR-8.5/8.6: write tools are gated by their
  * tool_defs.approval_policy and never double-execute on a retry.
  */
-export function executeTool(db: Database.Database, tenant: TenantContext, conversationId: string, runId: string, toolKey: string, args: unknown): Record<string, unknown> {
-  const spec = REGISTRY[toolKey];
+export async function executeTool(db: Database.Database, tenant: TenantContext, conversationId: string, runId: string, toolKey: string, args: unknown): Promise<Record<string, unknown>> {
+  const spec = resolveToolSpec(db, tenant, toolKey);
   if (!spec) {
     const result = { ok: false, error: `Unknown tool: ${toolKey}` };
     logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
@@ -184,7 +216,7 @@ export function executeTool(db: Database.Database, tenant: TenantContext, conver
     // customer having confirmed — re-calling within the same turn (the
     // model looping on its own, with no new customer input) must not.
     if (existing?.status === "pending" && existing.runId !== runId) {
-      const result = runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
+      const result = await runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
       approvals.markDecided(existing.id, "approved", null);
       return result;
     }
@@ -205,8 +237,8 @@ export function executeTool(db: Database.Database, tenant: TenantContext, conver
 }
 
 /** Executes a require_human_approval tool call once staff have approved it in the desk (FR-8.5/8.10). */
-export function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Record<string, unknown> {
-  const spec = REGISTRY[approval.toolKey];
+export async function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Promise<Record<string, unknown>> {
+  const spec = resolveToolSpec(db, tenant, approval.toolKey);
   if (!spec) return { ok: false, error: `Unknown tool: ${approval.toolKey}` };
   return runAndLog(db, tenant, spec, approval.arguments, { runId: approval.runId, toolKey: approval.toolKey, arguments: approval.arguments, idempotencyKey: approval.idempotencyKey });
 }
