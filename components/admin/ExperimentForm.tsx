@@ -2,6 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { FlaskConical } from "lucide-react";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Field, Input, Select } from "../ui/Input";
+import { Badge } from "../ui/Badge";
 
 export interface AgentVersionOption {
   key: string;
@@ -67,78 +72,71 @@ export function ExperimentForm({ agentVersions, experiments }: { agentVersions: 
 
   return (
     <div className="mt-6 space-y-6">
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">New experiment</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Agent key</span>
-            <select value={agentKey} onChange={(e) => setAgentKey(e.target.value)} className="rounded border border-border bg-bg px-2 py-1">
+      <Card className="p-6">
+        <div className="flex items-center gap-2">
+          <FlaskConical size={16} className="text-muted" />
+          <h2 className="text-sm font-semibold text-fg">New experiment</h2>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <Field label="Agent key" htmlFor="exp-agent-key">
+            <Select id="exp-agent-key" value={agentKey} onChange={(e) => setAgentKey(e.target.value)} className="w-48">
               {keys.map((k) => (
                 <option key={k} value={k}>
                   {k}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Variant A version</span>
-            <select value={variantAVersion} onChange={(e) => setVariantAVersion(Number(e.target.value))} className="rounded border border-border bg-bg px-2 py-1">
+            </Select>
+          </Field>
+          <Field label="Variant A version" htmlFor="exp-variant-a">
+            <Select id="exp-variant-a" value={variantAVersion} onChange={(e) => setVariantAVersion(Number(e.target.value))} className="w-28">
               <option value="">—</option>
               {versionsForKey.map((v) => (
                 <option key={v.version} value={v.version}>
                   v{v.version}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Variant B version</span>
-            <select value={variantBVersion} onChange={(e) => setVariantBVersion(Number(e.target.value))} className="rounded border border-border bg-bg px-2 py-1">
+            </Select>
+          </Field>
+          <Field label="Variant B version" htmlFor="exp-variant-b">
+            <Select id="exp-variant-b" value={variantBVersion} onChange={(e) => setVariantBVersion(Number(e.target.value))} className="w-28">
               <option value="">—</option>
               {versionsForKey.map((v) => (
                 <option key={v.version} value={v.version}>
                   v{v.version}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Traffic to B (0-1)</span>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              value={trafficSplit}
-              onChange={(e) => setTrafficSplit(e.target.value)}
-              className="w-20 rounded border border-border bg-bg px-2 py-1"
-            />
-          </label>
-          <button type="button" disabled={busy} onClick={create} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
+            </Select>
+          </Field>
+          <Field label="Traffic to B (0-1)" htmlFor="exp-traffic-split">
+            <Input id="exp-traffic-split" type="number" min="0" max="1" step="0.05" value={trafficSplit} onChange={(e) => setTrafficSplit(e.target.value)} className="w-24" />
+          </Field>
+          <Button disabled={busy} onClick={create}>
             Start experiment
-          </button>
+          </Button>
         </div>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      </section>
+      </Card>
 
       <section>
-        <h2 className="text-sm font-medium text-muted">Experiments</h2>
+        <h2 className="text-sm font-semibold text-fg">Experiments</h2>
         {experiments.length === 0 ? (
           <p className="mt-2 text-sm text-muted">None yet.</p>
         ) : (
-          <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
+          <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-surface shadow-sm">
             {experiments.map((e) => (
-              <li key={e.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <li key={e.id} className="flex items-center justify-between px-5 py-3.5 text-sm">
                 <div>
-                  <p className="font-medium text-fg">{e.agentKey}</p>
-                  <p className="text-xs text-muted">
-                    A: v{e.variantAVersion} · B: v{e.variantBVersion} · {Math.round(e.trafficSplit * 100)}% to B · {e.status}
+                  <p className="flex items-center gap-2 font-medium text-fg">
+                    {e.agentKey} <Badge variant={e.status === "active" ? "success" : "neutral"}>{e.status}</Badge>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    A: v{e.variantAVersion} · B: v{e.variantBVersion} · {Math.round(e.trafficSplit * 100)}% to B
                   </p>
                 </div>
                 {e.status === "active" && (
-                  <button type="button" disabled={busy} onClick={() => stop(e.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg disabled:opacity-50">
+                  <Button variant="secondary" disabled={busy} onClick={() => stop(e.id)} className="px-3 py-1.5 text-xs">
                     Stop
-                  </button>
+                  </Button>
                 )}
               </li>
             ))}

@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { UserPlus } from "lucide-react";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Field, Input, Select } from "../ui/Input";
+import { Badge } from "../ui/Badge";
 
 export type Role = "owner" | "admin" | "supervisor" | "agent" | "viewer";
 const ROLES: Role[] = ["owner", "admin", "supervisor", "agent", "viewer"];
@@ -67,41 +72,37 @@ export function TeamManagement({ users, invites, currentUserId }: { users: TeamU
 
   return (
     <div className="mt-6 space-y-6">
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">Invite a teammate</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Email</span>
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              className="w-56 rounded border border-border bg-bg px-2 py-1"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Role</span>
-            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)} className="rounded border border-border bg-bg px-2 py-1">
+      <Card className="p-6">
+        <div className="flex items-center gap-2">
+          <UserPlus size={16} className="text-muted" />
+          <h2 className="text-sm font-semibold text-fg">Invite a teammate</h2>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <Field label="Email" htmlFor="invite-email">
+            <Input id="invite-email" type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-64" />
+          </Field>
+          <Field label="Role" htmlFor="invite-role">
+            <Select id="invite-role" value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)} className="w-40">
               {ROLES.map((r) => (
                 <option key={r} value={r}>
                   {r}
                 </option>
               ))}
-            </select>
-          </label>
-          <button type="button" disabled={busy || !inviteEmail} onClick={sendInvite} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
+            </Select>
+          </Field>
+          <Button disabled={busy || !inviteEmail} onClick={sendInvite}>
             Send invite
-          </button>
+          </Button>
         </div>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      </section>
+      </Card>
 
       {invites.length > 0 && (
         <section>
-          <h2 className="text-sm font-medium text-muted">Pending invites</h2>
-          <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
+          <h2 className="text-sm font-semibold text-fg">Pending invites</h2>
+          <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-surface shadow-sm">
             {invites.map((invite) => (
-              <li key={invite.id} className="flex items-center justify-between px-4 py-3 text-sm">
+              <li key={invite.id} className="flex items-center justify-between px-5 py-3.5 text-sm">
                 <div>
                   <p className="font-medium text-fg">{invite.email}</p>
                   <p className="text-xs text-muted">
@@ -115,36 +116,30 @@ export function TeamManagement({ users, invites, currentUserId }: { users: TeamU
       )}
 
       <section>
-        <h2 className="text-sm font-medium text-muted">Team</h2>
-        <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
+        <h2 className="text-sm font-semibold text-fg">Team</h2>
+        <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-surface shadow-sm">
           {users.map((u) => (
-            <li key={u.id} className="flex items-center justify-between px-4 py-3 text-sm">
-              <div>
-                <p className="font-medium text-fg">
-                  {u.email} {u.status === "disabled" && <span className="text-xs text-danger">(disabled)</span>}
-                </p>
+            <li key={u.id} className="flex items-center justify-between px-5 py-3.5 text-sm">
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-fg">{u.email}</p>
+                {u.status === "disabled" && <Badge variant="danger">Disabled</Badge>}
               </div>
               <div className="flex items-center gap-2">
-                <select
-                  value={u.role}
-                  disabled={busy || u.id === currentUserId}
-                  onChange={(e) => updateUser(u.id, { role: e.target.value as Role })}
-                  className="rounded border border-border bg-bg px-2 py-1 text-xs disabled:opacity-50"
-                >
+                <Select value={u.role} disabled={busy || u.id === currentUserId} onChange={(e) => updateUser(u.id, { role: e.target.value as Role })} className="w-32 py-1.5 text-xs">
                   {ROLES.map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
                   ))}
-                </select>
-                <button
-                  type="button"
+                </Select>
+                <Button
+                  variant="secondary"
                   disabled={busy || u.id === currentUserId}
                   onClick={() => updateUser(u.id, { status: u.status === "active" ? "disabled" : "active" })}
-                  className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg disabled:opacity-50"
+                  className="px-3 py-1.5 text-xs"
                 >
                   {u.status === "active" ? "Deactivate" : "Reactivate"}
-                </button>
+                </Button>
               </div>
             </li>
           ))}

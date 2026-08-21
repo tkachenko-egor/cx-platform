@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { KeyRound } from "lucide-react";
+import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
+import { Field, Input, Select } from "../ui/Input";
+import { Badge } from "../ui/Badge";
 
 type Provider = "anthropic" | "openai";
 const PROVIDERS: Provider[] = ["anthropic", "openai"];
@@ -62,60 +67,55 @@ export function ApiKeysManagement({ credentials }: { credentials: ApiKeyRow[] })
 
   return (
     <div className="mt-6 space-y-6">
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">Set a key</h2>
-        <div className="mt-3 flex flex-wrap items-end gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Provider</span>
-            <select value={provider} onChange={(e) => setProvider(e.target.value as Provider)} className="rounded border border-border bg-bg px-2 py-1">
+      <Card className="p-6">
+        <div className="flex items-center gap-2">
+          <KeyRound size={16} className="text-muted" />
+          <h2 className="text-sm font-semibold text-fg">Set a key</h2>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <Field label="Provider" htmlFor="key-provider">
+            <Select id="key-provider" value={provider} onChange={(e) => setProvider(e.target.value as Provider)} className="w-48">
               {PROVIDERS.map((p) => (
                 <option key={p} value={p}>
                   {p}
                   {activeByProvider.has(p) ? " (has an active key)" : ""}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">Label</span>
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Anthropic (prod)" className="w-48 rounded border border-border bg-bg px-2 py-1" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-muted">API key</span>
-            <input
-              type="password"
-              value={plaintextKey}
-              onChange={(e) => setPlaintextKey(e.target.value)}
-              placeholder="sk-..."
-              className="w-64 rounded border border-border bg-bg px-2 py-1"
-            />
-          </label>
-          <button type="button" disabled={busy || !label || !plaintextKey} onClick={setKey} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
+            </Select>
+          </Field>
+          <Field label="Label" htmlFor="key-label">
+            <Input id="key-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Anthropic (prod)" className="w-56" />
+          </Field>
+          <Field label="API key" htmlFor="key-secret">
+            <Input id="key-secret" type="password" value={plaintextKey} onChange={(e) => setPlaintextKey(e.target.value)} placeholder="sk-..." className="w-64" />
+          </Field>
+          <Button disabled={busy || !label || !plaintextKey} onClick={setKey}>
             Save key
-          </button>
+          </Button>
         </div>
         <p className="mt-2 text-xs text-muted">Entered once — it&apos;s never displayed again, only its last 4 characters.</p>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
-      </section>
+      </Card>
 
       <section>
-        <h2 className="text-sm font-medium text-muted">Keys</h2>
-        <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
-          {credentials.length === 0 && <li className="px-4 py-3 text-sm text-muted">No keys set yet — falling back to the ANTHROPIC_API_KEY/OPENAI_API_KEY env vars, if present.</li>}
+        <h2 className="text-sm font-semibold text-fg">Keys</h2>
+        <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-surface shadow-sm">
+          {credentials.length === 0 && <li className="px-5 py-3.5 text-sm text-muted">No keys set yet — falling back to the ANTHROPIC_API_KEY/OPENAI_API_KEY env vars, if present.</li>}
           {credentials.map((c) => (
-            <li key={c.id} className="flex items-center justify-between px-4 py-3 text-sm">
+            <li key={c.id} className="flex items-center justify-between px-5 py-3.5 text-sm">
               <div>
-                <p className="font-medium text-fg">
-                  {c.provider} · {c.label} {!c.isActive && <span className="text-xs text-muted">(inactive)</span>}
+                <p className="flex items-center gap-2 font-medium text-fg">
+                  {c.provider} · {c.label}
+                  {!c.isActive && <Badge>Inactive</Badge>}
                 </p>
-                <p className="text-xs text-muted">
+                <p className="mt-0.5 text-xs text-muted">
                   ...{c.keyLast4} · added by {c.ownerEmail} · {c.createdAtFormatted}
                 </p>
               </div>
               {c.isActive && (
-                <button type="button" disabled={busy} onClick={() => deactivate(c.id)} className="rounded-lg border border-border px-3 py-1.5 text-xs text-fg disabled:opacity-50">
+                <Button variant="secondary" disabled={busy} onClick={() => deactivate(c.id)} className="px-3 py-1.5 text-xs">
                   Deactivate
-                </button>
+                </Button>
               )}
             </li>
           ))}
