@@ -63,4 +63,13 @@ export class AuditLogRepository extends TenantScopedRepository {
     const rows = this.db.prepare(`SELECT * FROM audit_log WHERE tenant_id = ? AND target = ? ORDER BY created_at ASC`).all(this.tenantId, target) as AuditLogRow[];
     return rows.map(rowToEntry);
   }
+
+  /** Phase 3 M3: paginated viewer feed — newest first, optionally continuing from a `before` cursor (an earlier row's createdAt). */
+  listRecent(input?: { limit?: number; before?: string }): AuditLogEntry[] {
+    const limit = input?.limit ?? 50;
+    const rows = input?.before
+      ? (this.db.prepare(`SELECT * FROM audit_log WHERE tenant_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?`).all(this.tenantId, input.before, limit) as AuditLogRow[])
+      : (this.db.prepare(`SELECT * FROM audit_log WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ?`).all(this.tenantId, limit) as AuditLogRow[]);
+    return rows.map(rowToEntry);
+  }
 }

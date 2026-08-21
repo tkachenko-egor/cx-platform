@@ -68,6 +68,24 @@ describe("users and sessions", () => {
     expect(sessions.getByTokenHash(tokenHash)).toBeUndefined();
   });
 
+  it("UserRepository.update() changes role/status but never crosses a tenant boundary", () => {
+    const db = createDb(":memory:");
+    const tenants = new TenantRepository(db);
+    const tenantA = tenants.create("Tenant A", "tenant-a");
+    const tenantB = tenants.create("Tenant B", "tenant-b");
+
+    const userA = new UserRepository(db, tenantA).create({ email: "agent@tenant-a.demo", passwordHash: "x", role: "agent" });
+
+    const updated = new UserRepository(db, tenantA).update(userA.id, { role: "supervisor", status: "disabled" });
+    expect(updated?.role).toBe("supervisor");
+    expect(updated?.status).toBe("disabled");
+    expect(new UserRepository(db, tenantA).get(userA.id)?.role).toBe("supervisor");
+
+    // Tenant B can't touch tenant A's user, even by guessing its id.
+    expect(new UserRepository(db, tenantB).update(userA.id, { role: "owner" })).toBeUndefined();
+    expect(new UserRepository(db, tenantA).get(userA.id)?.role).toBe("supervisor");
+  });
+
   it("a session past its expiry is distinguishable from a live one (the check getSessionUser applies)", () => {
     const db = createDb(":memory:");
     const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");

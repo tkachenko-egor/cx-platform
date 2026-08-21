@@ -80,4 +80,18 @@ export class UserRepository extends TenantScopedRepository {
   setPasswordHash(id: string, passwordHash: string): void {
     this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(passwordHash, new Date().toISOString(), this.tenantId, id);
   }
+
+  /** Phase 3 M3: team management — role reassignment / deactivation. WHERE tenant_id = ? AND id = ? throughout, matching get()'s scoping. */
+  update(id: string, input: { role?: Role; status?: "active" | "disabled"; skills?: string[] }): User | undefined {
+    const existing = this.get(id);
+    if (!existing) return undefined;
+    const role = input.role ?? existing.role;
+    const status = input.status ?? existing.status;
+    const skills = input.skills ?? existing.skills;
+    const now = new Date().toISOString();
+    this.db
+      .prepare(`UPDATE users SET role = ?, status = ?, skills = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`)
+      .run(role, status, JSON.stringify(skills), now, this.tenantId, id);
+    return { ...existing, role, status, skills, updatedAt: now };
+  }
 }
