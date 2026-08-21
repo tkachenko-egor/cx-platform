@@ -33,7 +33,12 @@ export function ChatPanel() {
             <p className="text-sm text-muted">{greeting}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} type="button" onClick={() => sendMessage(s)} className="rounded-full border border-border px-3 py-1.5 text-xs text-fg hover:border-accent hover:text-accent">
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => sendMessage(s)}
+                  className="rounded-full border border-border px-3 py-1.5 text-xs text-fg transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent"
+                >
                   {s}
                 </button>
               ))}
@@ -44,7 +49,7 @@ export function ChatPanel() {
         {messages.map((m) => (
           <div key={m.id} tabIndex={-1} className={m.role === "user" ? "flex justify-end" : ""}>
             {m.role === "user" ? (
-              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-fg px-3 py-2 text-sm text-bg">{m.text}</div>
+              <div className="max-w-[85%] rounded-2xl rounded-br-sm bg-fg px-3 py-2 text-sm text-bg shadow-sm">{m.text}</div>
             ) : (
               <div className="max-w-full space-y-2">
                 {m.role === "agent_human" && <p className="text-[11px] font-medium uppercase tracking-wide text-muted">Colleague</p>}

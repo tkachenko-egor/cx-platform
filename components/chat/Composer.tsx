@@ -28,13 +28,13 @@ export function Composer({ onSend, disabled }: { onSend: (text: string) => void;
         rows={1}
         placeholder="Type a message…"
         aria-label="Message"
-        className="max-h-24 flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent"
+        className="max-h-24 flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/15"
       />
       <button
         type="button"
         onClick={submit}
         disabled={disabled || !value.trim()}
-        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-fg disabled:opacity-40"
+        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-fg shadow-sm transition-all hover:brightness-110 disabled:opacity-40 disabled:hover:brightness-100"
       >
         Send
       </button>

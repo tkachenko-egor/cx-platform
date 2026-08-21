@@ -9,7 +9,7 @@ const TONE_CLASSES: Record<string, string> = {
 
 export function OrderStatusCard({ data }: { data: OrderStatusCardData }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
+    <div className="rounded-xl border border-border bg-surface p-3 text-sm shadow-sm">
       <div className="flex items-center justify-between">
         <span className="font-medium text-fg">{data.order_id}</span>
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[data.status_tone] ?? ""}`}>{data.status_label}</span>

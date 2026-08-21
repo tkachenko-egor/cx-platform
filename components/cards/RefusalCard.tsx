@@ -2,7 +2,7 @@ import type { RefusalCard as RefusalCardData } from "../../src/tools/amarelle/ca
 
 export function RefusalCard({ data }: { data: RefusalCardData }) {
   return (
-    <div className="rounded-xl border border-border bg-surface p-3 text-sm">
+    <div className="rounded-xl border border-border bg-surface p-3 text-sm shadow-sm">
       <p className="font-medium text-fg">{data.refusal_reason}</p>
       <blockquote className="mt-2 border-l-2 border-border pl-3 text-xs italic text-muted">
         {data.policy_quote} — {data.policy_doc_title}
