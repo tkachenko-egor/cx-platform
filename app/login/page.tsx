@@ -2,6 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Card } from "../../components/ui/Card";
+import { Button } from "../../components/ui/Button";
+import { Field, Input } from "../../components/ui/Input";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,54 +36,40 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto max-w-sm px-6 py-16">
-      <h1 className="text-2xl font-semibold text-fg">Staff sign in</h1>
-      <p className="mt-1 text-sm text-muted">Human desk access — seeded accounts only, no self-serve signup.</p>
-
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <div>
-          <label htmlFor="email" className="block text-sm text-muted">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            autoComplete="username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent"
-          />
-        </div>
-        <div>
-          <label htmlFor="password" className="block text-sm text-muted">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent"
-          />
+    <main
+      className="flex min-h-screen items-center justify-center px-6 py-16"
+      style={{ background: "radial-gradient(circle at 50% 0%, var(--color-accent-soft), var(--color-bg) 55%)" }}
+    >
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center justify-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-sm font-bold text-accent-fg shadow-sm">CX</div>
+          <span className="text-lg font-semibold tracking-tight text-fg">CX Platform</span>
         </div>
 
-        {error && <p className="text-sm text-danger">{error}</p>}
+        <Card className="p-8">
+          <h1 className="text-xl font-semibold text-fg">Staff sign in</h1>
+          <p className="mt-1 text-sm text-muted">Human desk access — seeded accounts only, no self-serve signup.</p>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-fg disabled:opacity-50"
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <Field label="Email" htmlFor="email">
+              <Input id="email" type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Password" htmlFor="password">
+              <Input id="password" type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            </Field>
 
-        <a href="/forgot-password" className="block text-center text-sm text-muted hover:text-fg">
-          Forgot your password?
-        </a>
-      </form>
+            {error && <p className="text-sm text-danger">{error}</p>}
+
+            <Button type="submit" disabled={submitting} className="w-full">
+              {submitting ? "Signing in…" : "Sign in"}
+            </Button>
+
+            <a href="/forgot-password" className="block text-center text-sm text-muted hover:text-fg">
+              Forgot your password?
+            </a>
+          </form>
+        </Card>
+      </div>
     </main>
   );
 }

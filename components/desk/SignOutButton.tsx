@@ -3,7 +3,11 @@
 import { useRouter } from "next/navigation";
 
 /** endpoint/redirectTo default to the tenant-scoped logout; platform-admin pages pass the platform-admin variants (see app/platform-admin/tenants/page.tsx). */
-export function SignOutButton({ endpoint = "/api/auth/logout", redirectTo = "/login" }: { endpoint?: string; redirectTo?: string } = {}) {
+export function SignOutButton({
+  endpoint = "/api/auth/logout",
+  redirectTo = "/login",
+  className = "text-xs text-muted hover:text-fg hover:underline",
+}: { endpoint?: string; redirectTo?: string; className?: string } = {}) {
   const router = useRouter();
 
   const signOut = async () => {
@@ -13,7 +17,7 @@ export function SignOutButton({ endpoint = "/api/auth/logout", redirectTo = "/lo
   };
 
   return (
-    <button type="button" onClick={signOut} className="text-xs text-muted hover:text-fg hover:underline">
+    <button type="button" onClick={signOut} className={className}>
       Sign out
     </button>
   );
