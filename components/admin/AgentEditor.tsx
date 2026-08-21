@@ -18,27 +18,54 @@ export interface AgentEditorInitial {
   skills: string[];
 }
 
-export function AgentEditor({ initial, availableTools }: { initial: AgentEditorInitial; availableTools: ToolOption[] }) {
+export interface ModelAliasOption {
+  alias: string;
+  provider: string;
+  model: string;
+}
+
+const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+export function AgentEditor({
+  initial,
+  availableTools,
+  availableModels,
+  mode = "edit",
+}: {
+  initial: AgentEditorInitial;
+  availableTools: ToolOption[];
+  availableModels: ModelAliasOption[];
+  mode?: "create" | "edit";
+}) {
   const router = useRouter();
+  const [key, setKey] = useState(initial.key);
   const [systemPrompt, setSystemPrompt] = useState(initial.systemPrompt);
-  const [modelAlias, setModelAlias] = useState(initial.modelAlias);
+  const [modelAlias, setModelAlias] = useState(initial.modelAlias || availableModels[0]?.alias || "");
   const [toolIds, setToolIds] = useState<Set<string>>(new Set(initial.toolIds));
   const [skills, setSkills] = useState(initial.skills.join(", "));
   const [guardrailsJson, setGuardrailsJson] = useState(JSON.stringify(initial.guardrails, null, 2));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const toggleTool = (key: string) => {
+  const toggleTool = (toolKey: string) => {
     setToolIds((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(toolKey)) next.delete(toolKey);
+      else next.add(toolKey);
       return next;
     });
   };
 
   const publish = async () => {
     setError(null);
+    if (mode === "create" && !KEY_PATTERN.test(key)) {
+      setError("Key must start with a letter and contain only lowercase letters, numbers, and hyphens");
+      return;
+    }
+    if (!modelAlias) {
+      setError("Choose a model");
+      return;
+    }
     let guardrails: Record<string, unknown>;
     try {
       guardrails = guardrailsJson.trim() ? JSON.parse(guardrailsJson) : {};
@@ -53,7 +80,8 @@ export function AgentEditor({ initial, availableTools }: { initial: AgentEditorI
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key: initial.key,
+          key: mode === "create" ? key : initial.key,
+          isCreate: mode === "create",
           systemPrompt,
           modelAlias,
           toolIds: [...toolIds],
@@ -62,7 +90,11 @@ export function AgentEditor({ initial, availableTools }: { initial: AgentEditorI
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not publish");
-      router.refresh();
+      if (mode === "create") {
+        router.push(`/admin/agents/${key}`);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -72,6 +104,19 @@ export function AgentEditor({ initial, availableTools }: { initial: AgentEditorI
 
   return (
     <div className="mt-6 space-y-5">
+      {mode === "create" && (
+        <div>
+          <label className="block text-sm text-muted">Key</label>
+          <input
+            value={key}
+            onChange={(e) => setKey(e.target.value.trim().toLowerCase())}
+            placeholder="e.g. billing-specialist"
+            className="mt-1 w-64 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm text-fg outline-none focus:border-accent"
+          />
+          <p className="mt-1 text-xs text-muted">Lowercase letters, numbers, and hyphens. This is how tools, the router, and handoffs refer to this agent — it can&apos;t be changed later.</p>
+        </div>
+      )}
+
       <div>
         <label className="block text-sm text-muted">System prompt</label>
         <textarea
@@ -83,12 +128,28 @@ export function AgentEditor({ initial, availableTools }: { initial: AgentEditorI
       </div>
 
       <div>
-        <label className="block text-sm text-muted">Model alias</label>
-        <input
+        <label className="block text-sm text-muted">Model</label>
+        <select
           value={modelAlias}
           onChange={(e) => setModelAlias(e.target.value)}
           className="mt-1 w-64 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-fg outline-none focus:border-accent"
-        />
+        >
+          {!availableModels.some((m) => m.alias === modelAlias) && (
+            <option value={modelAlias}>{modelAlias} (not in Admin &gt; Models)</option>
+          )}
+          {availableModels.map((m) => (
+            <option key={m.alias} value={m.alias}>
+              {m.alias} — {m.provider}:{m.model}
+            </option>
+          ))}
+        </select>
+        <p className="mt-1 text-xs text-muted">
+          Switching this republishes immediately — no redeploy. Manage what each option points to under{" "}
+          <a href="/admin/models" className="text-accent hover:underline">
+            Admin &gt; Models
+          </a>
+          .
+        </p>
       </div>
 
       <div>
@@ -125,7 +186,7 @@ export function AgentEditor({ initial, availableTools }: { initial: AgentEditorI
       {error && <p className="text-sm text-danger">{error}</p>}
 
       <button type="button" disabled={busy} onClick={publish} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg disabled:opacity-50">
-        {busy ? "Publishing…" : `Publish v${initial.version + 1}`}
+        {mode === "create" ? (busy ? "Creating…" : "Create agent") : busy ? "Publishing…" : `Publish v${initial.version + 1}`}
       </button>
     </div>
   );

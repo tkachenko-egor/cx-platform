@@ -85,4 +85,12 @@ export class ModelAliasRepository extends TenantScopedRepository {
       .get(this.tenantId, alias) as ModelAliasRow | undefined;
     return row ? rowToModelAlias(row) : undefined;
   }
+
+  /** Phase 4 M1 admin UI: every alias a tenant has defined, for a "pick a model" dropdown. */
+  list(): ModelAlias[] {
+    const rows = this.db
+      .prepare(`SELECT id, tenant_id, alias, provider, model, fallback_chain FROM model_aliases WHERE tenant_id = ? ORDER BY alias`)
+      .all(this.tenantId) as ModelAliasRow[];
+    return rows.map(rowToModelAlias);
+  }
 }

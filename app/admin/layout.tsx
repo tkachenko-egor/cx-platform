@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 const NAV_LINKS = [
   { href: "/admin/agents", label: "Agents" },
+  { href: "/admin/models", label: "Models" },
   { href: "/admin/tools", label: "Tools" },
   { href: "/admin/api-keys", label: "API Keys" },
   { href: "/admin/team", label: "Team" },

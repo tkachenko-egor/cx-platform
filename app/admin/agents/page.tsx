@@ -20,9 +20,14 @@ export default async function AgentsPage() {
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-fg">Agents</h1>
-        <Link href="/admin/agents/flow" className="text-xs text-accent hover:underline">
-          Flow builder →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/admin/agents/new" className="text-xs text-accent hover:underline">
+            + New agent
+          </Link>
+          <Link href="/admin/agents/flow" className="text-xs text-accent hover:underline">
+            Flow builder →
+          </Link>
+        </div>
       </div>
       <p className="mt-1 text-sm text-muted">Latest published version of each agent. Editing always publishes a new version — existing conversations keep the version they started on.</p>
 

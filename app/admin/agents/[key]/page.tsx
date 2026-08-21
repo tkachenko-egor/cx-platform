@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { getPlatformContext } from "../../../../src/platform/context";
 import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-repository";
 import { ToolDefRepository } from "../../../../src/db/repositories/tool-repository";
+import { ModelAliasRepository } from "../../../../src/db/repositories/model-alias-repository";
 import { AgentEditor } from "../../../../components/admin/AgentEditor";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
   if (!agentDef) notFound();
 
   const availableTools = new ToolDefRepository(db, tenant).list().map((t) => ({ key: t.key, description: t.description }));
+  const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -31,6 +33,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           skills: agentDef.skills,
         }}
         availableTools={availableTools}
+        availableModels={availableModels}
       />
     </main>
   );
