@@ -4,6 +4,8 @@ import { MessageRepository } from "../../../../../src/db/repositories/message-re
 import { EventRepository } from "../../../../../src/db/repositories/event-repository";
 import { getOrCreateSession } from "../../../../../src/agents/sessions-store";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
+import { setConversationState } from "../../../../../src/core/state-transition";
+import { clearSlaClock } from "../../../../../src/core/sla";
 
 export const runtime = "nodejs";
 
@@ -27,9 +29,11 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
   const conversation = conversations.get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
+  const events = new EventRepository(db, tenant);
   new MessageRepository(db, tenant).append({ conversationId, role: "agent_human", content: text });
-  conversations.setState(conversationId, "human_active");
-  new EventRepository(db, tenant).append({ conversationId, type: "assigned", actor: staffUser.id, payload: { action: "reply_sent" } });
+  setConversationState(conversations, events, conversationId, "human_active", staffUser.id);
+  clearSlaClock(conversations, conversationId); // a human has now responded — the "time to first response" clock stops
+  events.append({ conversationId, type: "assigned", actor: staffUser.id, payload: { action: "reply_sent" } });
 
   // Keep the model's own continuity in sync in case the conversation is
   // later handed back to the bot mid-thread.

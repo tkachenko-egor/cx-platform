@@ -5,13 +5,16 @@ import type { ChatMessage, ChatRequest } from "../gateway/types";
 import type { AgentDef } from "../db/repositories/agent-def-repository";
 import type { TenantContext } from "../tenancy/context";
 import { today } from "../core/clock";
-import { hybridSearch, type KbScope } from "../kb/retrieval";
+import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval";
+import { lookupCache, writeCache } from "../kb/semantic-cache";
 import { knowledgeBlock, sessionBlock, handoffBlock } from "./system-prompt";
-import { scanForHumanRequest, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
+import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
 import type { AgentGuardrailConfig } from "../guardrails/types";
 import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
 import { HANDOFF_TOOL_NAME, handoffToolDefinition, parseHandoffPackage, type HandoffPackage } from "./handoff";
+import { KbRetrievalLogRepository } from "../db/repositories/kb-retrieval-log-repository";
+import { DEFAULT_LOW_CONFIDENCE_THRESHOLD } from "../analytics/coverage";
 
 export interface RuntimeDeps {
   db: Database.Database;
@@ -28,7 +31,8 @@ export type EscalationReason =
   | "approval_requested"
   | "guardrail_blocked"
   | "handoff_cycle_detected"
-  | "router_low_confidence";
+  | "router_low_confidence"
+  | "negative_sentiment";
 
 export interface AgentTurnResult {
   assistantText: string;
@@ -42,6 +46,8 @@ export interface AgentTurnResult {
   guardrailReasons: string[];
   /** Set when this specialist called handoff_to_agent mid-turn instead of finishing the reply itself (FR-6.7). */
   handoffRequested?: { target: string; package: HandoffPackage };
+  /** Phase 2 M5: true when this turn's best retrieval score was below the coverage-gap threshold — a candidate for the human review queue even on a non-escalating turn. Always false on a cache hit or blocked turn (no fresh retrieval happened). */
+  lowKbConfidence: boolean;
   updatedHistory: ChatMessage[];
 }
 
@@ -89,6 +95,7 @@ export async function runAgentTurn(
       loopCapHit: false,
       guardrailBlocked: true,
       guardrailReasons: userInputGuardrail.reasons,
+      lowKbConfidence: false,
       updatedHistory: [...messages, { role: "assistant", content: fallback }],
     };
   }
@@ -96,39 +103,15 @@ export async function runAgentTurn(
   const severe = scanForSevereSymptoms(userText);
   const humanRequest = scanForHumanRequest(userText);
   const reactionMention = scanForReactionMention(userText);
+  const sentiment = scanForNegativeSentiment(userText);
 
-  const kbScope = (agent.kbScope as KbScope | undefined) ?? { audience: ["customer"] };
-  const retrieved = await hybridSearch(deps.db, tenant, kbScope, userText, KB_TOP_K, deps.embeddings);
+  // Phase 2 M3b: skip the cache lookup entirely (not just the write) for
+  // anything the deterministic scanners already flagged — a severe-symptom
+  // or explicit-human-request message deserves a freshly reasoned reply,
+  // not a similar-but-not-identical cached one.
+  const deterministicSignalHit = severe.hit || humanRequest.hit || reactionMention.hit || sentiment.hit;
+  const cacheHit = agent.semanticCacheEnabled && !deterministicSignalHit ? await lookupCache(deps.db, tenant, agent.key, userText, deps.embeddings) : undefined;
 
-  // FR-7.13: retrieved content is untrusted — a poisoned KB article is a
-  // real attack, screened the same way the user's own message just was.
-  const chunkGuardrail = checkRetrievedChunkGuardrails(
-    guardrailConfig,
-    retrieved.map((r) => ({ docId: r.article.docId, text: r.chunk.text })),
-  );
-  if (chunkGuardrail.blocked) {
-    const fallback = "I'm having trouble finding a reliable answer to that right now — let me get a colleague to help.";
-    return {
-      assistantText: fallback,
-      cards: [],
-      citableDocs: [],
-      escalate: true,
-      escalationReasons: ["guardrail_blocked"],
-      loopCapHit: false,
-      guardrailBlocked: true,
-      guardrailReasons: chunkGuardrail.reasons,
-      updatedHistory: [...messages, { role: "assistant", content: fallback }],
-    };
-  }
-
-  const knowledge = knowledgeBlock(retrieved.map((r) => ({ docId: r.article.docId, title: r.article.title, effective: r.article.effective, text: r.chunk.text })));
-  const session = sessionBlock({ today: today(), severeSymptomSignal: severe.hit });
-  const handoff = handoffContext ? handoffBlock(handoffContext) : null;
-
-  const toolDefinitions = toGatewayToolDefinitions(agent.toolIds);
-  if (agent.handoffTargets.length > 0) {
-    toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
-  }
   const cards: unknown[] = [];
   const toolResultTexts: string[] = [];
   let round = 0;
@@ -136,6 +119,9 @@ export async function runAgentTurn(
   let approvalRequested = false;
   const genericEscalationReasons: EscalationReason[] = [];
   let handoffRequested: { target: string; package: HandoffPackage } | undefined;
+  let retrieved: RetrievedChunk[] = [];
+  let citableDocs: { docId: string; title: string }[] = [];
+  let lowKbConfidence = false;
 
   // Output guardrails need the complete reply, but text streams live —
   // blockingMode buffers it all and releases at once once the check
@@ -149,56 +135,112 @@ export async function runAgentTurn(
     else callbacks.onTextDelta?.(delta);
   };
 
-  while (round < ROUND_CAP) {
-    round++;
-    finalText = "";
+  if (cacheHit) {
+    finalText = cacheHit.responseText;
+    citableDocs = cacheHit.citableDocs;
+    messages.push({ role: "assistant", content: finalText });
+    if (blockingMode) bufferedDeltas.push(finalText);
+    else callbacks.onTextDelta?.(finalText);
+  } else {
+    const kbScope = (agent.kbScope as KbScope | undefined) ?? { audience: ["customer"] };
+    retrieved = await hybridSearch(deps.db, tenant, kbScope, userText, KB_TOP_K, deps.embeddings);
 
-    const systemMessages = [{ role: "system" as const, content: agent.systemPrompt }, { role: "system" as const, content: knowledge }, { role: "system" as const, content: session }];
-    if (handoff) systemMessages.push({ role: "system" as const, content: handoff });
+    // Coverage-gap reporting (Phase 2 M3a): logged regardless of whether
+    // this turn goes on to escalate — a low-confidence retrieval the model
+    // papers over with a plausible-sounding answer should still surface.
+    const bestScore = retrieved[0]?.score ?? 0;
+    lowKbConfidence = bestScore < DEFAULT_LOW_CONFIDENCE_THRESHOLD;
+    new KbRetrievalLogRepository(deps.db, tenant).record({
+      conversationId,
+      runId,
+      queryText: userText,
+      bestScore,
+      retrievedDocIds: retrieved.map((r) => r.article.docId),
+    });
 
-    const request: ChatRequest = {
-      messages: [...systemMessages, ...messages],
-      tools: toolDefinitions,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-    };
-
-    const response = await deps.gateway.chatStream(tenant, agent.modelAlias, runId, request, forwardDelta);
-
-    messages.push({ role: "assistant", content: response.content, toolCalls: response.toolCalls.length ? response.toolCalls : undefined });
-
-    if (response.stopReason !== "tool_use" || response.toolCalls.length === 0) {
-      break;
+    // FR-7.13: retrieved content is untrusted — a poisoned KB article is a
+    // real attack, screened the same way the user's own message just was.
+    const chunkGuardrail = checkRetrievedChunkGuardrails(
+      guardrailConfig,
+      retrieved.map((r) => ({ docId: r.article.docId, text: r.chunk.text })),
+    );
+    if (chunkGuardrail.blocked) {
+      const fallback = "I'm having trouble finding a reliable answer to that right now — let me get a colleague to help.";
+      return {
+        assistantText: fallback,
+        cards: [],
+        citableDocs: [],
+        escalate: true,
+        escalationReasons: ["guardrail_blocked"],
+        loopCapHit: false,
+        guardrailBlocked: true,
+        guardrailReasons: chunkGuardrail.reasons,
+        lowKbConfidence: false,
+        updatedHistory: [...messages, { role: "assistant", content: fallback }],
+      };
     }
 
-    for (const call of response.toolCalls) {
-      if (call.name === HANDOFF_TOOL_NAME) {
-        const target = typeof call.arguments.target === "string" ? call.arguments.target : "";
-        handoffRequested = { target, package: parseHandoffPackage(call.arguments) };
-        messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: JSON.stringify({ ok: true, handoff: true }) });
-        continue;
-      }
+    const knowledge = knowledgeBlock(retrieved.map((r) => ({ docId: r.article.docId, title: r.article.title, effective: r.article.effective, text: r.chunk.text })));
+    const session = sessionBlock({ today: today(), severeSymptomSignal: severe.hit });
+    const handoff = handoffContext ? handoffBlock(handoffContext) : null;
 
-      callbacks.onToolStart?.(call.name);
-      const result = executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
-
-      if (isCardBearing(result) && result.card) cards.push(result.card);
-      if (isEscalatingResult(result) && result.escalate?.reason) {
-        genericEscalationReasons.push(result.escalate.reason as EscalationReason);
-      }
-      if (isApprovalPendingResult(result) && result.needsApproval) {
-        approvalRequested = true;
-      }
-
-      const resultText = JSON.stringify(result);
-      toolResultTexts.push(resultText);
-      messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: resultText });
+    const toolDefinitions = toGatewayToolDefinitions(agent.toolIds);
+    if (agent.handoffTargets.length > 0) {
+      toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
     }
 
-    if (handoffRequested) break;
+    while (round < ROUND_CAP) {
+      round++;
+      finalText = "";
+
+      const systemMessages = [{ role: "system" as const, content: agent.systemPrompt }, { role: "system" as const, content: knowledge }, { role: "system" as const, content: session }];
+      if (handoff) systemMessages.push({ role: "system" as const, content: handoff });
+
+      const request: ChatRequest = {
+        messages: [...systemMessages, ...messages],
+        tools: toolDefinitions,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      };
+
+      const response = await deps.gateway.chatStream(tenant, agent.modelAlias, runId, request, forwardDelta);
+
+      messages.push({ role: "assistant", content: response.content, toolCalls: response.toolCalls.length ? response.toolCalls : undefined });
+
+      if (response.stopReason !== "tool_use" || response.toolCalls.length === 0) {
+        break;
+      }
+
+      for (const call of response.toolCalls) {
+        if (call.name === HANDOFF_TOOL_NAME) {
+          const target = typeof call.arguments.target === "string" ? call.arguments.target : "";
+          handoffRequested = { target, package: { ...parseHandoffPackage(call.arguments), sentiment: sentiment.hit ? "negative" : "neutral" } };
+          messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: JSON.stringify({ ok: true, handoff: true }) });
+          continue;
+        }
+
+        callbacks.onToolStart?.(call.name);
+        const result = executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
+
+        if (isCardBearing(result) && result.card) cards.push(result.card);
+        if (isEscalatingResult(result) && result.escalate?.reason) {
+          genericEscalationReasons.push(result.escalate.reason as EscalationReason);
+        }
+        if (isApprovalPendingResult(result) && result.needsApproval) {
+          approvalRequested = true;
+        }
+
+        const resultText = JSON.stringify(result);
+        toolResultTexts.push(resultText);
+        messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: resultText });
+      }
+
+      if (handoffRequested) break;
+    }
+
+    citableDocs = [...new Map(retrieved.map((r) => [r.article.docId, { docId: r.article.docId, title: r.article.title }])).values()];
   }
 
   const loopCapHit = round >= ROUND_CAP;
-  const citableDocs = [...new Map(retrieved.map((r) => [r.article.docId, { docId: r.article.docId, title: r.article.title }])).values()];
 
   const outputGuardrail = checkOutputGuardrails(guardrailConfig, finalText, citableDocs.map((d) => d.docId), toolResultTexts.join("\n"));
 
@@ -215,10 +257,20 @@ export async function runAgentTurn(
   if (severe.hit) escalationReasons.push("severe_symptom");
   else if (reactionMention.hit) escalationReasons.push("reaction_mention");
   if (humanRequest.hit) escalationReasons.push("human_request");
+  if (sentiment.hit) escalationReasons.push("negative_sentiment");
   escalationReasons.push(...genericEscalationReasons);
   if (approvalRequested) escalationReasons.push("approval_requested");
   if (outputGuardrail.blocked) escalationReasons.push("guardrail_blocked");
   if (loopCapHit) escalationReasons.push("loop_cap");
+
+  // Phase 2 M3b: only write a fresh (non-cache-hit) answer back to the
+  // cache, and only when nothing about this turn was unusual — no tool
+  // call, no handoff, no guardrail block, no escalation of any kind. A
+  // wrong cached answer looks exactly like a right one, so the write side
+  // stays as conservative as the read side.
+  if (agent.semanticCacheEnabled && !cacheHit && toolResultTexts.length === 0 && !handoffRequested && escalationReasons.length === 0) {
+    await writeCache(deps.db, tenant, agent.key, userText, finalText, citableDocs, deps.embeddings);
+  }
 
   return {
     assistantText: finalText,
@@ -230,6 +282,7 @@ export async function runAgentTurn(
     guardrailBlocked: outputGuardrail.blocked,
     guardrailReasons: outputGuardrail.reasons,
     handoffRequested,
+    lowKbConfidence,
     updatedHistory: messages,
   };
 }

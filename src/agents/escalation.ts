@@ -52,3 +52,32 @@ export function scanForReactionMention(message: string): { hit: boolean; matched
   }
   return { hit: false };
 }
+
+/**
+ * Phase 2 negative-sentiment escalation: same deterministic, zero-model-call
+ * shape as the scanners above rather than a classifier call, to match the
+ * existing cost/latency posture for escalation signals. Tuned toward overt
+ * frustration/anger markers, not mere negativity — "I'm not sure this will
+ * work" shouldn't hit, "this is unacceptable" should.
+ */
+const NEGATIVE_SENTIMENT_MARKERS: string[] = [
+  // EN
+  "ridiculous", "unacceptable", "furious", "outraged", "terrible service", "worst experience",
+  "waste of my time", "extremely frustrated", "so frustrated", "fed up", "sick of this",
+  "never buying again", "never shopping here again", "disgusted", "pathetic", "incompetent",
+  "this is a joke", "absolutely awful", "horrible experience",
+  // UK
+  "жахливо", "обурливо", "розлючений", "розлючена", "найгірший досвід", "втомився від цього",
+  "втомилася від цього", "неприпустимо", "жахлива поведінка",
+  // FR
+  "ridicule", "inacceptable", "furieux", "furieuse", "pire expérience", "pire experience",
+  "j'en ai marre", "j'en ai assez", "scandaleux", "service épouvantable", "service epouvantable",
+];
+
+export function scanForNegativeSentiment(message: string): { hit: boolean; matched?: string } {
+  const lower = message.toLowerCase();
+  for (const marker of NEGATIVE_SENTIMENT_MARKERS) {
+    if (lower.includes(marker)) return { hit: true, matched: marker };
+  }
+  return { hit: false };
+}

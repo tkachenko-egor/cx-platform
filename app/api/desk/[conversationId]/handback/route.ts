@@ -2,6 +2,8 @@ import { getPlatformContext } from "../../../../../src/platform/context";
 import { ConversationRepository } from "../../../../../src/db/repositories/conversation-repository";
 import { EventRepository } from "../../../../../src/db/repositories/event-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
+import { setConversationState } from "../../../../../src/core/state-transition";
+import { clearSlaClock } from "../../../../../src/core/sla";
 
 export const runtime = "nodejs";
 
@@ -21,8 +23,8 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   const conversation = conversations.get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
-  conversations.setState(conversationId, "bot_active");
-  new EventRepository(db, tenant).append({ conversationId, type: "state_changed", actor: staffUser.id, payload: { to: "bot_active" } });
+  setConversationState(conversations, new EventRepository(db, tenant), conversationId, "bot_active", staffUser.id);
+  clearSlaClock(conversations, conversationId);
 
   return Response.json({ ok: true });
 }

@@ -1,5 +1,5 @@
 import type { RuntimeDeps } from "./runtime";
-import type { AgentDef } from "../db/repositories/agent-def-repository";
+import { AgentDefRepository, type AgentDef } from "../db/repositories/agent-def-repository";
 import type { TenantContext } from "../tenancy/context";
 import type { ChatRequest } from "../gateway/types";
 
@@ -27,6 +27,19 @@ export async function runRouterTurn(deps: RuntimeDeps, tenant: TenantContext, ru
     return { target: "", confidence: "low" };
   }
 
+  // FR-... skill-based routing (Phase 2 M3c): describe each target with its
+  // agent_defs.skills tags so the router has real capability signals to
+  // reason from, not just bare keys. Prompt-construction only — the enum
+  // itself (and the fallback-to-targets[0] behavior below) is unchanged.
+  const targetDefs = new AgentDefRepository(deps.db, tenant).listByKeys(targets);
+  const skillsByKey = new Map(targetDefs.map((d) => [d.key, d.skills]));
+  const targetDescriptions = targets
+    .map((key) => {
+      const skills = skillsByKey.get(key) ?? [];
+      return skills.length > 0 ? `${key} (handles: ${skills.join(", ")})` : key;
+    })
+    .join("; ");
+
   const request: ChatRequest = {
     messages: [
       { role: "system", content: routerAgent.systemPrompt },
@@ -40,7 +53,7 @@ export async function runRouterTurn(deps: RuntimeDeps, tenant: TenantContext, ru
           type: "object",
           required: ["target"],
           properties: {
-            target: { type: "string", enum: targets, description: "Which specialist should handle this." },
+            target: { type: "string", enum: targets, description: `Which specialist should handle this. Options — ${targetDescriptions}.` },
           },
         },
       },

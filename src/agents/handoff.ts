@@ -8,6 +8,8 @@ export interface HandoffPackage {
   summary: string;
   extractedEntities: Record<string, string>;
   instructionsForReceivingAgent: string;
+  /** FR-9.3: set from the deterministic sentiment scan (src/agents/escalation.ts), not the model — so a receiving human sees it without re-reading the transcript. */
+  sentiment?: "negative" | "neutral";
 }
 
 export const HANDOFF_TOOL_NAME = "handoff_to_agent";

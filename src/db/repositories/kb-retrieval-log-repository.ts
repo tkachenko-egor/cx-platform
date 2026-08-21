@@ -1,0 +1,64 @@
+import type Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
+import type { TenantContext } from "../../tenancy/context";
+import { TenantScopedRepository } from "../../tenancy/repository";
+
+export interface KbRetrievalLogEntry {
+  id: string;
+  tenantId: string;
+  conversationId: string;
+  runId: string;
+  queryText: string;
+  bestScore: number;
+  retrievedDocIds: string[];
+  createdAt: string;
+}
+
+interface KbRetrievalLogRow {
+  id: string;
+  tenant_id: string;
+  conversation_id: string;
+  run_id: string;
+  query_text: string;
+  best_score: number;
+  retrieved_doc_ids: string;
+  created_at: string;
+}
+
+function rowToEntry(row: KbRetrievalLogRow): KbRetrievalLogEntry {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    conversationId: row.conversation_id,
+    runId: row.run_id,
+    queryText: row.query_text,
+    bestScore: row.best_score,
+    retrievedDocIds: JSON.parse(row.retrieved_doc_ids) as string[],
+    createdAt: row.created_at,
+  };
+}
+
+/** Coverage-gap reporting substrate: one row per retrieval, regardless of whether the turn later escalates. */
+export class KbRetrievalLogRepository extends TenantScopedRepository {
+  constructor(db: Database.Database, tenant: TenantContext) {
+    super(db, tenant);
+  }
+
+  record(input: { conversationId: string; runId: string; queryText: string; bestScore: number; retrievedDocIds: string[] }): void {
+    this.db
+      .prepare(
+        `INSERT INTO kb_retrieval_log (id, tenant_id, conversation_id, run_id, query_text, best_score, retrieved_doc_ids, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(randomUUID(), this.tenantId, input.conversationId, input.runId, input.queryText, input.bestScore, JSON.stringify(input.retrievedDocIds), new Date().toISOString());
+  }
+
+  listLowConfidence(thresholdScore: number, since?: string): KbRetrievalLogEntry[] {
+    const rows = since
+      ? (this.db
+          .prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? AND created_at >= ? ORDER BY created_at DESC`)
+          .all(this.tenantId, thresholdScore, since) as KbRetrievalLogRow[])
+      : (this.db.prepare(`SELECT * FROM kb_retrieval_log WHERE tenant_id = ? AND best_score < ? ORDER BY created_at DESC`).all(this.tenantId, thresholdScore) as KbRetrievalLogRow[]);
+    return rows.map(rowToEntry);
+  }
+}

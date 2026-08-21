@@ -16,7 +16,7 @@ export interface KbScope {
 
 const RRF_K = 60;
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   let normA = 0;
   let normB = 0;

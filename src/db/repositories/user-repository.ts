@@ -11,6 +11,8 @@ export interface User {
   passwordHash: string;
   role: Role;
   status: "active" | "disabled";
+  /** Phase 2 M6b: capability tags matched against conversations.tags for assignee suggestions (src/desk/skill-match.ts). */
+  skills: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +24,7 @@ interface UserRow {
   password_hash: string;
   role: Role;
   status: "active" | "disabled";
+  skills: string;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +37,7 @@ function rowToUser(row: UserRow): User {
     passwordHash: row.password_hash,
     role: row.role,
     status: row.status,
+    skills: JSON.parse(row.skills) as string[],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -45,16 +49,16 @@ export class UserRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { email: string; passwordHash: string; role: Role }): User {
+  create(input: { email: string; passwordHash: string; role: Role; skills?: string[] }): User {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO users (id, tenant_id, email, password_hash, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`,
+        `INSERT INTO users (id, tenant_id, email, password_hash, role, status, skills, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.email, input.passwordHash, input.role, now, now);
-    return { id, tenantId: this.tenantId, email: input.email, passwordHash: input.passwordHash, role: input.role, status: "active", createdAt: now, updatedAt: now };
+      .run(id, this.tenantId, input.email, input.passwordHash, input.role, JSON.stringify(input.skills ?? []), now, now);
+    return { id, tenantId: this.tenantId, email: input.email, passwordHash: input.passwordHash, role: input.role, status: "active", skills: input.skills ?? [], createdAt: now, updatedAt: now };
   }
 
   get(id: string): User | undefined {

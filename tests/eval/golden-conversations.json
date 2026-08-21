@@ -26,6 +26,31 @@
     ]
   },
   {
+    "id": "negative-sentiment-escalates-without-model",
+    "description": "Overt frustration/anger markers must escalate to a human deterministically, before the model is ever consulted.",
+    "tags": ["escalation"],
+    "turns": [
+      {
+        "userText": "This is absolutely ridiculous, I've been waiting for weeks and I'm extremely frustrated",
+        "scriptedResponse": { "content": "I'm really sorry about the delay — let me get a colleague to help right away.", "toolCalls": [] },
+        "expectedEscalate": true,
+        "expectedEscalationReasons": ["negative_sentiment"]
+      }
+    ]
+  },
+  {
+    "id": "neutral-message-does-not-trigger-sentiment-escalation",
+    "description": "A plain, non-frustrated question must not trip the negative-sentiment scanner.",
+    "tags": ["escalation"],
+    "turns": [
+      {
+        "userText": "Hi, can you tell me the status of my order?",
+        "scriptedResponse": { "content": "Sure — could you share your order number?", "toolCalls": [] },
+        "expectedEscalate": false
+      }
+    ]
+  },
+  {
     "id": "blocks-prompt-injection-before-model-call",
     "description": "A prompt-injection attempt in the customer's own message must be blocked before any model call.",
     "tags": ["guardrails"],

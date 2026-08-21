@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
+  timezone TEXT NOT NULL DEFAULT 'UTC',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -39,6 +40,8 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   kb_scope TEXT NOT NULL DEFAULT '{}',
   handoff_targets TEXT NOT NULL DEFAULT '[]',
   guardrails TEXT NOT NULL DEFAULT '{}',
+  skills TEXT NOT NULL DEFAULT '[]',
+  semantic_cache_enabled INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)
@@ -80,6 +83,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   state TEXT NOT NULL CHECK (state IN ('bot_active','awaiting_human','human_active','snoozed','resolved','closed')),
   current_agent_key TEXT,
   assignee_id TEXT REFERENCES users(id),
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high','urgent')),
+  tags TEXT NOT NULL DEFAULT '[]',
+  sla_due_at TEXT,
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -165,6 +171,43 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_tenant ON kb_chunks(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_article ON kb_chunks(article_id);
+
+-- Phase 2 coverage-gap reporting: every retrieval's fused RRF score gets
+-- logged here, independent of whether the turn goes on to escalate — a
+-- low-confidence retrieval the model "papers over" with a plausible-sounding
+-- answer should still surface as a KB gap.
+CREATE TABLE IF NOT EXISTS kb_retrieval_log (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  conversation_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  query_text TEXT NOT NULL,
+  best_score REAL NOT NULL,
+  retrieved_doc_ids TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_retrieval_log_tenant ON kb_retrieval_log(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_kb_retrieval_log_tenant_score ON kb_retrieval_log(tenant_id, best_score);
+
+-- Phase 2 semantic caching (opt-in per agent via agent_defs.semantic_cache_enabled,
+-- default off — see CLAUDE.md-adjacent trim note: caching a wrong answer looks
+-- exactly like caching a right one, so this ships conservative). Same
+-- JSON-array-embedding precedent as kb_chunks.embedding above.
+CREATE TABLE IF NOT EXISTS semantic_cache (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  agent_key TEXT NOT NULL,
+  query_text TEXT NOT NULL,
+  query_embedding TEXT NOT NULL,
+  response_text TEXT NOT NULL,
+  citable_docs TEXT NOT NULL DEFAULT '[]',
+  hit_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_hit_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_semantic_cache_tenant_agent ON semantic_cache(tenant_id, agent_key);
 
 -- Standalone (non content=-linked) FTS5 table — kb_chunks uses a TEXT
 -- primary key, not a rowid alias, so we index chunk_id as UNINDEXED and
@@ -253,6 +296,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('owner','admin','supervisor','agent','viewer')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+  skills TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, email)
@@ -307,6 +351,62 @@ CREATE TABLE IF NOT EXISTS tickets (
 CREATE INDEX IF NOT EXISTS idx_tickets_tenant ON tickets(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_conversation ON tickets(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_tenant_status ON tickets(tenant_id, status);
+
+-- Phase 2 M4: SLA engine. Naive elapsed-time math (add target_minutes to
+-- the timestamp a conversation entered awaiting_human) — full business-hours/
+-- holiday calendars are a deliberate later-phase cut, same spirit as the
+-- Phase 1 six-week cut's own trims. applies_to_channel NULL means "all
+-- channels"; a channel-specific row (if present) takes precedence.
+CREATE TABLE IF NOT EXISTS sla_policies (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  priority TEXT NOT NULL CHECK (priority IN ('low','normal','high','urgent')),
+  target_minutes INTEGER NOT NULL,
+  applies_to_channel TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sla_policies_tenant ON sla_policies(tenant_id);
+
+-- Phase 2 M5: a review tier distinct from escalation — a conversation can
+-- stay bot_active and still get queued here (e.g. a low-confidence KB
+-- retrieval the model papered over with a plausible-sounding answer).
+-- Mirrors tool_approvals' pending/decided shape; no FK on conversation_id,
+-- same precedent as tool_approvals/kb_retrieval_log.
+CREATE TABLE IF NOT EXISTS review_queue (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  conversation_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  source_event_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','reviewed','dismissed')),
+  reviewed_by TEXT REFERENCES users(id),
+  reviewed_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_queue_tenant ON review_queue(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_review_queue_tenant_status ON review_queue(tenant_id, status);
+
+-- Phase 2 M6a: A/B testing of agent versions. Reuses agent_defs'
+-- pre-existing versioning (publish() already inserts a new row per
+-- version) rather than adding a new concept — this table just says "pick
+-- variant B this often" for a key that otherwise resolves to
+-- getLatestPublished(). traffic_split is the weight toward variant B
+-- (0-1). At most one active experiment per (tenant, agent_key).
+CREATE TABLE IF NOT EXISTS agent_experiments (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  agent_key TEXT NOT NULL,
+  variant_a_version INTEGER NOT NULL,
+  variant_b_version INTEGER NOT NULL,
+  traffic_split REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','stopped')),
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_experiments_tenant ON agent_experiments(tenant_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_experiments_one_active ON agent_experiments(tenant_id, agent_key) WHERE status = 'active';
 
 -- ─── Amarelle tenant business data (read-only for tools) ─────────────────
 -- Ported from amarelle-handoff's CSVs. This is tenant DATA, not platform
@@ -395,3 +495,19 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_tenant ON products(tenant_id);
+
+-- Phase 2 M8: canned-response macros for the desk composer. Pure text-
+-- insertion — no macro "actions" (auto-set ticket status/tag) since no
+-- desk API route mutates ticket status yet; that's a separate follow-up.
+CREATE TABLE IF NOT EXISTS macros (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  name TEXT NOT NULL,
+  body TEXT NOT NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  created_by TEXT REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_macros_tenant ON macros(tenant_id);

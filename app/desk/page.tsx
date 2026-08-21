@@ -2,9 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getPlatformContext } from "../../src/platform/context";
 import { ConversationRepository } from "../../src/db/repositories/conversation-repository";
+import { UserRepository } from "../../src/db/repositories/user-repository";
 import { getConversationCostSummaries } from "../../src/analytics/cost";
 import { getSessionUser } from "../../src/auth/session";
 import { SignOutButton } from "../../components/desk/SignOutButton";
+import { now } from "../../src/core/clock";
+import { suggestAssignees } from "../../src/desk/skill-match";
 import type { ConversationChannel } from "../../src/core/types";
 
 export const dynamic = "force-dynamic";
@@ -15,21 +18,35 @@ const CHANNEL_FILTERS: { label: string; value: ConversationChannel | "all" }[] =
   { label: "Email", value: "email" },
 ];
 
-export default async function DeskPage({ searchParams }: { searchParams: Promise<{ channel?: string }> }) {
+function slaBadge(c: { priority: string; slaDueAt: string | null }, nowIso: string) {
+  if (!c.slaDueAt) return null;
+  const breaching = c.slaDueAt < nowIso;
+  return (
+    <span className={`ml-1 rounded border px-1.5 py-0.5 text-[10px] uppercase ${breaching ? "border-red-300 bg-red-100 text-red-800" : "border-border text-muted"}`}>
+      {breaching ? "SLA breached" : `due ${new Date(c.slaDueAt).toLocaleTimeString()}`}
+    </span>
+  );
+}
+
+export default async function DeskPage({ searchParams }: { searchParams: Promise<{ channel?: string; view?: string }> }) {
   const { db, tenant } = getPlatformContext();
   const user = await getSessionUser(db, tenant);
   if (!user) redirect("/login");
 
-  const { channel } = await searchParams;
+  const { channel, view } = await searchParams;
   const activeChannel = channel === "widget" || channel === "email" ? channel : "all";
+  const slaOnly = view === "sla";
+  const nowIso = now();
 
-  const allConversations = new ConversationRepository(db, tenant).listByStates(["awaiting_human", "human_active"]);
+  const conversationRepo = new ConversationRepository(db, tenant);
+  const allConversations = slaOnly ? conversationRepo.listSlaBreaching(nowIso) : conversationRepo.listByStates(["awaiting_human", "human_active"]);
   const conversations = activeChannel === "all" ? allConversations : allConversations.filter((c) => c.channel === activeChannel);
   const costs = getConversationCostSummaries(
     db,
     tenant,
     conversations.map((c) => c.id),
   );
+  const staffUsers = new UserRepository(db, tenant).list().filter((u) => u.status === "active");
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
@@ -41,34 +58,65 @@ export default async function DeskPage({ searchParams }: { searchParams: Promise
         </p>
       </div>
       <p className="mt-1 text-sm text-muted">Conversations waiting on, or currently handled by, a colleague. Copilot mode — the bot drafts, you edit and send.</p>
+      <p className="mt-1 flex gap-3 text-xs">
+        <Link href="/desk/review-queue" className="text-accent hover:underline">
+          Review queue →
+        </Link>
+        <Link href="/analytics" className="text-accent hover:underline">
+          Analytics →
+        </Link>
+      </p>
 
-      <div className="mt-4 flex gap-2">
-        {CHANNEL_FILTERS.map((f) => (
-          <Link
-            key={f.value}
-            href={f.value === "all" ? "/desk" : `/desk?channel=${f.value}`}
-            className={`rounded-full border px-3 py-1 text-xs ${activeChannel === f.value ? "border-accent bg-accent text-accent-fg" : "border-border text-muted hover:text-fg"}`}
-          >
-            {f.label}
-          </Link>
-        ))}
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {CHANNEL_FILTERS.map((f) => {
+          const params = new URLSearchParams();
+          if (f.value !== "all") params.set("channel", f.value);
+          if (slaOnly) params.set("view", "sla");
+          const qs = params.toString();
+          return (
+            <Link
+              key={f.value}
+              href={qs ? `/desk?${qs}` : "/desk"}
+              className={`rounded-full border px-3 py-1 text-xs ${activeChannel === f.value ? "border-accent bg-accent text-accent-fg" : "border-border text-muted hover:text-fg"}`}
+            >
+              {f.label}
+            </Link>
+          );
+        })}
+        <span className="mx-1 h-4 w-px bg-border" />
+        <Link
+          href={(() => {
+            const params = new URLSearchParams();
+            if (activeChannel !== "all") params.set("channel", activeChannel);
+            if (!slaOnly) params.set("view", "sla");
+            const qs = params.toString();
+            return qs ? `/desk?${qs}` : "/desk";
+          })()}
+          className={`rounded-full border px-3 py-1 text-xs ${slaOnly ? "border-accent bg-accent text-accent-fg" : "border-border text-muted hover:text-fg"}`}
+        >
+          SLA breaching
+        </Link>
       </div>
 
       {conversations.length === 0 ? (
-        <p className="mt-8 text-sm text-muted">Nothing needs attention right now.</p>
+        <p className="mt-8 text-sm text-muted">{slaOnly ? "No conversations are currently breaching their SLA." : "Nothing needs attention right now."}</p>
       ) : (
         <ul className="mt-6 divide-y divide-border rounded-xl border border-border bg-surface">
           {conversations.map((c) => {
             const cost = costs.get(c.id);
+            const suggested = suggestAssignees(c.tags, staffUsers)[0];
             return (
               <li key={c.id}>
                 <Link href={`/desk/${c.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-bg">
                   <div>
                     <p className="text-sm font-medium text-fg">
                       {c.id} <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted">{c.channel}</span>
+                      {c.priority !== "normal" && <span className="ml-1 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase text-muted">{c.priority}</span>}
+                      {slaBadge(c, nowIso)}
                     </p>
                     <p className="text-xs text-muted">
                       {c.state} · updated {new Date(c.updatedAt).toLocaleString()}
+                      {suggested && <span className="ml-1 text-accent">· suggested: {suggested.email}</span>}
                     </p>
                   </div>
                   <div className="text-right text-xs text-muted">

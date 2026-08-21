@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
-import type { AgentDef } from "../src/db/repositories/agent-def-repository";
+import { AgentDefRepository, type AgentDef } from "../src/db/repositories/agent-def-repository";
 import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
@@ -20,9 +20,11 @@ beforeAll(() => {
 class ScriptedProvider implements ProviderAdapter {
   readonly provider = "scripted";
   calls = 0;
+  lastRequest: ChatRequest | undefined;
   constructor(private readonly script: ChatResponse[]) {}
 
-  async chat(): Promise<ChatResponse> {
+  async chat(_model: string, request: ChatRequest): Promise<ChatResponse> {
+    this.lastRequest = request;
     return this.next();
   }
 
@@ -71,6 +73,8 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     kbScope: { audience: ["customer"] },
     handoffTargets,
     guardrails: {},
+    skills: [],
+    semanticCacheEnabled: false,
   };
 }
 
@@ -87,6 +91,8 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     kbScope: { audience: ["customer"] },
     handoffTargets,
     guardrails: {},
+    skills: [],
+    semanticCacheEnabled: false,
   };
 }
 
@@ -123,6 +129,31 @@ describe("runRouterTurn (FR-6.6: constrained enum, never free text)", () => {
     const { db, tenant, gateway, embeddings } = await setup([]);
     const result = await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent([]), "Anything");
     expect(result).toEqual({ target: "", confidence: "low" });
+  });
+
+  it("enriches the route_to_agent tool description with each target's skill tags (Phase 2 M3c)", async () => {
+    const { db, tenant, gateway, embeddings, provider } = await setup([
+      { content: "", toolCalls: [{ id: "c1", name: "route_to_agent", arguments: { target: "technical-specialist" } }], stopReason: "tool_use", usage: usage() },
+    ]);
+    new AgentDefRepository(db, tenant).publish({
+      key: "technical-specialist",
+      systemPrompt: "You handle technical issues.",
+      modelAlias: "support-main",
+      skills: ["app-crashes", "login-issues"],
+    });
+    new AgentDefRepository(db, tenant).publish({
+      key: "billing-specialist",
+      systemPrompt: "You handle billing.",
+      modelAlias: "support-main",
+      skills: ["refunds", "invoices"],
+    });
+
+    await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent(["billing-specialist", "technical-specialist"]), "My app keeps crashing");
+
+    const lastRequest = provider.lastRequest;
+    const toolDescription = (lastRequest?.tools?.[0]?.parameters as { properties?: { target?: { description?: string } } })?.properties?.target?.description ?? "";
+    expect(toolDescription).toContain("app-crashes");
+    expect(toolDescription).toContain("refunds");
   });
 });
 

@@ -71,6 +71,8 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     kbScope: { audience: ["customer"] },
     handoffTargets: [],
     guardrails,
+    skills: [],
+    semanticCacheEnabled: false,
   };
 
   return { db, tenant, gateway, embeddings, agent, provider };
@@ -160,6 +162,8 @@ describe("runAgentTurn — input guardrails", () => {
       kbScope: { audience: ["customer"] },
       handoffTargets: [],
       guardrails: {},
+      skills: [],
+      semanticCacheEnabled: false,
     };
 
     const articles = new KbArticleRepository(db, tenant);

@@ -1,17 +1,23 @@
+import { randomUUID } from "node:crypto";
 import type { Tenant } from "../db/repositories/tenant-repository";
 import { ConversationRepository } from "../db/repositories/conversation-repository";
 import { MessageRepository } from "../db/repositories/message-repository";
 import { EventRepository } from "../db/repositories/event-repository";
 import { RunRepository } from "../db/repositories/run-repository";
 import { AgentDefRepository } from "../db/repositories/agent-def-repository";
+import { SlaPolicyRepository } from "../db/repositories/sla-policy-repository";
+import { startSlaClock } from "../core/sla";
+import { ReviewQueueRepository } from "../db/repositories/review-queue-repository";
 import type { RuntimeDeps, AgentTurnCallbacks, EscalationReason } from "../agents/runtime";
 import { runAgentTurn } from "../agents/runtime";
 import { runRouterTurn } from "../agents/router";
 import { detectCycle, appendToPath } from "../agents/loop-prevention";
 import type { HandoffPackage } from "../agents/handoff";
+import { scanForNegativeSentiment } from "../agents/escalation";
 import { getOrCreateSession } from "../agents/sessions-store";
 import { withConversationLock } from "../agents/conversation-lock";
 import { conversationTurnCapExceeded } from "./rate-limit";
+import { setConversationState } from "../core/state-transition";
 import type { Conversation, ConversationChannel, ConversationState } from "../core/types";
 
 export const DEFAULT_AGENT_KEY = "support-generalist";
@@ -51,6 +57,8 @@ export async function processInboundTurn(
   const events = new EventRepository(db, tenant);
   const runs = new RunRepository(db, tenant);
   const agentDefs = new AgentDefRepository(db, tenant);
+  const slaPolicies = new SlaPolicyRepository(db, tenant);
+  const reviewQueue = new ReviewQueueRepository(db, tenant);
 
   return withConversationLock(input.conversationId, async (): Promise<ProcessTurnResult> => {
     const conversation = conversations.get(input.conversationId);
@@ -70,13 +78,15 @@ export async function processInboundTurn(
     if (conversationTurnCapExceeded(session.turnCount)) {
       const cannedText = "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
       callbacks.onTextDelta?.(cannedText);
-      conversations.setState(input.conversationId, "awaiting_human");
+      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
       events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: ["loop_cap"] } });
       return { conversationId: input.conversationId, state: "awaiting_human", assistantText: cannedText, handoff: true, loopCapHit: true };
     }
 
     const escalateAndReturn = (reason: EscalationReason): ProcessTurnResult => {
-      conversations.setState(input.conversationId, "awaiting_human");
+      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
       events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: [reason] } });
       return { conversationId: input.conversationId, state: "awaiting_human", handoff: true, loopCapHit: false, escalationReasons: [reason] };
     };
@@ -102,16 +112,23 @@ export async function processInboundTurn(
         const routed = await runRouterTurn(deps, tenant, routerRun.id, routerAgent, input.text);
         runs.complete(routerRun.id, "completed");
 
-        const target = routed.target ? agentDefs.getLatestPublished(routed.target) : undefined;
+        const target = routed.target ? agentDefs.getForTraffic(routed.target, input.conversationId) : undefined;
         if (!target) return escalateAndReturn("router_low_confidence");
 
         agentPath = appendToPath(appendToPath(agentPath, ROUTER_AGENT_KEY), target.key);
         currentAgentKey = target.key;
         currentAgentVersion = target.version;
         conversations.setCurrentAgentKey(input.conversationId, currentAgentKey);
+        conversations.setTags(input.conversationId, [currentAgentKey]);
         conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
 
-        const routingPackage: HandoffPackage = { reason: "initial routing", summary: input.text, extractedEntities: {}, instructionsForReceivingAgent: "" };
+        const routingPackage: HandoffPackage = {
+          reason: "initial routing",
+          summary: input.text,
+          extractedEntities: {},
+          instructionsForReceivingAgent: "",
+          sentiment: scanForNegativeSentiment(input.text).hit ? "negative" : "neutral",
+        };
         persistHandoff(ROUTER_AGENT_KEY, target.key, routingPackage);
       }
     }
@@ -143,13 +160,14 @@ export async function processInboundTurn(
       if (hops >= MAX_HOPS_PER_REQUEST) return escalateAndReturn("handoff_cycle_detected");
 
       const { target, package: pkg } = result.handoffRequested;
-      const nextAgent = target ? agentDefs.getLatestPublished(target) : undefined;
+      const nextAgent = target ? agentDefs.getForTraffic(target, input.conversationId) : undefined;
       if (!nextAgent || detectCycle(agentPath, target)) return escalateAndReturn("handoff_cycle_detected");
 
       agentPath = appendToPath(agentPath, target);
       currentAgentKey = nextAgent.key;
       currentAgentVersion = nextAgent.version;
       conversations.setCurrentAgentKey(input.conversationId, currentAgentKey);
+      conversations.setTags(input.conversationId, [currentAgentKey]);
       conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
       persistHandoff(agent.key, target, pkg);
       handoffContext = pkg;
@@ -159,9 +177,15 @@ export async function processInboundTurn(
 
     let state: ConversationState = "bot_active";
     if (finalResult.escalate) {
-      conversations.setState(input.conversationId, "awaiting_human");
+      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
       events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: finalResult.escalationReasons } });
       state = "awaiting_human";
+    } else if (finalResult.lowKbConfidence) {
+      // Phase 2 M5: a review tier distinct from escalation — the bot kept
+      // serving the customer, but a low-confidence retrieval is worth a
+      // human's eyes later. Never touches conversation.state.
+      reviewQueue.enqueue({ conversationId: input.conversationId, reason: "low_kb_confidence" });
     }
 
     return {
@@ -189,11 +213,14 @@ export function ensureConversation(
   if (existing) return existing;
 
   const agentDefs = new AgentDefRepository(deps.db, tenant);
-  const published = agentDefs.getLatestPublished(DEFAULT_AGENT_KEY);
+  // Phase 2 M6a: generated up front so getForTraffic's deterministic hash
+  // has a conversation id to bucket on before the row itself exists.
+  const conversationId = `CONV-${randomUUID()}`;
+  const published = agentDefs.getForTraffic(DEFAULT_AGENT_KEY, conversationId);
   if (!published) throw new Error("No published agent — run `npm run seed` first.");
 
   const conversations = new ConversationRepository(deps.db, tenant);
-  const conversation = conversations.create({ channel, agentKey: DEFAULT_AGENT_KEY, metadata: { agentVersion: published.version, ...metadata } });
+  const conversation = conversations.create({ id: conversationId, channel, agentKey: DEFAULT_AGENT_KEY, metadata: { agentVersion: published.version, ...metadata } });
   new EventRepository(deps.db, tenant).append({ conversationId: conversation.id, type: "state_changed", actor: "system", payload: { to: "bot_active" } });
   return conversation;
 }

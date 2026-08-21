@@ -41,7 +41,7 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
   const agentPath = (conversation.metadata.agentPath as string[] | undefined) ?? [];
   const handoffs = events
     .filter((e) => e.type === "handoff")
-    .map((e) => e.payload as { from: string; to: string; reason: string; summary: string; extractedEntities: Record<string, string>; instructionsForReceivingAgent: string });
+    .map((e) => e.payload as { from: string; to: string; reason: string; summary: string; extractedEntities: Record<string, string>; instructionsForReceivingAgent: string; sentiment?: "negative" | "neutral" });
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-12">
@@ -53,6 +53,9 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
         State: <span className="font-medium text-fg">{conversation.state}</span>
         {escalationReasons.length > 0 && <> · Escalated for: {escalationReasons.join(", ")}</>}
       </p>
+      <Link href={`/desk/${conversationId}/replay`} className="mt-1 inline-block text-xs text-accent hover:underline">
+        Replay →
+      </Link>
       {agentPath.length > 0 && (
         <p className="mt-1 text-xs text-muted">
           Agent path: {agentPath.map((key, i) => (
@@ -72,6 +75,7 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
               <div key={i} className="rounded-lg border border-border bg-surface p-3 text-xs">
                 <p className="text-fg">
                   {h.from} → {h.to}
+                  {h.sentiment === "negative" && <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800">negative sentiment</span>}
                 </p>
                 {h.reason && <p className="mt-1 text-muted">Reason: {h.reason}</p>}
                 {h.summary && <p className="mt-1 text-muted">Summary: {h.summary}</p>}

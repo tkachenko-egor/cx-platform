@@ -4,6 +4,12 @@ import { migration002RbacAndAudit } from "./002-rbac-and-audit";
 import { migration003ConversationsAssignee } from "./003-conversations-assignee";
 import { migration004Tickets } from "./004-tickets";
 import { migration005ToolApprovals } from "./005-tool-approvals";
+import { migration006Phase2Foundation } from "./006-phase2-foundation";
+import { migration007CoverageGapAndSemanticCache } from "./007-coverage-gap-and-semantic-cache";
+import { migration008SlaPolicies } from "./008-sla-policies";
+import { migration009ReviewQueue } from "./009-review-queue";
+import { migration010AgentExperiments } from "./010-agent-experiments";
+import { migration011Macros } from "./011-macros";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -12,4 +18,10 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration003ConversationsAssignee,
   migration004Tickets,
   migration005ToolApprovals,
+  migration006Phase2Foundation,
+  migration007CoverageGapAndSemanticCache,
+  migration008SlaPolicies,
+  migration009ReviewQueue,
+  migration010AgentExperiments,
+  migration011Macros,
 ];

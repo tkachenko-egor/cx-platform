@@ -5,6 +5,10 @@ import { ModelAliasRepository } from "../src/db/repositories/model-alias-reposit
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { ConversationRepository } from "../src/db/repositories/conversation-repository";
 import { MessageRepository } from "../src/db/repositories/message-repository";
+import { EventRepository } from "../src/db/repositories/event-repository";
+import { ReviewQueueRepository } from "../src/db/repositories/review-queue-repository";
+import { AgentExperimentRepository } from "../src/db/repositories/agent-experiment-repository";
+import { RunRepository } from "../src/db/repositories/run-repository";
 import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
@@ -86,6 +90,66 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
   });
 
+  it("enqueues a review-queue item on a low-confidence retrieval, without escalating or touching conversation state (Phase 2 M5)", async () => {
+    // Deliberately no KB ingested for this tenant — hybridSearch's
+    // candidateChunks is empty, so bestScore is unambiguously 0 (below
+    // DEFAULT_LOW_CONFIDENCE_THRESHOLD), independent of RRF's rank-based
+    // scoring quirks or any real KB content's incidental keyword overlap.
+    const db = createDb(":memory:");
+    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+    seedAmarelleBusinessData(db, tenant.id);
+    const embeddings = new StubEmbeddingProvider();
+    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE]) } });
+    new AgentDefRepository(db, tenant).publish({
+      key: DEFAULT_AGENT_KEY,
+      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      modelAlias: "support-main",
+      kbScope: { audience: ["customer"] },
+    });
+
+    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi there" });
+
+    expect(result.state).toBe("bot_active");
+    expect(result.handoff).toBe(false);
+
+    const pending = new ReviewQueueRepository(db, tenant).listPending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0].conversationId).toBe(conversation.id);
+    expect(pending[0].reason).toBe("low_kb_confidence");
+  });
+
+  it("pins the version an A/B-tested conversation was assigned, surviving later turns and experiment changes (Phase 2 M6a)", async () => {
+    const db = createDb(":memory:");
+    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+    seedAmarelleBusinessData(db, tenant.id);
+    const embeddings = new StubEmbeddingProvider();
+    await ingestKnowledgeBase(db, tenant, embeddings);
+
+    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE, OK_RESPONSE]) } });
+
+    const agentDefs = new AgentDefRepository(db, tenant);
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique") + " v1", modelAlias: "support-main", toolIds: [] }); // v1
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique") + " v2", modelAlias: "support-main", toolIds: [] }); // v2
+
+    const experiments = new AgentExperimentRepository(db, tenant);
+    const experiment = experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 0 }); // always A (v1) at creation time
+
+    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "first message" });
+
+    // Flip the experiment to always-B after the conversation was already assigned — a re-evaluation would now pick v2.
+    experiments.stop(experiment.id);
+    experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 1 });
+
+    await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "second message" });
+
+    const runs = new RunRepository(db, tenant).listByConversation(conversation.id);
+    expect(runs.every((r) => r.agentVersion === 1)).toBe(true);
+  });
+
   it("escalates and flips conversation state to awaiting_human on a severe-symptom keyword", async () => {
     const { db, tenant, gateway, embeddings } = await setup([
       { content: "Please stop using the product and see a doctor.", toolCalls: [], stopReason: "end_turn", usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 } },
@@ -98,6 +162,11 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.state).toBe("awaiting_human");
     expect(result.escalationReasons).toContain("severe_symptom");
     expect(new ConversationRepository(db, tenant).get(conversation.id)?.state).toBe("awaiting_human");
+
+    // FR-4.2: the transition into awaiting_human must be a logged event, not just a field mutation.
+    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    const stateChanged = events.filter((e) => e.type === "state_changed");
+    expect(stateChanged.some((e) => e.payload.to === "awaiting_human")).toBe(true);
   });
 
   it("does not run the agent while a human is handling the conversation — just records the message for continuity", async () => {
@@ -127,6 +196,9 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.handoff).toBe(true);
     expect(result.state).toBe("awaiting_human");
     expect(result.assistantText).toMatch(/hand you to a colleague/);
+
+    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    expect(events.some((e) => e.type === "state_changed" && e.payload.to === "awaiting_human")).toBe(true);
   });
 
   it("threads channelMessageId onto the persisted inbound message when the caller supplies one", async () => {

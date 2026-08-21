@@ -61,6 +61,8 @@ async function setup(providerScript: ChatResponse[]) {
     kbScope: { audience: ["customer"] },
     handoffTargets: [],
     guardrails: {},
+    skills: [],
+    semanticCacheEnabled: false,
   };
 
   return { db, tenant, gateway, embeddings, agent };

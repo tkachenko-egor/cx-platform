@@ -1,7 +1,14 @@
 import type Database from "better-sqlite3";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
+import { AgentExperimentRepository } from "./agent-experiment-repository";
+
+/** Deterministic, not random — the same conversation always lands in the same variant bucket for a given experiment, without needing to persist "which variant" separately from the version pin it already gets (conversation.metadata.agentVersion). */
+function hashToUnitInterval(input: string): number {
+  const digest = createHash("sha256").update(input).digest();
+  return digest.readUInt32BE(0) / 0x100000000;
+}
 
 export interface AgentDef {
   id: string;
@@ -15,6 +22,10 @@ export interface AgentDef {
   kbScope: Record<string, unknown>;
   handoffTargets: string[];
   guardrails: Record<string, unknown>;
+  /** Phase 2 M3c: capability tags surfaced to the router so it can pick a specialist on more than the raw key. */
+  skills: string[];
+  /** Phase 2 M3b: opt-in per-agent semantic response cache (default off — see src/kb/semantic-cache.ts). */
+  semanticCacheEnabled: boolean;
 }
 
 interface AgentDefRow {
@@ -29,6 +40,8 @@ interface AgentDefRow {
   kb_scope: string;
   handoff_targets: string;
   guardrails: string;
+  skills: string;
+  semantic_cache_enabled: number;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -44,6 +57,8 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     kbScope: JSON.parse(row.kb_scope) as Record<string, unknown>,
     handoffTargets: JSON.parse(row.handoff_targets) as string[],
     guardrails: JSON.parse(row.guardrails) as Record<string, unknown>,
+    skills: JSON.parse(row.skills) as string[],
+    semanticCacheEnabled: row.semantic_cache_enabled === 1,
   };
 }
 
@@ -61,6 +76,8 @@ export class AgentDefRepository extends TenantScopedRepository {
     kbScope?: Record<string, unknown>;
     handoffTargets?: string[];
     guardrails?: Record<string, unknown>;
+    skills?: string[];
+    semanticCacheEnabled?: boolean;
   }): AgentDef {
     const nextVersion = this.latestVersion(input.key) + 1;
     const id = randomUUID();
@@ -69,8 +86,8 @@ export class AgentDefRepository extends TenantScopedRepository {
       .prepare(
         `INSERT INTO agent_defs (
            id, tenant_id, key, version, status, system_prompt, model_alias,
-           tool_ids, kb_scope, handoff_targets, guardrails, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?)`,
+           tool_ids, kb_scope, handoff_targets, guardrails, skills, semantic_cache_enabled, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -83,6 +100,8 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(input.kbScope ?? {}),
         JSON.stringify(input.handoffTargets ?? []),
         JSON.stringify(input.guardrails ?? {}),
+        JSON.stringify(input.skills ?? []),
+        input.semanticCacheEnabled ? 1 : 0,
         now,
         now,
       );
@@ -98,6 +117,8 @@ export class AgentDefRepository extends TenantScopedRepository {
       kbScope: input.kbScope ?? {},
       handoffTargets: input.handoffTargets ?? [],
       guardrails: input.guardrails ?? {},
+      skills: input.skills ?? [],
+      semanticCacheEnabled: input.semanticCacheEnabled ?? false,
     };
   }
 
@@ -117,6 +138,36 @@ export class AgentDefRepository extends TenantScopedRepository {
       )
       .get(this.tenantId, key) as AgentDefRow | undefined;
     return row ? rowToAgentDef(row) : undefined;
+  }
+
+  /** Phase 2 M3c: the router's own skill-tag enrichment reads each handoff target's latest published def this way. */
+  listByKeys(keys: string[]): AgentDef[] {
+    return keys.map((key) => this.getLatestPublished(key)).filter((def): def is AgentDef => Boolean(def));
+  }
+
+  /**
+   * Phase 2 M6a: the "which version does this conversation start on" call —
+   * used at the moment an agent is newly assigned to a conversation
+   * (router's target, a mid-turn handoff's next agent, or the
+   * no-router default agent), never for re-fetching an already-pinned
+   * version. No active experiment -> getLatestPublished, unchanged
+   * (zero behavior change for tenants without one, same precedent as the
+   * router itself). With an experiment: hash(conversationId + agentKey)
+   * against trafficSplit picks A or B, deterministically and stably.
+   */
+  getForTraffic(key: string, conversationId: string): AgentDef | undefined {
+    const experiment = new AgentExperimentRepository(this.db, { tenantId: this.tenantId }).getActive(key);
+    if (!experiment) return this.getLatestPublished(key);
+
+    const bucket = hashToUnitInterval(`${conversationId}:${key}`);
+    const variantVersion = bucket < experiment.trafficSplit ? experiment.variantBVersion : experiment.variantAVersion;
+    return this.getVersion(key, variantVersion) ?? this.getLatestPublished(key);
+  }
+
+  /** Phase 2 M6a admin UI: every published version of every agent, for building a "pick a variant" form. */
+  listAllPublished(): AgentDef[] {
+    const rows = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND status = 'published' ORDER BY key, version`).all(this.tenantId) as AgentDefRow[];
+    return rows.map(rowToAgentDef);
   }
 
   private latestVersion(key: string): number {

@@ -18,6 +18,9 @@ export type ConversationState =
   | "resolved"
   | "closed";
 
+/** Phase 2 M4: drives SLA policy lookup (src/core/sla.ts). Defaults to "normal" — nothing assigns a higher priority yet. */
+export type ConversationPriority = "low" | "normal" | "high" | "urgent";
+
 export type MessageRole =
   | "user"
   | "assistant"
@@ -54,6 +57,11 @@ export interface Conversation {
   state: ConversationState;
   currentAgentId: string | null;
   assigneeId: string | null;
+  priority: ConversationPriority;
+  /** Phase 2 M6b: cheapest available "skill area" signal — set to [currentAgentKey] whenever the handling agent changes, read by src/desk/skill-match.ts for assignee suggestions. */
+  tags: string[];
+  /** Phase 2 M4: set when a conversation enters awaiting_human, cleared when it leaves — null means no SLA clock is running. */
+  slaDueAt: string | null;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;

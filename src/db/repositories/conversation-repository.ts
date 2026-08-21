@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
-import type { Conversation, ConversationChannel, ConversationState } from "../../core/types";
+import type { Conversation, ConversationChannel, ConversationPriority, ConversationState } from "../../core/types";
 
 interface ConversationRow {
   id: string;
@@ -10,6 +10,9 @@ interface ConversationRow {
   channel: ConversationChannel;
   state: ConversationState;
   current_agent_key: string | null;
+  priority: ConversationPriority;
+  tags: string;
+  sla_due_at: string | null;
   metadata: string;
   created_at: string;
   updated_at: string;
@@ -24,6 +27,9 @@ function rowToConversation(row: ConversationRow): Conversation {
     state: row.state,
     currentAgentId: row.current_agent_key,
     assigneeId: null,
+    priority: row.priority,
+    tags: JSON.parse(row.tags) as string[],
+    slaDueAt: row.sla_due_at,
     metadata: JSON.parse(row.metadata) as Record<string, unknown>,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -70,6 +76,24 @@ export class ConversationRepository extends TenantScopedRepository {
 
   setCurrentAgentKey(id: string, agentKey: string): void {
     this.db.prepare(`UPDATE conversations SET current_agent_key = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(agentKey, new Date().toISOString(), this.tenantId, id);
+  }
+
+  /** Phase 2 M6b: cheapest "skill area" signal — set to [currentAgentKey] whenever the handling agent changes. */
+  setTags(id: string, tags: string[]): void {
+    this.db.prepare(`UPDATE conversations SET tags = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(JSON.stringify(tags), new Date().toISOString(), this.tenantId, id);
+  }
+
+  /** Phase 2 M4: null clears the SLA clock (e.g. a conversation leaving awaiting_human). */
+  setSlaDueAt(id: string, dueAt: string | null): void {
+    this.db.prepare(`UPDATE conversations SET sla_due_at = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(dueAt, new Date().toISOString(), this.tenantId, id);
+  }
+
+  /** Phase 2 M4: read-time breach check — no scheduler exists in this deployment, so "breaching" is computed on each desk page load, not pushed. */
+  listSlaBreaching(nowTimestamp: string): Conversation[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM conversations WHERE tenant_id = ? AND state = 'awaiting_human' AND sla_due_at IS NOT NULL AND sla_due_at < ? ORDER BY sla_due_at ASC`)
+      .all(this.tenantId, nowTimestamp) as ConversationRow[];
+    return rows.map(rowToConversation);
   }
 
   listByStates(states: ConversationState[]): Conversation[] {
