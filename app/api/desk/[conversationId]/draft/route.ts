@@ -5,6 +5,7 @@ import { RunRepository } from "../../../../../src/db/repositories/run-repository
 import { AgentDefRepository } from "../../../../../src/db/repositories/agent-def-repository";
 import { getOrCreateSession } from "../../../../../src/agents/sessions-store";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
+import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,13 @@ const DEFAULT_AGENT_KEY = "support-generalist";
 export async function POST(_req: Request, context: RouteContext<"/api/desk/[conversationId]/draft">) {
   const { conversationId } = await context.params;
   const { db, tenant, gateway, embeddings } = getPlatformContext();
+
+  try {
+    await requireRole(db, tenant, "agent");
+  } catch (err) {
+    if (err instanceof AuthError) return Response.json({ error: err.message }, { status: err.status });
+    throw err;
+  }
 
   const conversation = new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });

@@ -1,12 +1,18 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getPlatformContext } from "../../src/platform/context";
 import { ConversationRepository } from "../../src/db/repositories/conversation-repository";
 import { getConversationCostSummaries } from "../../src/analytics/cost";
+import { getSessionUser } from "../../src/auth/session";
+import { SignOutButton } from "../../components/desk/SignOutButton";
 
 export const dynamic = "force-dynamic";
 
-export default function DeskPage() {
+export default async function DeskPage() {
   const { db, tenant } = getPlatformContext();
+  const user = await getSessionUser(db, tenant);
+  if (!user) redirect("/login");
+
   const conversations = new ConversationRepository(db, tenant).listByStates(["awaiting_human", "human_active"]);
   const costs = getConversationCostSummaries(
     db,
@@ -16,7 +22,13 @@ export default function DeskPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-2xl font-semibold text-fg">Human desk</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold text-fg">Human desk</h1>
+        <p className="flex items-center gap-2 text-xs text-muted">
+          {user.email} · {user.role}
+          <SignOutButton />
+        </p>
+      </div>
       <p className="mt-1 text-sm text-muted">Conversations waiting on, or currently handled by, a colleague. Copilot mode — the bot drafts, you edit and send.</p>
 
       {conversations.length === 0 ? (

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getPlatformContext } from "../../../src/platform/context";
 import { ConversationRepository } from "../../../src/db/repositories/conversation-repository";
 import { MessageRepository } from "../../../src/db/repositories/message-repository";
@@ -8,12 +8,16 @@ import { RunRepository } from "../../../src/db/repositories/run-repository";
 import { LlmCallRepository } from "../../../src/db/repositories/llm-call-repository";
 import { ToolCallRepository } from "../../../src/db/repositories/tool-repository";
 import { DeskComposer } from "../../../components/desk/DeskComposer";
+import { getSessionUser } from "../../../src/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export default async function DeskConversationPage({ params }: PageProps<"/desk/[conversationId]">) {
   const { conversationId } = await params;
   const { db, tenant } = getPlatformContext();
+
+  const user = await getSessionUser(db, tenant);
+  if (!user) redirect("/login");
 
   const conversation = new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) notFound();

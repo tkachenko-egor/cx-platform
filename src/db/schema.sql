@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS conversations (
   channel TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('bot_active','awaiting_human','human_active','snoozed','resolved','closed')),
   current_agent_key TEXT,
+  assignee_id TEXT REFERENCES users(id),
   metadata TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -91,10 +92,12 @@ CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL REFERENCES tenants(id),
   conversation_id TEXT NOT NULL REFERENCES conversations(id),
-  role TEXT NOT NULL CHECK (role IN ('user','assistant','agent_human','system','note')),
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','agent_human','system','tool_call','tool_result','handoff','note')),
   content TEXT NOT NULL,
   visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','internal')),
   sequence INTEGER NOT NULL,
+  channel_message_id TEXT,
+  in_reply_to TEXT,
   created_at TEXT NOT NULL
 );
 
@@ -206,6 +209,51 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 
 CREATE INDEX IF NOT EXISTS idx_tool_calls_tenant ON tool_calls(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_run ON tool_calls(run_id);
+
+-- ─── Phase 1b: staff RBAC/auth ────────────────────────────────────────────
+-- FR-2.1/2.2/2.7: staff identity, roles, sessions, and the audit trail for
+-- privileged actions. End-customer identity (FR-2.3-2.6) is out of scope —
+-- these tables are for the desk/admin side only.
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  email TEXT NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('owner','admin','supervisor','agent','viewer')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','disabled')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (tenant_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id);
+
+-- FR-2.7: audit log of privileged actions (config change, PII access,
+-- conversation export, tool-write approvals).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  actor_user_id TEXT REFERENCES users(id),
+  action TEXT NOT NULL,
+  target TEXT NOT NULL,
+  before TEXT,
+  after TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_tenant ON audit_log(tenant_id);
 
 -- ─── Amarelle tenant business data (read-only for tools) ─────────────────
 -- Ported from amarelle-handoff's CSVs. This is tenant DATA, not platform

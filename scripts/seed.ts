@@ -1,15 +1,18 @@
 import "dotenv/config";
+import { randomBytes } from "node:crypto";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { ToolDefRepository } from "../src/db/repositories/tool-repository";
+import { UserRepository } from "../src/db/repositories/user-repository";
 import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { allToolSpecs } from "../src/tools/registry";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { OpenAiEmbeddingProvider } from "../src/gateway/embeddings/openai";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
+import { hashPassword } from "../src/auth/password";
 
 /**
  * Per the requirements doc's own risk mitigation: "resist building the
@@ -64,6 +67,17 @@ async function main() {
     kbScope: { audience: ["customer"] },
   });
   console.log(`Published agent "${agent.key}" v${agent.version}`);
+
+  const users = new UserRepository(db, tenant);
+  const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@amarelle.demo";
+  if (!users.getByEmail(ownerEmail)) {
+    const password = process.env.SEED_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
+    const passwordHash = await hashPassword(password);
+    users.create({ email: ownerEmail, passwordHash, role: "owner" });
+    console.log(`Seeded staff owner "${ownerEmail}" — password: ${password} (set SEED_OWNER_PASSWORD to pin this)`);
+  } else {
+    console.log(`Staff owner "${ownerEmail}" already exists`);
+  }
 }
 
 main().catch((err) => {
