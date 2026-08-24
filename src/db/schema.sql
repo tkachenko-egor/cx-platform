@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   -- and a per-agent channel allowlist (empty = all channels, src/channel/turn.ts).
   conversation_config TEXT NOT NULL DEFAULT '{}',
   enabled_channels TEXT NOT NULL DEFAULT '[]',
+  -- Admin UI batch item 1 (migration 025): NULL = inherit tenants.business_hours,
+  -- same BusinessHoursConfig JSON shape when set. See src/core/business-hours.ts.
+  business_hours TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)

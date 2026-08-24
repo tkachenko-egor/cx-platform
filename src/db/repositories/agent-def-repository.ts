@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import { AgentExperimentRepository } from "./agent-experiment-repository";
+import type { BusinessHoursConfig } from "./tenant-repository";
 
 /** Deterministic, not random — the same conversation always lands in the same variant bucket for a given experiment, without needing to persist "which variant" separately from the version pin it already gets (conversation.metadata.agentVersion). */
 function hashToUnitInterval(input: string): number {
@@ -57,6 +58,8 @@ export interface AgentDef {
   conversationConfig: AgentConversationConfig;
   /** Phase 9: which channels this agent may serve — empty means all (safe default). See src/channel/turn.ts's ensureConversation. */
   enabledChannels: string[];
+  /** Admin UI batch item 1: null inherits the tenant-wide default (src/core/business-hours.ts); set to override it for this agent only. */
+  businessHours: BusinessHoursConfig | null;
 }
 
 export interface AgentNativeToolsConfig {
@@ -158,6 +161,7 @@ interface AgentDefRow {
   escalation_config: string;
   conversation_config: string;
   enabled_channels: string;
+  business_hours: string | null;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -193,46 +197,50 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     escalationConfig: JSON.parse(row.escalation_config) as AgentEscalationConfig,
     conversationConfig: JSON.parse(row.conversation_config) as AgentConversationConfig,
     enabledChannels: JSON.parse(row.enabled_channels) as string[],
+    businessHours: row.business_hours ? (JSON.parse(row.business_hours) as BusinessHoursConfig) : null,
   };
 }
 
 /** FR-6.1 (agents are data, not code) + FR-6.3 (versioning with publish). */
+export interface AgentDefWriteInput {
+  key: string;
+  systemPrompt: string;
+  modelAlias: string;
+  toolIds?: string[];
+  kbScope?: Record<string, unknown>;
+  handoffTargets?: string[];
+  guardrails?: Record<string, unknown>;
+  skills?: string[];
+  semanticCacheEnabled?: boolean;
+  nativeTools?: AgentNativeToolsConfig;
+  quickReplies?: string[];
+  displayName?: string;
+  avatarUrl?: string | null;
+  internalDescription?: string;
+  ownerUserId?: string | null;
+  tags?: string[];
+  /** Defaults to 'active' — matching schema.sql's column default — so any caller that doesn't think about lifecycle (tests, seed scripts) keeps publishing routable agents. The create-agent API route is the one place that consciously passes 'draft' instead. */
+  agentStatus?: "draft" | "active" | "paused" | "archived";
+  /** Defaults to 'production' for the same reason — see agentStatus above. */
+  environment?: "sandbox" | "production";
+  changeNotes?: string;
+  temperature?: number | null;
+  maxOutputTokens?: number | null;
+  costCeilingUsd?: number | null;
+  persona?: AgentPersonaConfig;
+  languageConfig?: AgentLanguageConfig;
+  escalationConfig?: AgentEscalationConfig;
+  conversationConfig?: AgentConversationConfig;
+  enabledChannels?: string[];
+  businessHours?: BusinessHoursConfig | null;
+}
+
 export class AgentDefRepository extends TenantScopedRepository {
   constructor(db: Database.Database, tenant: TenantContext) {
     super(db, tenant);
   }
 
-  publish(input: {
-    key: string;
-    systemPrompt: string;
-    modelAlias: string;
-    toolIds?: string[];
-    kbScope?: Record<string, unknown>;
-    handoffTargets?: string[];
-    guardrails?: Record<string, unknown>;
-    skills?: string[];
-    semanticCacheEnabled?: boolean;
-    nativeTools?: AgentNativeToolsConfig;
-    quickReplies?: string[];
-    displayName?: string;
-    avatarUrl?: string | null;
-    internalDescription?: string;
-    ownerUserId?: string | null;
-    tags?: string[];
-    /** Defaults to 'active' — matching schema.sql's column default — so any caller that doesn't think about lifecycle (tests, seed scripts) keeps publishing routable agents. The create-agent API route is the one place that consciously passes 'draft' instead. */
-    agentStatus?: "draft" | "active" | "paused" | "archived";
-    /** Defaults to 'production' for the same reason — see agentStatus above. */
-    environment?: "sandbox" | "production";
-    changeNotes?: string;
-    temperature?: number | null;
-    maxOutputTokens?: number | null;
-    costCeilingUsd?: number | null;
-    persona?: AgentPersonaConfig;
-    languageConfig?: AgentLanguageConfig;
-    escalationConfig?: AgentEscalationConfig;
-    conversationConfig?: AgentConversationConfig;
-    enabledChannels?: string[];
-  }): AgentDef {
+  publish(input: AgentDefWriteInput): AgentDef {
     const nextVersion = this.latestVersion(input.key) + 1;
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -252,13 +260,14 @@ export class AgentDefRepository extends TenantScopedRepository {
     const escalationConfig = input.escalationConfig ?? {};
     const conversationConfig = input.conversationConfig ?? {};
     const enabledChannels = input.enabledChannels ?? [];
+    const businessHours = input.businessHours ?? null;
     const columns = [
       "id", "tenant_id", "key", "version", "status", "system_prompt", "model_alias",
       "tool_ids", "kb_scope", "handoff_targets", "guardrails", "skills", "semantic_cache_enabled",
       "native_tools", "quick_replies", "display_name", "avatar_url", "internal_description",
       "owner_user_id", "tags", "agent_status", "environment", "change_notes",
       "temperature", "max_output_tokens", "cost_ceiling_usd", "persona", "language_config",
-      "escalation_config", "conversation_config", "enabled_channels", "created_at", "updated_at",
+      "escalation_config", "conversation_config", "enabled_channels", "business_hours", "created_at", "updated_at",
     ];
     const placeholders = columns.map((c) => (c === "status" ? "'published'" : "?")).join(", ");
     this.db
@@ -294,6 +303,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(escalationConfig),
         JSON.stringify(conversationConfig),
         JSON.stringify(enabledChannels),
+        businessHours ? JSON.stringify(businessHours) : null,
         now,
         now,
       );
@@ -329,7 +339,109 @@ export class AgentDefRepository extends TenantScopedRepository {
       escalationConfig,
       conversationConfig,
       enabledChannels,
+      businessHours,
     };
+  }
+
+  /**
+   * Milestone 5 (Save/Publish split): a mutable, non-versioned row so an
+   * admin can save work-in-progress without it going through the
+   * append-only publish() path. Always version 0 (real published versions
+   * start at 1 — see latestVersion() below, which is unaffected since 0
+   * never wins a MAX()), status 'draft', one row per (tenant_id, key) via
+   * an upsert on the same UNIQUE(tenant_id, key, version) index publish()
+   * relies on. Never appears in getLatestPublished()/listAllPublished()
+   * (both filter status = 'published'), so this is purely additive.
+   */
+  saveDraft(input: AgentDefWriteInput): AgentDef {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const displayName = input.displayName ?? "";
+    const avatarUrl = input.avatarUrl ?? null;
+    const internalDescription = input.internalDescription ?? "";
+    const ownerUserId = input.ownerUserId ?? null;
+    const tags = input.tags ?? [];
+    const agentStatus = input.agentStatus ?? "draft";
+    const environment = input.environment ?? "sandbox";
+    const changeNotes = input.changeNotes ?? "";
+    const temperature = input.temperature ?? null;
+    const maxOutputTokens = input.maxOutputTokens ?? null;
+    const costCeilingUsd = input.costCeilingUsd ?? null;
+    const persona = input.persona ?? {};
+    const languageConfig = input.languageConfig ?? {};
+    const escalationConfig = input.escalationConfig ?? {};
+    const conversationConfig = input.conversationConfig ?? {};
+    const enabledChannels = input.enabledChannels ?? [];
+    const businessHours = input.businessHours ?? null;
+
+    this.db
+      .prepare(
+        `INSERT INTO agent_defs (
+           id, tenant_id, key, version, status, system_prompt, model_alias,
+           tool_ids, kb_scope, handoff_targets, guardrails, skills, semantic_cache_enabled,
+           native_tools, quick_replies, display_name, avatar_url, internal_description,
+           owner_user_id, tags, agent_status, environment, change_notes,
+           temperature, max_output_tokens, cost_ceiling_usd, persona, language_config,
+           escalation_config, conversation_config, enabled_channels, business_hours, created_at, updated_at
+         ) VALUES (?, ?, ?, 0, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (tenant_id, key, version) DO UPDATE SET
+           system_prompt = excluded.system_prompt, model_alias = excluded.model_alias,
+           tool_ids = excluded.tool_ids, kb_scope = excluded.kb_scope, handoff_targets = excluded.handoff_targets,
+           guardrails = excluded.guardrails, skills = excluded.skills, semantic_cache_enabled = excluded.semantic_cache_enabled,
+           native_tools = excluded.native_tools, quick_replies = excluded.quick_replies, display_name = excluded.display_name,
+           avatar_url = excluded.avatar_url, internal_description = excluded.internal_description,
+           owner_user_id = excluded.owner_user_id, tags = excluded.tags, agent_status = excluded.agent_status,
+           environment = excluded.environment, change_notes = excluded.change_notes, temperature = excluded.temperature,
+           max_output_tokens = excluded.max_output_tokens, cost_ceiling_usd = excluded.cost_ceiling_usd,
+           persona = excluded.persona, language_config = excluded.language_config, escalation_config = excluded.escalation_config,
+           conversation_config = excluded.conversation_config, enabled_channels = excluded.enabled_channels,
+           business_hours = excluded.business_hours, updated_at = excluded.updated_at`,
+      )
+      .run(
+        id,
+        this.tenantId,
+        input.key,
+        input.systemPrompt,
+        input.modelAlias,
+        JSON.stringify(input.toolIds ?? []),
+        JSON.stringify(input.kbScope ?? {}),
+        JSON.stringify(input.handoffTargets ?? []),
+        JSON.stringify(input.guardrails ?? {}),
+        JSON.stringify(input.skills ?? []),
+        input.semanticCacheEnabled ? 1 : 0,
+        JSON.stringify(input.nativeTools ?? {}),
+        JSON.stringify(input.quickReplies ?? []),
+        displayName,
+        avatarUrl,
+        internalDescription,
+        ownerUserId,
+        JSON.stringify(tags),
+        agentStatus,
+        environment,
+        changeNotes,
+        temperature,
+        maxOutputTokens,
+        costCeilingUsd,
+        JSON.stringify(persona),
+        JSON.stringify(languageConfig),
+        JSON.stringify(escalationConfig),
+        JSON.stringify(conversationConfig),
+        JSON.stringify(enabledChannels),
+        businessHours ? JSON.stringify(businessHours) : null,
+        now,
+        now,
+      );
+
+    return this.getDraft(input.key)!;
+  }
+
+  getDraft(key: string): AgentDef | undefined {
+    const row = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).get(this.tenantId, key) as AgentDefRow | undefined;
+    return row ? rowToAgentDef(row) : undefined;
+  }
+
+  clearDraft(key: string): void {
+    this.db.prepare(`DELETE FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).run(this.tenantId, key);
   }
 
   /** A running conversation pins the version it started with (FR-6.3) — call with an explicit version to pin. */

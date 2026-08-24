@@ -81,6 +81,7 @@ async function setup(providerScript: ChatResponse[]) {
     escalationConfig: {},
     conversationConfig: {},
     enabledChannels: [],
+    businessHours: null,
   };
 
   return { db, tenant, gateway, embeddings, agent };

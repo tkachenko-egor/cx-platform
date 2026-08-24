@@ -91,6 +91,7 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     escalationConfig: {},
     conversationConfig: {},
     enabledChannels: [],
+    businessHours: null,
   };
 
   return { db, tenant, gateway, embeddings, agent, provider };
@@ -200,6 +201,7 @@ describe("runAgentTurn — input guardrails", () => {
       escalationConfig: {},
       conversationConfig: {},
       enabledChannels: [],
+      businessHours: null,
     };
 
     const articles = new KbArticleRepository(db, tenant);

@@ -26,7 +26,7 @@ export function TenantManagement({ tenants }: { tenants: TenantRow[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, slug }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not create tenant");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Could not create company");
       setName("");
       setSlug("");
       router.refresh();
@@ -48,7 +48,7 @@ export function TenantManagement({ tenants }: { tenants: TenantRow[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not update tenant");
+      if (!res.ok) throw new Error((await res.json()).error ?? "Could not update company");
       setEditing((prev) => {
         const next = { ...prev };
         delete next[id];
@@ -65,7 +65,7 @@ export function TenantManagement({ tenants }: { tenants: TenantRow[] }) {
   return (
     <div className="mt-6 space-y-6">
       <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-medium text-fg">New tenant</h2>
+        <h2 className="text-sm font-medium text-fg">New company</h2>
         <div className="mt-3 flex flex-wrap items-end gap-3 text-sm">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-muted">Name</span>
@@ -76,14 +76,14 @@ export function TenantManagement({ tenants }: { tenants: TenantRow[] }) {
             <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="acme-co" className="w-40 rounded border border-border bg-bg px-2 py-1" />
           </label>
           <button type="button" disabled={busy || !name || !slug} onClick={createTenant} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
-            Create tenant
+            Create company
           </button>
         </div>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </section>
 
       <section>
-        <h2 className="text-sm font-medium text-muted">Tenants</h2>
+        <h2 className="text-sm font-medium text-muted">Companies</h2>
         <ul className="mt-2 divide-y divide-border rounded-xl border border-border bg-surface">
           {tenants.map((t) => {
             const draft = editing[t.id];

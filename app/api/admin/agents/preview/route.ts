@@ -1,7 +1,8 @@
 import { getPlatformContext } from "../../../../../src/platform/context";
 import { ConversationRepository } from "../../../../../src/db/repositories/conversation-repository";
 import { RunRepository } from "../../../../../src/db/repositories/run-repository";
-import { ToolDefRepository } from "../../../../../src/db/repositories/tool-repository";
+import { ToolDefRepository, ToolCallRepository } from "../../../../../src/db/repositories/tool-repository";
+import { LlmCallRepository } from "../../../../../src/db/repositories/llm-call-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
 import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig, AgentEscalationConfig, AgentConversationConfig } from "../../../../../src/db/repositories/agent-def-repository";
@@ -131,6 +132,8 @@ export async function POST(req: Request) {
     // Preview always runs on the internal test_harness channel regardless of
     // the draft's own enabledChannels setting — nothing to gate here.
     enabledChannels: [],
+    // Business-hours gating isn't part of the preview turn loop (see turn.ts vs. runtime.ts) — irrelevant here either way.
+    businessHours: null,
   };
 
   const runs = new RunRepository(db, tenant);
@@ -159,6 +162,25 @@ export async function POST(req: Request) {
           tenant.name,
         );
         runs.complete(run.id, "completed");
+
+        // Milestone 6: surface what this turn actually cost/did — pulled from
+        // the same llm_calls/tool_calls rows the real cost-tracking/tracing
+        // path writes (runAgentTurn -> LlmCallRepository.record/ToolCallRepository.record),
+        // just read back immediately instead of only ever being queried from analytics.
+        const llmCalls = new LlmCallRepository(db, tenant).listByRun(run.id);
+        const usage = llmCalls.reduce(
+          (acc, c) => ({
+            promptTokens: acc.promptTokens + c.promptTokens,
+            completionTokens: acc.completionTokens + c.completionTokens,
+            cachedTokens: acc.cachedTokens + c.cachedTokens,
+            costUsd: acc.costUsd + c.costUsd,
+          }),
+          { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 },
+        );
+        const toolCalls = new ToolCallRepository(db, tenant)
+          .listByRun(run.id)
+          .map((c) => ({ toolKey: c.toolKey, status: c.status, latencyMs: c.latencyMs }));
+
         send({
           type: "done",
           cards: result.cards ?? [],
@@ -167,6 +189,8 @@ export async function POST(req: Request) {
           escalationReasons: result.escalationReasons,
           history: result.updatedHistory,
           droppedWriteTools,
+          usage,
+          toolCalls,
         });
       } catch (err) {
         runs.complete(run.id, "failed");

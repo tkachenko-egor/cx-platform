@@ -4,13 +4,16 @@ import { AgentDefRepository } from "../../../src/db/repositories/agent-def-repos
 import { ModelAliasRepository } from "../../../src/db/repositories/model-alias-repository";
 import { displayNameForAlias } from "../../../src/gateway/model-catalog";
 import { Badge } from "../../../components/ui/Badge";
+import { DeleteAgentButton } from "../../../components/admin/DeleteAgentButton";
 
 const STATUS_VARIANT = { draft: "neutral", active: "success", paused: "warning", archived: "neutral" } as const;
 
 export const dynamic = "force-dynamic";
 
 /** Phase 3 M5: agent_defs had no admin UI at all before this — publish/edit was script/seed-driven. Auth/role gate lives in app/admin/layout.tsx. */
-export default async function AgentsPage() {
+export default async function AgentsPage(props: { searchParams: Promise<{ archived?: string }> }) {
+  const { archived } = await props.searchParams;
+  const showArchived = archived === "1";
   const { db, tenant } = await getPlatformContext();
   const defs = new AgentDefRepository(db, tenant).listAllPublished();
   const aliasLookup = new Map(new ModelAliasRepository(db, tenant).list().map((a) => [a.alias, a]));
@@ -20,13 +23,18 @@ export default async function AgentsPage() {
     const current = latestByKey.get(def.key);
     if (!current || def.version > current.version) latestByKey.set(def.key, def);
   }
-  const agents = [...latestByKey.values()].sort((a, b) => a.key.localeCompare(b.key));
+  // Milestone 5 (Archive = delete): archived agents drop out of the default
+  // view — still reachable via ?archived=1 rather than hidden with no way back.
+  const agents = [...latestByKey.values()].filter((a) => showArchived || a.agentStatus !== "archived").sort((a, b) => a.key.localeCompare(b.key));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-fg">Agents</h1>
         <div className="flex items-center gap-4">
+          <Link href={showArchived ? "/admin/agents" : "/admin/agents?archived=1"} className="text-xs text-muted hover:underline">
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Link>
           <Link href="/admin/agents/new" className="text-xs text-accent hover:underline">
             + New agent
           </Link>
@@ -43,7 +51,8 @@ export default async function AgentsPage() {
             <th className="py-2 pr-4 font-medium">Version</th>
             <th className="py-2 pr-4 font-medium">Model alias</th>
             <th className="py-2 pr-4 font-medium">Tools</th>
-            <th className="py-2 font-medium">Handoff targets</th>
+            <th className="py-2 pr-4 font-medium">Handoff targets</th>
+            <th className="py-2 font-medium" />
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -69,7 +78,8 @@ export default async function AgentsPage() {
                 })()}
               </td>
               <td className="py-2 pr-4 text-xs text-muted">{agent.toolIds.length}</td>
-              <td className="py-2 text-xs text-muted">{agent.handoffTargets.length > 0 ? agent.handoffTargets.join(", ") : "—"}</td>
+              <td className="py-2 pr-4 text-xs text-muted">{agent.handoffTargets.length > 0 ? agent.handoffTargets.join(", ") : "—"}</td>
+              <td className="py-2 text-right">{agent.agentStatus !== "archived" && <DeleteAgentButton agentKey={agent.key} />}</td>
             </tr>
           ))}
         </tbody>

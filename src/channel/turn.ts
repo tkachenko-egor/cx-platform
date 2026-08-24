@@ -103,7 +103,7 @@ export async function processInboundTurn(
       // Phase 9 M3: business hours, when configured, take precedence over the
       // ordinary handoff message — wired to persona.cannedMessages.default.outOfHours
       // (added in Phase 7, unused until now).
-      const closed = !isWithinBusinessHours(tenant.businessHours, now(), tenant.timezone);
+      const closed = !isWithinBusinessHours(pinnedAgent?.businessHours ?? tenant.businessHours, now(), tenant.timezone);
       const cannedText =
         (closed && pinnedAgent?.persona.cannedMessages?.default?.outOfHours) ||
         pinnedAgent?.persona.cannedMessages?.default?.handoff ||
@@ -176,6 +176,8 @@ export async function processInboundTurn(
     let entryAgentDisclosure: string | undefined;
     /** Phase 9 M3: same "capture at hops===0, use after the loop" pattern as entryAgentDisclosure above — persona.cannedMessages.default.outOfHours only makes sense from the agent that actually picked up the conversation. */
     let entryAgentOutOfHours: string | undefined;
+    /** Admin UI batch item 1: the entry agent's business-hours override, if it has one — falls back to tenant.businessHours wherever it's null. */
+    let entryAgentBusinessHours: typeof tenant.businessHours | undefined;
 
     for (let hops = 0; ; hops++) {
       const agent = agentDefs.getVersion(currentAgentKey, currentAgentVersion) ?? agentDefs.getLatestPublished(currentAgentKey);
@@ -183,6 +185,7 @@ export async function processInboundTurn(
       if (hops === 0) {
         entryAgentDisclosure = (agent.guardrails as { output?: { aiDisclosureMessage?: string } } | undefined)?.output?.aiDisclosureMessage;
         entryAgentOutOfHours = agent.persona.cannedMessages?.default?.outOfHours;
+        entryAgentBusinessHours = agent.businessHours ?? tenant.businessHours;
         // Streamed eagerly, ahead of the model's own reply deltas below, so a
         // live widget conversation actually sees it arrive first — not just
         // the persisted transcript (see the assistantText prepend after the loop).
@@ -247,7 +250,7 @@ export async function processInboundTurn(
     // persisted/returned assistantText) so a live widget conversation
     // actually sees it, matching the entryAgentDisclosure pattern above —
     // the `done` SSE event carries no assistantText, only accumulated deltas.
-    if (finalResult.escalate && entryAgentOutOfHours && !isWithinBusinessHours(tenant.businessHours, now(), tenant.timezone)) {
+    if (finalResult.escalate && entryAgentOutOfHours && !isWithinBusinessHours(entryAgentBusinessHours ?? tenant.businessHours, now(), tenant.timezone)) {
       callbacks.onTextDelta?.(`\n\n${entryAgentOutOfHours}`);
       finalResult = { ...finalResult, assistantText: `${finalResult.assistantText}\n\n${entryAgentOutOfHours}` };
     }

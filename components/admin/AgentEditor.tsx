@@ -6,10 +6,14 @@ import Link from "next/link";
 import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages, AlertTriangle, Shield, Waypoints } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
+import { Badge } from "../ui/Badge";
 import { Field, Input, Label } from "../ui/Input";
 import { Modal } from "../ui/Modal";
+import { Toggle } from "../ui/Toggle";
+import { Slider } from "../ui/Slider";
 import { KbDocumentsModal } from "./KbDocumentsModal";
 import { AgentPreviewChat } from "./AgentPreviewChat";
+import { WeeklyHoursEditor, daysFromRules, rulesFromDays, type DayRow } from "./WeeklyHoursEditor";
 import { MODEL_CATALOG, PROVIDER_DISPLAY_NAMES, displayNameForAlias } from "../../src/gateway/model-catalog";
 
 export interface ToolOption {
@@ -26,6 +30,12 @@ export interface AgentNativeToolsConfig {
   webSearch?: boolean;
   fileSearch?: boolean;
   mcp?: { enabled: boolean; serverLabel?: string; serverUrl?: string; headers?: Record<string, string> };
+}
+
+/** Mirrors BusinessHoursConfig in src/db/repositories/tenant-repository.ts — same local-mirror convention as AgentNativeToolsConfig above. */
+export interface AgentBusinessHoursConfig {
+  enabled?: boolean;
+  weeklyHours?: { day: number; start: string; end: string }[];
 }
 
 /** Mirrors AgentPersonaConfig/AgentLanguageConfig in src/db/repositories/agent-def-repository.ts — kept local for the same reason as AgentNativeToolsConfig above. */
@@ -127,25 +137,12 @@ export interface AgentEditorInitial {
   escalationConfig: AgentEscalationConfig;
   conversationConfig: AgentConversationConfig;
   enabledChannels: string[];
+  businessHours: AgentBusinessHoursConfig | null;
 }
 
 export interface OwnerOption {
   id: string;
   email: string;
-}
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${checked ? "bg-accent" : "bg-border"}`}
-    >
-      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-surface shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
-    </button>
-  );
 }
 
 /** Phase 8: shared chip-list input for the several new keyword/topic lists (escalation triggers, blocked topics, competitor names) — same visual pattern the do-not-say/brand-vocabulary/supported-language inputs already use inline, pulled into one component once there were enough repeats to justify it. */
@@ -212,7 +209,7 @@ const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
 ];
 
 const TONE_PRESETS = ["Neutral", "Formal", "Friendly", "Playful", "Custom"];
-const AGENT_STATUSES = ["draft", "active", "paused", "archived"] as const;
+const STATUS_BADGE_VARIANT = { draft: "neutral", active: "success", paused: "warning", archived: "neutral" } as const;
 const CHANNEL_OPTIONS = ["widget", "email"] as const;
 
 function SectionHeading({ icon: Icon, title, subtitle }: { icon: typeof Bot; title: string; subtitle?: string }) {
@@ -239,6 +236,9 @@ export function AgentEditor({
   availableOwners = [],
   versions,
   mode = "edit",
+  tenantBusinessHours,
+  tenantTimezone,
+  hasDraft = false,
 }: {
   initial: AgentEditorInitial;
   availableTools: ToolOption[];
@@ -249,6 +249,11 @@ export function AgentEditor({
   /** Phase 6 M4: every published version of this agent, newest first — powers the Prompt card's version dropdown. Omitted in create mode. */
   versions?: AgentEditorInitial[];
   mode?: "create" | "edit";
+  /** The company-wide default this agent falls back to when it has no override of its own — shown as context in the Availability card. */
+  tenantBusinessHours: AgentBusinessHoursConfig;
+  tenantTimezone: string;
+  /** Milestone 5: true when `initial` was hydrated from a saved-but-unpublished draft rather than the last published version. */
+  hasDraft?: boolean;
 }) {
   const router = useRouter();
   const [key, setKey] = useState(initial.key);
@@ -271,6 +276,7 @@ export function AgentEditor({
   const [collections, setCollections] = useState(availableCollections);
   const [newKbOpen, setNewKbOpen] = useState(false);
   const [forkingTool, setForkingTool] = useState<ToolOption | null>(null);
+  const [testModalOpen, setTestModalOpen] = useState(false);
   const [managingCollection, setManagingCollection] = useState<KbCollectionOption | null>(null);
   const [tab, setTab] = useState<SectionTab>("prompt");
 
@@ -308,6 +314,11 @@ export function AgentEditor({
   const [newVariableKey, setNewVariableKey] = useState("");
   const [newVariableValue, setNewVariableValue] = useState("");
   const [enabledChannels, setEnabledChannels] = useState<Set<string>>(new Set(initial.enabledChannels ?? []));
+
+  // Admin UI batch item 1: per-agent business-hours override
+  const [useCustomBusinessHours, setUseCustomBusinessHours] = useState(initial.businessHours != null);
+  const [businessHoursEnabled, setBusinessHoursEnabled] = useState(initial.businessHours?.enabled ?? true);
+  const [businessHoursDays, setBusinessHoursDays] = useState<DayRow[]>(() => daysFromRules(initial.businessHours?.weeklyHours ?? []));
 
   // Recomputed on every render so the preview pane's next send always uses whatever is currently
   // in the form, not a stale snapshot from when this component mounted.
@@ -459,6 +470,9 @@ export function AgentEditor({
     setConversationConfig(found.conversationConfig ?? {});
     setRecentTurnLimit(found.conversationConfig?.recentTurnLimit != null ? String(found.conversationConfig.recentTurnLimit) : "");
     setEnabledChannels(new Set(found.enabledChannels ?? []));
+    setUseCustomBusinessHours(found.businessHours != null);
+    setBusinessHoursEnabled(found.businessHours?.enabled ?? true);
+    setBusinessHoursDays(daysFromRules(found.businessHours?.weeklyHours ?? []));
   };
 
   const publish = async () => {
@@ -501,7 +515,11 @@ export function AgentEditor({
           internalDescription,
           ownerUserId: ownerUserId || null,
           tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
-          agentStatus,
+          // Status is implicit now, not a dropdown: creating always starts a
+          // brand-new agent as draft (unchanged default), and publishing an
+          // existing one always brings it (back) to active — Pause/Resume/
+          // Archive are separate, dedicated actions (setLifecycleStatus below).
+          agentStatus: mode === "create" ? "draft" : "active",
           environment,
           changeNotes,
           temperature: temperature.trim() ? Number(temperature) : null,
@@ -517,6 +535,7 @@ export function AgentEditor({
           },
           conversationConfig: { ...conversationConfig, recentTurnLimit: recentTurnLimit.trim() ? Number(recentTurnLimit) : undefined },
           enabledChannels: [...enabledChannels],
+          businessHours: useCustomBusinessHours ? { enabled: businessHoursEnabled, weeklyHours: rulesFromDays(businessHoursDays) } : null,
         }),
       });
       const body = await res.json();
@@ -529,8 +548,123 @@ export function AgentEditor({
       if (mode === "create") {
         router.push(`/admin/agents/${key}`);
       } else {
+        // A publish supersedes whatever draft it came from — clear it so the
+        // next page load starts clean from the newly-published version, not
+        // a now-stale unsaved draft. Best-effort: nothing here depends on it.
+        fetch(`/api/admin/agents/draft?key=${encodeURIComponent(initial.key)}`, { method: "DELETE" }).catch(() => {});
         router.refresh();
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveDraft = async () => {
+    setError(null);
+    setPendingApprovalMessage(null);
+    if (!modelAlias) {
+      setError("Choose a model");
+      return;
+    }
+    let guardrails: Record<string, unknown>;
+    try {
+      guardrails = guardrailsJson.trim() ? JSON.parse(guardrailsJson) : {};
+    } catch {
+      setError("Guardrails must be valid JSON");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/agents/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: initial.key,
+          systemPrompt,
+          modelAlias,
+          toolIds: [...toolIds],
+          guardrails,
+          skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+          kbScope: { collectionIds: [...collectionIds] },
+          nativeTools,
+          quickReplies,
+          displayName,
+          avatarUrl: avatarUrl.trim() || null,
+          internalDescription,
+          ownerUserId: ownerUserId || null,
+          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+          agentStatus,
+          environment,
+          temperature: temperature.trim() ? Number(temperature) : null,
+          maxOutputTokens: maxOutputTokens.trim() ? Number(maxOutputTokens) : null,
+          costCeilingUsd: costCeilingUsd.trim() ? Number(costCeilingUsd) : null,
+          persona,
+          languageConfig,
+          escalationConfig: {
+            ...escalationConfig,
+            confidenceThreshold: confidenceThreshold.trim() ? Number(confidenceThreshold) : undefined,
+            nFailedAttempts: nFailedAttempts.trim() ? Number(nFailedAttempts) : undefined,
+            turnCountCap: turnCountCap.trim() ? Number(turnCountCap) : undefined,
+          },
+          conversationConfig: { ...conversationConfig, recentTurnLimit: recentTurnLimit.trim() ? Number(recentTurnLimit) : undefined },
+          enabledChannels: [...enabledChannels],
+          businessHours: useCustomBusinessHours ? { enabled: businessHoursEnabled, weeklyHours: rulesFromDays(businessHoursDays) } : null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not save");
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Milestone 5: Pause/Resume/Archive are lightweight lifecycle-only publishes — same endpoint and same "everything else carries forward from `current`" behavior the edit path already has, just with an explicit target status and no version-bump semantics beyond that (a new version row is still created, but existing conversations stay pinned to whichever version they started on either way). */
+  const setLifecycleStatus = async (target: "active" | "paused" | "archived") => {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/agents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: initial.key,
+          systemPrompt,
+          modelAlias,
+          toolIds: [...toolIds],
+          guardrails: guardrailsJson.trim() ? JSON.parse(guardrailsJson) : {},
+          skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+          kbScope: { collectionIds: [...collectionIds] },
+          nativeTools,
+          quickReplies,
+          displayName,
+          avatarUrl: avatarUrl.trim() || null,
+          internalDescription,
+          ownerUserId: ownerUserId || null,
+          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+          agentStatus: target,
+          environment,
+          changeNotes: target === "archived" ? "Archived" : target === "paused" ? "Paused" : "Resumed",
+          temperature: temperature.trim() ? Number(temperature) : null,
+          maxOutputTokens: maxOutputTokens.trim() ? Number(maxOutputTokens) : null,
+          costCeilingUsd: costCeilingUsd.trim() ? Number(costCeilingUsd) : null,
+          persona,
+          languageConfig,
+          escalationConfig,
+          conversationConfig,
+          enabledChannels: [...enabledChannels],
+          businessHours: useCustomBusinessHours ? { enabled: businessHoursEnabled, weeklyHours: rulesFromDays(businessHoursDays) } : null,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not update status");
+      setAgentStatus(target);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -552,7 +686,7 @@ export function AgentEditor({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-1 items-start gap-6">
         <div className="min-w-0 space-y-5">
           <div className="flex gap-1 overflow-x-auto border-b border-border">
             {SECTION_TABS.map(({ key: tabKey, label, icon: Icon }) => (
@@ -624,16 +758,7 @@ export function AgentEditor({
                 </div>
                 <div className="mt-5 grid grid-cols-3 gap-4">
                   <Field label="Temperature" htmlFor="agent-temperature">
-                    <Input
-                      id="agent-temperature"
-                      type="number"
-                      min={0}
-                      max={2}
-                      step={0.1}
-                      value={temperature}
-                      onChange={(e) => setTemperature(e.target.value)}
-                      placeholder="Provider default"
-                    />
+                    <Slider id="agent-temperature" min={0} max={2} step={0.1} value={temperature} onChange={setTemperature} unsetPosition={0.7} formatValue={(v) => v.toFixed(1)} />
                   </Field>
                   <Field label="Max response length (tokens)" htmlFor="agent-max-tokens">
                     <Input id="agent-max-tokens" type="number" min={1} value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} placeholder="1024" />
@@ -693,22 +818,24 @@ export function AgentEditor({
               </Card>
 
               <Card className="p-6">
-                <SectionHeading icon={Sparkles} title="Lifecycle" subtitle="Status controls whether this agent can be routed a new conversation." />
+                <SectionHeading icon={Sparkles} title="Lifecycle" subtitle="Status is set by Save/Publish/Pause below, not chosen directly." />
                 <div className="mt-4 grid grid-cols-2 gap-4">
-                  <Field label="Status" htmlFor="agent-status">
-                    <select
-                      id="agent-status"
-                      value={agentStatus}
-                      onChange={(e) => setAgentStatus(e.target.value as typeof agentStatus)}
-                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
-                    >
-                      {AGENT_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  <div>
+                    <Label>Status</Label>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <Badge variant={STATUS_BADGE_VARIANT[agentStatus]}>{agentStatus}</Badge>
+                      {mode === "edit" && (agentStatus === "active" || agentStatus === "paused") && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setLifecycleStatus(agentStatus === "active" ? "paused" : "active")}
+                          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-fg hover:bg-bg disabled:opacity-50"
+                        >
+                          {agentStatus === "active" ? "Pause" : "Resume"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div>
                     <Label htmlFor="agent-environment">Environment</Label>
                     <div id="agent-environment" className="mt-1.5 flex items-center gap-2">
@@ -731,7 +858,7 @@ export function AgentEditor({
                 </div>
                 <p className="mt-3 text-xs text-muted">
                   Draft, paused, and archived agents are never picked for a new conversation (existing conversations keep running unaffected). A sandbox agent&apos;s write tools always simulate — nothing is ever actually
-                  changed.
+                  changed. New agents start as draft; Publish brings one (back) to active. Deleting an agent (from the Agents list) archives it rather than erasing its history.
                 </p>
                 <div className="mt-4 border-t border-border pt-4">
                   <Label htmlFor="agent-channels">Enabled channels</Label>
@@ -756,6 +883,30 @@ export function AgentEditor({
                   </div>
                   <p className="mt-1.5 text-xs text-muted">Nothing checked means every channel (today&apos;s behavior). Check one or more to restrict this agent to only those.</p>
                 </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={Sparkles} title="Availability" subtitle="When this agent is treated as open vs. out-of-hours." />
+                <div className="mt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-fg">Custom schedule for this agent</p>
+                    <p className="text-xs text-muted">Off uses the company default{tenantBusinessHours.enabled ? "" : " (currently: always open)"}.</p>
+                  </div>
+                  <Toggle checked={useCustomBusinessHours} onChange={setUseCustomBusinessHours} />
+                </div>
+                {useCustomBusinessHours && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <WeeklyHoursEditor
+                      enabled={businessHoursEnabled}
+                      onEnabledChange={setBusinessHoursEnabled}
+                      days={businessHoursDays}
+                      onDayChange={(i, patch) => setBusinessHoursDays((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)))}
+                      timezone={tenantTimezone}
+                      enabledLabel="Enable this schedule"
+                      enabledHint={`Timezone: ${tenantTimezone}. When off, this agent is always treated as "open".`}
+                    />
+                  </div>
+                )}
               </Card>
             </div>
           )}
@@ -787,8 +938,8 @@ export function AgentEditor({
                       className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
                     >
                       <option value="auto">Let the model judge</option>
-                      <option value="ty">Informal (ти)</option>
-                      <option value="vy">Formal (ви)</option>
+                      <option value="ty">Informal</option>
+                      <option value="vy">Formal</option>
                     </select>
                   </Field>
                 </div>
@@ -1267,7 +1418,7 @@ export function AgentEditor({
                 </div>
                 <div className="mt-4 grid grid-cols-3 gap-4">
                   <Field label="Confidence threshold" htmlFor="escalation-confidence-threshold">
-                    <Input id="escalation-confidence-threshold" type="number" min={0} max={1} step={0.01} value={confidenceThreshold} onChange={(e) => setConfidenceThreshold(e.target.value)} placeholder="default" />
+                    <Slider id="escalation-confidence-threshold" min={0} max={1} step={0.01} value={confidenceThreshold} onChange={setConfidenceThreshold} unsetPosition={0.5} unsetLabel="Default" />
                   </Field>
                   <Field label="N failed attempts" htmlFor="escalation-n-failed">
                     <Input id="escalation-n-failed" type="number" min={1} value={nFailedAttempts} onChange={(e) => setNFailedAttempts(e.target.value)} placeholder="Off" />
@@ -1403,6 +1554,12 @@ export function AgentEditor({
             </div>
           )}
 
+          {mode === "edit" && hasDraft && (
+            <p className="rounded-lg border border-accent/30 bg-accent-soft px-3 py-2 text-xs text-accent">
+              Resumed from a saved draft — v{initial.version} is still what&apos;s live until you publish.
+            </p>
+          )}
+
           {mode === "edit" && (
             <div>
               <Label htmlFor="agent-change-notes">Change notes (optional)</Label>
@@ -1413,15 +1570,33 @@ export function AgentEditor({
           {pendingApprovalMessage && <p className="text-sm text-warning">{pendingApprovalMessage}</p>}
           {error && <p className="text-sm text-danger">{error}</p>}
 
-          <Button disabled={busy} onClick={publish}>
-            {mode === "create" ? (busy ? "Creating…" : "Create agent") : busy ? "Publishing…" : `Publish v${initial.version + 1}`}
-          </Button>
+          <div className="flex items-center gap-3">
+            {mode === "edit" && (
+              <Button variant="secondary" disabled={busy} onClick={saveDraft}>
+                {busy ? "Saving…" : "Save draft"}
+              </Button>
+            )}
+            <Button disabled={busy} onClick={publish}>
+              {mode === "create" ? (busy ? "Creating…" : "Create agent") : busy ? "Publishing…" : `Publish v${initial.version + 1}`}
+            </Button>
+          </div>
         </div>
-
-        <Card className="sticky top-6 flex h-[calc(100vh-7rem)] min-h-[420px] flex-col overflow-hidden p-0">
-          <AgentPreviewChat draft={previewDraft} />
-        </Card>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setTestModalOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-medium text-accent-fg shadow-lg hover:opacity-90"
+      >
+        <Sparkles size={16} />
+        Test agent
+      </button>
+
+      {testModalOpen && (
+        <Modal title="Test agent" size="lg" onClose={() => setTestModalOpen(false)}>
+          <AgentPreviewChat draft={previewDraft} onClose={() => setTestModalOpen(false)} />
+        </Modal>
+      )}
 
       {forkingTool && (
         <ForkToolModal

@@ -14,8 +14,16 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
   const { key } = await props.params;
   const { db, tenant } = await getPlatformContext();
 
-  const agentDef = new AgentDefRepository(db, tenant).getLatestPublished(key);
+  const agentDefs = new AgentDefRepository(db, tenant);
+  const agentDef = agentDefs.getLatestPublished(key);
   if (!agentDef) notFound();
+  // Milestone 5 (Save/Publish split): a saved-but-unpublished draft, if any,
+  // takes precedence over the last published version as the form's starting
+  // point — "resume editing" should pick up unsaved work. `version` stays
+  // the real published version's (never the draft's sentinel 0) so the
+  // header/version-picker keep referring to actual history.
+  const draft = agentDefs.getDraft(key);
+  const formSource = draft ?? agentDef;
 
   const availableTools = new ToolDefRepository(db, tenant)
     .list()
@@ -23,7 +31,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
   const availableOwners = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email }));
-  const versions = new AgentDefRepository(db, tenant).listVersions(key).map((v) => ({
+  const versions = agentDefs.listVersions(key).map((v) => ({
     key: v.key,
     version: v.version,
     systemPrompt: v.systemPrompt,
@@ -49,6 +57,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     escalationConfig: v.escalationConfig,
     conversationConfig: v.conversationConfig,
     enabledChannels: v.enabledChannels,
+    businessHours: v.businessHours,
   }));
 
   return (
@@ -71,35 +80,39 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
         initial={{
           key: agentDef.key,
           version: agentDef.version,
-          systemPrompt: agentDef.systemPrompt,
-          modelAlias: agentDef.modelAlias,
-          toolIds: agentDef.toolIds,
-          guardrails: agentDef.guardrails,
-          skills: agentDef.skills,
-          kbScope: agentDef.kbScope,
-          nativeTools: agentDef.nativeTools,
-          quickReplies: agentDef.quickReplies,
-          displayName: agentDef.displayName,
-          avatarUrl: agentDef.avatarUrl,
-          internalDescription: agentDef.internalDescription,
-          ownerUserId: agentDef.ownerUserId,
-          tags: agentDef.tags,
+          systemPrompt: formSource.systemPrompt,
+          modelAlias: formSource.modelAlias,
+          toolIds: formSource.toolIds,
+          guardrails: formSource.guardrails,
+          skills: formSource.skills,
+          kbScope: formSource.kbScope,
+          nativeTools: formSource.nativeTools,
+          quickReplies: formSource.quickReplies,
+          displayName: formSource.displayName,
+          avatarUrl: formSource.avatarUrl,
+          internalDescription: formSource.internalDescription,
+          ownerUserId: formSource.ownerUserId,
+          tags: formSource.tags,
           agentStatus: agentDef.agentStatus,
-          environment: agentDef.environment,
-          temperature: agentDef.temperature,
-          maxOutputTokens: agentDef.maxOutputTokens,
-          costCeilingUsd: agentDef.costCeilingUsd,
-          persona: agentDef.persona,
-          languageConfig: agentDef.languageConfig,
-          escalationConfig: agentDef.escalationConfig,
-          conversationConfig: agentDef.conversationConfig,
-          enabledChannels: agentDef.enabledChannels,
+          environment: formSource.environment,
+          temperature: formSource.temperature,
+          maxOutputTokens: formSource.maxOutputTokens,
+          costCeilingUsd: formSource.costCeilingUsd,
+          persona: formSource.persona,
+          languageConfig: formSource.languageConfig,
+          escalationConfig: formSource.escalationConfig,
+          conversationConfig: formSource.conversationConfig,
+          enabledChannels: formSource.enabledChannels,
+          businessHours: formSource.businessHours,
         }}
         availableTools={availableTools}
         availableModels={availableModels}
         availableCollections={availableCollections}
         availableOwners={availableOwners}
         versions={versions}
+        tenantBusinessHours={tenant.businessHours}
+        tenantTimezone={tenant.timezone}
+        hasDraft={Boolean(draft)}
       />
     </main>
   );

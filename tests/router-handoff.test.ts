@@ -93,6 +93,7 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     escalationConfig: {},
     conversationConfig: {},
     enabledChannels: [],
+    businessHours: null,
   };
 }
 
@@ -129,6 +130,7 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     escalationConfig: {},
     conversationConfig: {},
     enabledChannels: [],
+    businessHours: null,
   };
 }
 

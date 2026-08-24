@@ -15,6 +15,7 @@ import { roleAtLeast } from "../../../../src/auth/permissions";
 import type { User } from "../../../../src/db/repositories/user-repository";
 import { ensureVectorStore } from "../../../../src/kb/openai-vector-store-sync";
 import type { TenantContext } from "../../../../src/tenancy/context";
+import type { BusinessHoursConfig } from "../../../../src/db/repositories/tenant-repository";
 
 export const runtime = "nodejs";
 
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
     escalationConfig?: AgentEscalationConfig;
     conversationConfig?: AgentConversationConfig;
     enabledChannels?: string[];
+    businessHours?: BusinessHoursConfig | null;
   };
   if (!body.key || !body.systemPrompt || !body.modelAlias) {
     return Response.json({ error: "key, systemPrompt, and modelAlias are required" }, { status: 400 });
@@ -146,6 +148,7 @@ export async function POST(req: Request) {
       escalationConfig: body.escalationConfig ?? {},
       conversationConfig: body.conversationConfig ?? {},
       enabledChannels: body.enabledChannels ?? [],
+      businessHours: body.businessHours ?? null,
     };
 
     if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
@@ -209,6 +212,7 @@ export async function POST(req: Request) {
     escalationConfig: body.escalationConfig ?? current.escalationConfig,
     conversationConfig: body.conversationConfig ?? current.conversationConfig,
     enabledChannels: body.enabledChannels ?? current.enabledChannels,
+    businessHours: body.businessHours !== undefined ? body.businessHours : current.businessHours,
   };
 
   if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {

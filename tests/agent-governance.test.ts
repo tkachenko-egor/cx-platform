@@ -78,7 +78,7 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
     expect(approvals.listPending().map((a) => a.id)).toEqual([approval.id]);
 
     // Approving replays the requester's payload verbatim.
-    const published = agentDefs.publish(approvals.get(approval.id)!.payload as Parameters<typeof agentDefs.publish>[0]);
+    const published = agentDefs.publish(approvals.get(approval.id)!.payload as unknown as Parameters<typeof agentDefs.publish>[0]);
     approvals.markDecided(approval.id, "approved", admin.id);
 
     expect(published.systemPrompt).toBe(payload.systemPrompt);
@@ -176,6 +176,7 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
       escalationConfig: { nFailedAttempts: 2 },
       conversationConfig: {},
       enabledChannels: [],
+      businessHours: null,
     };
 
     const result = await runAgentTurn({ db, gateway, embeddings: new StubEmbeddingProvider() }, tenant, "CONV-nfailed", "run-1", agent, [], "please cancel my order");

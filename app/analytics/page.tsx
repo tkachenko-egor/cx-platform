@@ -46,7 +46,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-fg">Analytics</h1>
-          <p className="mt-1 text-sm text-muted">{agentKey ? `Performance for ${agentKey}.` : "Tenant-wide performance across every agent."}</p>
+          <p className="mt-1 text-sm text-muted">{agentKey ? `Performance for ${agentKey}.` : "Company-wide performance across every agent."}</p>
         </div>
         <AgentPicker agentKeys={agentKeys} selected={agentKey} />
       </div>

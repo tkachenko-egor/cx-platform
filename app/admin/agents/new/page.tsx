@@ -78,6 +78,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         escalationConfig: cloneSource.escalationConfig,
         conversationConfig: cloneSource.conversationConfig,
         enabledChannels: cloneSource.enabledChannels,
+        businessHours: cloneSource.businessHours,
       }
     : {
         key: "",
@@ -105,6 +106,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         escalationConfig: {},
         conversationConfig: {},
         enabledChannels: [],
+        businessHours: null,
       };
 
   return (
@@ -133,6 +135,8 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         availableModels={availableModels}
         availableCollections={availableCollections}
         availableOwners={availableOwners}
+        tenantBusinessHours={tenant.businessHours}
+        tenantTimezone={tenant.timezone}
       />
     </main>
   );

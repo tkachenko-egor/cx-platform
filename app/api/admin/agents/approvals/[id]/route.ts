@@ -36,7 +36,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
 
   // Replays the requester's payload verbatim — the approver isn't re-deriving
   // it from whatever the editor happens to show now, which may have moved on.
-  const published = new AgentDefRepository(db, tenant).publish(approval.payload as Parameters<AgentDefRepository["publish"]>[0]);
+  const published = new AgentDefRepository(db, tenant).publish(approval.payload as unknown as Parameters<AgentDefRepository["publish"]>[0]);
   approvals.markDecided(approval.id, "approved", actor.id);
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

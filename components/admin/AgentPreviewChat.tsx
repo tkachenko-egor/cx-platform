@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RotateCcw, Sparkles } from "lucide-react";
+import { RotateCcw, Sparkles, X } from "lucide-react";
 import { MessageContent } from "../chat/MessageContent";
 import { Composer } from "../chat/Composer";
 import { CardRenderer } from "../cards/CardRenderer";
@@ -20,6 +20,19 @@ export interface PreviewDraft {
   skills: string[];
 }
 
+interface TurnUsage {
+  promptTokens: number;
+  completionTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+}
+
+interface TurnToolCall {
+  toolKey: string;
+  status: "ok" | "error";
+  latencyMs: number;
+}
+
 type UiMessage = {
   id: string;
   role: "user" | "assistant";
@@ -27,10 +40,29 @@ type UiMessage = {
   cards: CardPayload[];
   streaming?: boolean;
   error?: string;
+  usage?: TurnUsage;
+  toolCalls?: TurnToolCall[];
 };
 
 function newId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`;
+}
+
+/** Milestone 6: the "how much did this cost / what did it call" strip under a test reply — read back from the same llm_calls/tool_calls rows the real cost-tracking path writes, so it's the actual numbers, not an estimate. */
+function TurnStats({ usage, toolCalls }: { usage: TurnUsage; toolCalls: TurnToolCall[] }) {
+  const totalTokens = usage.promptTokens + usage.completionTokens;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-1.5 text-[11px] text-muted">
+      <span>{totalTokens.toLocaleString()} tokens</span>
+      {usage.cachedTokens > 0 && <span>{usage.cachedTokens.toLocaleString()} cached</span>}
+      <span>${usage.costUsd.toFixed(4)}</span>
+      {toolCalls.length > 0 && (
+        <span>
+          {toolCalls.length} tool{toolCalls.length === 1 ? "" : "s"} called: {toolCalls.map((t) => `${t.toolKey}${t.status === "error" ? " (error)" : ""}`).join(", ")}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -41,7 +73,7 @@ function newId(): string {
  * whatever is currently typed in the form, not what was there when this
  * component mounted.
  */
-export function AgentPreviewChat({ draft }: { draft: PreviewDraft }) {
+export function AgentPreviewChat({ draft, onClose }: { draft: PreviewDraft; onClose?: () => void }) {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [toolLabel, setToolLabel] = useState<string | null>(null);
@@ -128,7 +160,9 @@ export function AgentPreviewChat({ draft }: { draft: PreviewDraft }) {
             case "done": {
               const cards: CardPayload[] = (event.cards as CardPayload[] | undefined) ?? [];
               const docs = (event.citableDocs as { docId: string; title: string }[] | undefined) ?? [];
-              updateAssistant({ streaming: false, cards });
+              const usage = event.usage as TurnUsage | undefined;
+              const toolCalls = event.toolCalls as TurnToolCall[] | undefined;
+              updateAssistant({ streaming: false, cards, usage, toolCalls });
               if (docs.length) setCitableDocs((prev) => ({ ...prev, ...Object.fromEntries(docs.map((d) => [d.docId, d.title])) }));
               historyRef.current = (event.history as GatewayMessage[] | undefined) ?? historyRef.current;
               const dropped = event.droppedWriteTools as number | undefined;
@@ -165,6 +199,11 @@ export function AgentPreviewChat({ draft }: { draft: PreviewDraft }) {
         >
           <RotateCcw size={14} />
         </button>
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Close" title="Close" className="rounded-lg p-1.5 text-muted hover:bg-bg hover:text-fg">
+            <X size={14} />
+          </button>
+        )}
       </div>
 
       <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -191,6 +230,7 @@ export function AgentPreviewChat({ draft }: { draft: PreviewDraft }) {
                 {m.cards.map((card, i) => (
                   <CardRenderer key={i} card={card} />
                 ))}
+                {m.usage && !m.streaming && <TurnStats usage={m.usage} toolCalls={m.toolCalls ?? []} />}
               </div>
             )}
           </div>
