@@ -78,6 +78,7 @@ async function setup(providerScript: ChatResponse[]) {
     costCeilingUsd: null,
     persona: {},
     languageConfig: {},
+    escalationConfig: {},
   };
 
   return { db, tenant, gateway, embeddings, agent };

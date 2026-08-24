@@ -12,28 +12,33 @@ import {
   History,
   FlaskConical,
   MessageSquare,
+  ClipboardCheck,
   type LucideIcon,
 } from "lucide-react";
 import { SignOutButton } from "../desk/SignOutButton";
+import { roleAtLeast, type Role } from "../../src/auth/permissions";
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Phase 8 M3: app/admin/layout.tsx now admits supervisor+, but several sections (everything except Agents) stay admin/owner-only — hide those links entirely rather than showing a link that immediately redirects. */
+  adminOnly?: boolean;
 }
 
 const BUILD_ITEMS: NavItem[] = [
   { href: "/admin/agents", label: "Agents", icon: Bot },
-  { href: "/admin/tools", label: "Tools", icon: Wrench },
-  { href: "/admin/kb", label: "Knowledge base", icon: BookOpen },
+  { href: "/admin/agents/approvals", label: "Publish approvals", icon: ClipboardCheck, adminOnly: true },
+  { href: "/admin/tools", label: "Tools", icon: Wrench, adminOnly: true },
+  { href: "/admin/kb", label: "Knowledge base", icon: BookOpen, adminOnly: true },
 ];
 
 const OPERATE_ITEMS: NavItem[] = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/admin/api-keys", label: "API keys", icon: KeyRound },
-  { href: "/admin/team", label: "Team", icon: Users },
-  { href: "/admin/audit-log", label: "Audit log", icon: History },
-  { href: "/admin/experiments", label: "Experiments", icon: FlaskConical },
+  { href: "/admin/api-keys", label: "API keys", icon: KeyRound, adminOnly: true },
+  { href: "/admin/team", label: "Team", icon: Users, adminOnly: true },
+  { href: "/admin/audit-log", label: "Audit log", icon: History, adminOnly: true },
+  { href: "/admin/experiments", label: "Experiments", icon: FlaskConical, adminOnly: true },
 ];
 
 function initials(email: string): string {
@@ -56,9 +61,12 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /** Phase 4 design refresh: dark icon-led sidebar replacing the cramped top-nav bar — see app/admin/layout.tsx for the server-side auth gate this wraps. */
-export function AdminSidebar({ email, role }: { email: string; role: string }) {
+export function AdminSidebar({ email, role }: { email: string; role: Role }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || (href !== "/admin/agents" && pathname?.startsWith(href + "/"));
+  const isAdmin = roleAtLeast(role, "admin");
+  const buildItems = BUILD_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const operateItems = OPERATE_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
@@ -71,19 +79,21 @@ export function AdminSidebar({ email, role }: { email: string; role: string }) {
         <div>
           <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-sidebar-fg/60">Build</p>
           <div className="space-y-0.5">
-            {BUILD_ITEMS.map((item) => (
+            {buildItems.map((item) => (
               <NavLink key={item.href} item={item} active={Boolean(isActive(item.href))} />
             ))}
           </div>
         </div>
-        <div>
-          <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-sidebar-fg/60">Operate</p>
-          <div className="space-y-0.5">
-            {OPERATE_ITEMS.map((item) => (
-              <NavLink key={item.href} item={item} active={Boolean(isActive(item.href))} />
-            ))}
+        {operateItems.length > 0 && (
+          <div>
+            <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-sidebar-fg/60">Operate</p>
+            <div className="space-y-0.5">
+              {operateItems.map((item) => (
+                <NavLink key={item.href} item={item} active={Boolean(isActive(item.href))} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </nav>
 
       <div className="border-t border-sidebar-border p-3">

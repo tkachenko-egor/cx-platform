@@ -1,14 +1,16 @@
 import { getPlatformContext } from "../../../src/platform/context";
 import { getSessionUser } from "../../../src/auth/session";
+import { requireAdminPage } from "../../../src/auth/require-admin-page";
 import { UserRepository } from "../../../src/db/repositories/user-repository";
 import { UserInviteRepository } from "../../../src/db/repositories/user-invite-repository";
 import { TeamManagement } from "../../../components/admin/TeamManagement";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 3 M3: team/role management — the first real consumer of the manage_users permission. Auth/role gate lives in app/admin/layout.tsx. */
+/** Phase 3 M3: team/role management — the first real consumer of the manage_users permission. Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function TeamPage() {
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
   const currentUser = (await getSessionUser(db, tenant))!;
 
   const users = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email, role: u.role, status: u.status }));

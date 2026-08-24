@@ -88,6 +88,7 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     costCeilingUsd: null,
     persona: {},
     languageConfig: {},
+    escalationConfig: {},
   };
 
   return { db, tenant, gateway, embeddings, agent, provider };
@@ -194,6 +195,7 @@ describe("runAgentTurn — input guardrails", () => {
       costCeilingUsd: null,
       persona: {},
       languageConfig: {},
+      escalationConfig: {},
     };
 
     const articles = new KbArticleRepository(db, tenant);

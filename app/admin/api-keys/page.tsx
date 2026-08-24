@@ -1,13 +1,15 @@
 import { getPlatformContext } from "../../../src/platform/context";
+import { requireAdminPage } from "../../../src/auth/require-admin-page";
 import { ProviderCredentialRepository } from "../../../src/db/repositories/provider-credential-repository";
 import { UserRepository } from "../../../src/db/repositories/user-repository";
 import { ApiKeysManagement } from "../../../components/admin/ApiKeysManagement";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 3 M7: DB-backed provider API keys, replacing the shared ANTHROPIC_API_KEY/OPENAI_API_KEY env vars. Auth/role gate lives in app/admin/layout.tsx. */
+/** Phase 3 M7: DB-backed provider API keys, replacing the shared ANTHROPIC_API_KEY/OPENAI_API_KEY env vars. Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function ApiKeysPage() {
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
   const users = new UserRepository(db, tenant);
 
   const credentials = new ProviderCredentialRepository(db, tenant)

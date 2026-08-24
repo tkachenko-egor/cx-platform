@@ -1,13 +1,15 @@
 import { getPlatformContext } from "../../../src/platform/context";
+import { requireAdminPage } from "../../../src/auth/require-admin-page";
 import { AuditLogRepository } from "../../../src/db/repositories/audit-log-repository";
 import { UserRepository } from "../../../src/db/repositories/user-repository";
 import { AuditLogTable } from "../../../components/admin/AuditLogTable";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 3 M3, restyled in the design refresh. Auth/role gate lives in app/admin/layout.tsx. */
+/** Phase 3 M3, restyled in the design refresh. Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function AuditLogPage() {
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
 
   const entries = new AuditLogRepository(db, tenant).listRecent({ limit: 100 });
   const usersById = new Map(new UserRepository(db, tenant).list().map((u) => [u.id, u.email]));

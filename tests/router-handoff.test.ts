@@ -90,6 +90,7 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     costCeilingUsd: null,
     persona: {},
     languageConfig: {},
+    escalationConfig: {},
   };
 }
 
@@ -123,6 +124,7 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     costCeilingUsd: null,
     persona: {},
     languageConfig: {},
+    escalationConfig: {},
   };
 }
 

@@ -75,14 +75,15 @@ export async function processInboundTurn(
       return { conversationId: input.conversationId, state: conversation.state, handoff: true, loopCapHit: false };
     }
 
-    if (conversationTurnCapExceeded(session.turnCount)) {
-      // Phase 7 M3: an admin-configured handoff message takes precedence over
-      // the hardcoded default — best-effort lookup, falls back silently if
-      // the pinned agent key/version is somehow gone.
-      const pinnedAgent = agentDefs.getVersion(
-        conversation.currentAgentId ?? DEFAULT_AGENT_KEY,
-        (conversation.metadata.agentVersion as number | undefined) ?? 1,
-      );
+    // Phase 7 M3 (canned handoff message) + Phase 8 M1 (per-agent turn-count
+    // cap override) both need a best-effort lookup of the pinned agent —
+    // falls back silently if the key/version is somehow gone.
+    const pinnedAgent = agentDefs.getVersion(
+      conversation.currentAgentId ?? DEFAULT_AGENT_KEY,
+      (conversation.metadata.agentVersion as number | undefined) ?? 1,
+    );
+
+    if (conversationTurnCapExceeded(session.turnCount, pinnedAgent?.escalationConfig?.turnCountCap)) {
       const cannedText = pinnedAgent?.persona.cannedMessages?.default?.handoff || "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
       callbacks.onTextDelta?.(cannedText);
       setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
@@ -145,10 +146,22 @@ export async function processInboundTurn(
 
     session.turnCount++;
     let finalResult: Awaited<ReturnType<typeof runAgentTurn>> | undefined;
+    // Phase 8 M2: the entry agent's disclosure copy, captured once at hops===0
+    // (before any mid-turn handoff can reassign currentAgentKey) rather than
+    // re-derived from the pre-routing pinnedAgent lookup above, which can be
+    // stale/wrong on exactly this — a brand-new conversation's first turn.
+    let entryAgentDisclosure: string | undefined;
 
     for (let hops = 0; ; hops++) {
       const agent = agentDefs.getVersion(currentAgentKey, currentAgentVersion) ?? agentDefs.getLatestPublished(currentAgentKey);
       if (!agent) throw new Error(`No agent definition available for "${currentAgentKey}"`);
+      if (hops === 0) {
+        entryAgentDisclosure = (agent.guardrails as { output?: { aiDisclosureMessage?: string } } | undefined)?.output?.aiDisclosureMessage;
+        // Streamed eagerly, ahead of the model's own reply deltas below, so a
+        // live widget conversation actually sees it arrive first — not just
+        // the persisted transcript (see the assistantText prepend after the loop).
+        if (session.turnCount === 1 && entryAgentDisclosure) callbacks.onTextDelta?.(`${entryAgentDisclosure}\n\n`);
+      }
 
       const run = runs.start({ conversationId: input.conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: hops === 0 ? "user_message" : "handoff" });
 
@@ -182,6 +195,14 @@ export async function processInboundTurn(
       conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
       persistHandoff(agent.key, target, pkg);
       handoffContext = pkg;
+    }
+
+    // Phase 8 M2: AI disclosure on the conversation's first turn only —
+    // applied to the outer assistantText (what's persisted/returned to the
+    // customer), never to session.history, so it doesn't pollute what the
+    // model sees as its own prior turns on replay.
+    if (session.turnCount === 1 && entryAgentDisclosure) {
+      finalResult = { ...finalResult, assistantText: `${entryAgentDisclosure}\n\n${finalResult.assistantText}` };
     }
 
     const assistantMessage = messages.append({ conversationId: input.conversationId, role: "assistant", content: finalResult.assistantText });

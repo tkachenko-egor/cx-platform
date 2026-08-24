@@ -10,6 +10,7 @@ import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval
 import { lookupCache, writeCache } from "../kb/semantic-cache";
 import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
+import { getOrCreateSession } from "./sessions-store";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
 import type { AgentGuardrailConfig } from "../guardrails/types";
 import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
@@ -36,7 +37,9 @@ export type EscalationReason =
   | "router_low_confidence"
   | "negative_sentiment"
   | "cost_ceiling_exceeded"
-  | "target_agent_unavailable";
+  | "target_agent_unavailable"
+  | "low_kb_confidence_escalation"
+  | "n_failed_attempts";
 
 export interface AgentTurnResult {
   assistantText: string;
@@ -127,10 +130,11 @@ export async function runAgentTurn(
     };
   }
 
-  const severe = scanForSevereSymptoms(userText);
-  const humanRequest = scanForHumanRequest(userText);
-  const reactionMention = scanForReactionMention(userText);
-  const sentiment = scanForNegativeSentiment(userText);
+  const severe = scanForSevereSymptoms(userText, agent.escalationConfig.severeSymptomKeywords);
+  const humanRequest = scanForHumanRequest(userText, agent.escalationConfig.humanRequestKeywords);
+  const reactionMention = scanForReactionMention(userText, agent.escalationConfig.reactionKeywords);
+  const sentiment = scanForNegativeSentiment(userText, agent.escalationConfig.negativeSentimentKeywords);
+  const convoSession = getOrCreateSession(conversationId);
 
   // Phase 2 M3b: skip the cache lookup entirely (not just the write) for
   // anything the deterministic scanners already flagged — a severe-symptom
@@ -177,6 +181,12 @@ export async function runAgentTurn(
     // papers over with a plausible-sounding answer should still surface.
     const bestScore = retrieved[0]?.score ?? 0;
     lowKbConfidence = bestScore < DEFAULT_LOW_CONFIDENCE_THRESHOLD;
+    // Phase 8 M1: opt-in — the unconditional lowKbConfidence flag above only
+    // ever enqueues a review-queue item (Phase 2 M5), never escalates. This
+    // is a separate, agent-configured "actually hand off now" behavior.
+    if (agent.escalationConfig.escalateOnLowConfidence && bestScore < (agent.escalationConfig.confidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD)) {
+      genericEscalationReasons.push("low_kb_confidence_escalation");
+    }
     new KbRetrievalLogRepository(deps.db, tenant).record({
       conversationId,
       runId,
@@ -266,9 +276,21 @@ export async function runAgentTurn(
           approvalRequested = true;
         }
 
+        // Phase 8 M1: same ok:false test runAndLog (src/tools/registry.ts)
+        // uses to mark a tool_calls row 'error' — this codebase doesn't
+        // distinguish a real execution failure from a legitimate business
+        // "no" (e.g. an ineligible return), so neither does this counter.
+        if ((result as { ok?: unknown }).ok === false) convoSession.consecutiveToolFailures++;
+        else convoSession.consecutiveToolFailures = 0;
+
         const resultText = JSON.stringify(result);
         toolResultTexts.push(resultText);
         messages.push({ role: "tool", toolCallId: call.id, toolName: call.name, content: resultText });
+      }
+
+      if (agent.escalationConfig.nFailedAttempts != null && convoSession.consecutiveToolFailures >= agent.escalationConfig.nFailedAttempts) {
+        genericEscalationReasons.push("n_failed_attempts");
+        break;
       }
 
       if (handoffRequested) break;
@@ -284,6 +306,9 @@ export async function runAgentTurn(
   if (blockingMode) {
     if (outputGuardrail.blocked) {
       finalText = "Let me get a colleague to double-check that before I send it over.";
+      callbacks.onTextDelta?.(finalText);
+    } else if (outputGuardrail.redactedText !== undefined) {
+      finalText = outputGuardrail.redactedText;
       callbacks.onTextDelta?.(finalText);
     } else {
       for (const delta of bufferedDeltas) callbacks.onTextDelta?.(delta);

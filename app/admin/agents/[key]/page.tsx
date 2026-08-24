@@ -46,6 +46,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     costCeilingUsd: v.costCeilingUsd,
     persona: v.persona,
     languageConfig: v.languageConfig,
+    escalationConfig: v.escalationConfig,
   }));
 
   return (
@@ -88,6 +89,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           costCeilingUsd: agentDef.costCeilingUsd,
           persona: agentDef.persona,
           languageConfig: agentDef.languageConfig,
+          escalationConfig: agentDef.escalationConfig,
         }}
         availableTools={availableTools}
         availableModels={availableModels}

@@ -23,18 +23,19 @@ const HUMAN_REQUEST_MARKERS: string[] = [
   "talk to someone", "customer service rep", "escalate", "supervisor", "manager",
 ];
 
-export function scanForSevereSymptoms(message: string): { hit: boolean; matched?: string } {
+/** Phase 8 M1: extraMarkers is admin-configured (agent_defs.escalation_config), always appended to — never replacing — the tuned defaults above. */
+export function scanForSevereSymptoms(message: string, extraMarkers: string[] = []): { hit: boolean; matched?: string } {
   const lower = message.toLowerCase();
-  for (const marker of SEVERE_SYMPTOM_MARKERS) {
-    if (lower.includes(marker)) return { hit: true, matched: marker };
+  for (const marker of [...SEVERE_SYMPTOM_MARKERS, ...extraMarkers]) {
+    if (lower.includes(marker.toLowerCase())) return { hit: true, matched: marker };
   }
   return { hit: false };
 }
 
-export function scanForHumanRequest(message: string): { hit: boolean; matched?: string } {
+export function scanForHumanRequest(message: string, extraMarkers: string[] = []): { hit: boolean; matched?: string } {
   const lower = message.toLowerCase();
-  for (const marker of HUMAN_REQUEST_MARKERS) {
-    if (lower.includes(marker)) return { hit: true, matched: marker };
+  for (const marker of [...HUMAN_REQUEST_MARKERS, ...extraMarkers]) {
+    if (lower.includes(marker.toLowerCase())) return { hit: true, matched: marker };
   }
   return { hit: false };
 }
@@ -45,10 +46,10 @@ const REACTION_MENTION_MARKERS: string[] = [
   "реакція", "висип", "свербить", "печіння", "réaction", "irritation", "démangeaison", "demangeaison",
 ];
 
-export function scanForReactionMention(message: string): { hit: boolean; matched?: string } {
+export function scanForReactionMention(message: string, extraMarkers: string[] = []): { hit: boolean; matched?: string } {
   const lower = message.toLowerCase();
-  for (const marker of REACTION_MENTION_MARKERS) {
-    if (lower.includes(marker)) return { hit: true, matched: marker };
+  for (const marker of [...REACTION_MENTION_MARKERS, ...extraMarkers]) {
+    if (lower.includes(marker.toLowerCase())) return { hit: true, matched: marker };
   }
   return { hit: false };
 }
@@ -74,10 +75,10 @@ const NEGATIVE_SENTIMENT_MARKERS: string[] = [
   "j'en ai marre", "j'en ai assez", "scandaleux", "service épouvantable", "service epouvantable",
 ];
 
-export function scanForNegativeSentiment(message: string): { hit: boolean; matched?: string } {
+export function scanForNegativeSentiment(message: string, extraMarkers: string[] = []): { hit: boolean; matched?: string } {
   const lower = message.toLowerCase();
-  for (const marker of NEGATIVE_SENTIMENT_MARKERS) {
-    if (lower.includes(marker)) return { hit: true, matched: marker };
+  for (const marker of [...NEGATIVE_SENTIMENT_MARKERS, ...extraMarkers]) {
+    if (lower.includes(marker.toLowerCase())) return { hit: true, matched: marker };
   }
   return { hit: false };
 }

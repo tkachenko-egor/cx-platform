@@ -2,15 +2,18 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getPlatformContext } from "../../../../src/platform/context";
+import { requireAdminPage } from "../../../../src/auth/require-admin-page";
 import { KbArticleRepository } from "../../../../src/db/repositories/kb-repository";
 import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
 import { KbArticlesManagement } from "../../../../components/admin/KbArticlesManagement";
 
 export const dynamic = "force-dynamic";
 
+/** Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function KbCollectionPage(props: PageProps<"/admin/kb/[collectionId]">) {
   const { collectionId } = await props.params;
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
 
   const collection = new KbCollectionRepository(db, tenant).getById(collectionId);
   if (!collection) notFound();

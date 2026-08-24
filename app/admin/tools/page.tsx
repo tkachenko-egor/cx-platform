@@ -1,13 +1,15 @@
 import Link from "next/link";
 import { getPlatformContext } from "../../../src/platform/context";
+import { requireAdminPage } from "../../../src/auth/require-admin-page";
 import { ToolDefRepository } from "../../../src/db/repositories/tool-repository";
 import { ToolsManagement } from "../../../components/admin/ToolsManagement";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 3 M7 (no-code HTTP tools) + Phase 5 M3 (split no-code vs custom, paginated). Auth/role gate lives in app/admin/layout.tsx. */
+/** Phase 3 M7 (no-code HTTP tools) + Phase 5 M3 (split no-code vs custom, paginated). Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function ToolsPage() {
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
 
   const tools = new ToolDefRepository(db, tenant)
     .list()

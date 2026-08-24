@@ -22,6 +22,7 @@ export function checkIpRateLimit(ip: string): { ok: boolean; retryAfterSeconds?:
   return { ok: true };
 }
 
-export function conversationTurnCapExceeded(turnCount: number): boolean {
-  return turnCount >= MAX_TURNS_PER_CONVERSATION;
+/** Phase 8 M1: cap is overridable per-agent (agent_defs.escalation_config.turnCountCap) — defaults to the global constant when omitted. */
+export function conversationTurnCapExceeded(turnCount: number, cap: number = MAX_TURNS_PER_CONVERSATION): boolean {
+  return turnCount >= cap;
 }

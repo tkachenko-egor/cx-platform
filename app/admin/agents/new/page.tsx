@@ -75,6 +75,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         costCeilingUsd: cloneSource.costCeilingUsd,
         persona: cloneSource.persona,
         languageConfig: cloneSource.languageConfig,
+        escalationConfig: cloneSource.escalationConfig,
       }
     : {
         key: "",
@@ -99,6 +100,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         costCeilingUsd: null,
         persona: chosenTemplate?.persona ?? {},
         languageConfig: {},
+        escalationConfig: {},
       };
 
   return (

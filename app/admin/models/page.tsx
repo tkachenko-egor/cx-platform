@@ -1,12 +1,14 @@
 import { getPlatformContext } from "../../../src/platform/context";
+import { requireAdminPage } from "../../../src/auth/require-admin-page";
 import { ModelAliasRepository } from "../../../src/db/repositories/model-alias-repository";
 import { ModelsManagement } from "../../../components/admin/ModelsManagement";
 
 export const dynamic = "force-dynamic";
 
-/** Phase 4 M1: model_aliases were seed/script-only before this — an admin can now define what an alias points to, and agents pick from these instead of typing a raw string. Auth/role gate lives in app/admin/layout.tsx. */
+/** Phase 4 M1: model_aliases were seed/script-only before this — an admin can now define what an alias points to, and agents pick from these instead of typing a raw string. Admin+-only (Phase 8 M3) — see app/admin/layout.tsx's comment. */
 export default async function ModelsPage() {
   const { db, tenant } = await getPlatformContext();
+  await requireAdminPage(db, tenant);
 
   const aliases = new ModelAliasRepository(db, tenant)
     .list()

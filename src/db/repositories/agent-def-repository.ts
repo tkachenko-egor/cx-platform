@@ -51,6 +51,8 @@ export interface AgentDef {
   persona: AgentPersonaConfig;
   /** Phase 7 M3: supported-language/auto-detect config — see src/agents/system-prompt.ts's languageBlock(). */
   languageConfig: AgentLanguageConfig;
+  /** Phase 8 M1: per-agent keyword/threshold overrides for the escalation scanners — see src/agents/escalation.ts. */
+  escalationConfig: AgentEscalationConfig;
 }
 
 export interface AgentNativeToolsConfig {
@@ -91,6 +93,22 @@ export interface AgentLanguageConfig {
   mixedInputHandling?: "transliterate_to_native" | "answer_as_written" | "ask_preference";
 }
 
+export interface AgentEscalationConfig {
+  /** Appended to the hardcoded marker lists in src/agents/escalation.ts, never replacing them. */
+  humanRequestKeywords?: string[];
+  negativeSentimentKeywords?: string[];
+  severeSymptomKeywords?: string[];
+  reactionKeywords?: string[];
+  /** Default false — today's review-queue-only behavior on a low-confidence retrieval is unchanged unless explicitly opted in. */
+  escalateOnLowConfidence?: boolean;
+  /** Only read when escalateOnLowConfidence is true; falls back to DEFAULT_LOW_CONFIDENCE_THRESHOLD (src/analytics/coverage.ts) when unset. */
+  confidenceThreshold?: number;
+  /** Consecutive tool-call errors within one conversation before a forced escalation. */
+  nFailedAttempts?: number;
+  /** Per-agent override of MAX_TURNS_PER_CONVERSATION (src/channel/rate-limit.ts). */
+  turnCountCap?: number;
+}
+
 interface AgentDefRow {
   id: string;
   tenant_id: string;
@@ -120,6 +138,7 @@ interface AgentDefRow {
   cost_ceiling_usd: number | null;
   persona: string;
   language_config: string;
+  escalation_config: string;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -152,6 +171,7 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     costCeilingUsd: row.cost_ceiling_usd,
     persona: JSON.parse(row.persona) as AgentPersonaConfig,
     languageConfig: JSON.parse(row.language_config) as AgentLanguageConfig,
+    escalationConfig: JSON.parse(row.escalation_config) as AgentEscalationConfig,
   };
 }
 
@@ -188,6 +208,7 @@ export class AgentDefRepository extends TenantScopedRepository {
     costCeilingUsd?: number | null;
     persona?: AgentPersonaConfig;
     languageConfig?: AgentLanguageConfig;
+    escalationConfig?: AgentEscalationConfig;
   }): AgentDef {
     const nextVersion = this.latestVersion(input.key) + 1;
     const id = randomUUID();
@@ -205,6 +226,7 @@ export class AgentDefRepository extends TenantScopedRepository {
     const costCeilingUsd = input.costCeilingUsd ?? null;
     const persona = input.persona ?? {};
     const languageConfig = input.languageConfig ?? {};
+    const escalationConfig = input.escalationConfig ?? {};
     this.db
       .prepare(
         `INSERT INTO agent_defs (
@@ -213,8 +235,8 @@ export class AgentDefRepository extends TenantScopedRepository {
            native_tools, quick_replies, display_name, avatar_url, internal_description,
            owner_user_id, tags, agent_status, environment, change_notes,
            temperature, max_output_tokens, cost_ceiling_usd, persona, language_config,
-           created_at, updated_at
-         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           escalation_config, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -244,6 +266,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         costCeilingUsd,
         JSON.stringify(persona),
         JSON.stringify(languageConfig),
+        JSON.stringify(escalationConfig),
         now,
         now,
       );
@@ -276,6 +299,7 @@ export class AgentDefRepository extends TenantScopedRepository {
       costCeilingUsd,
       persona,
       languageConfig,
+      escalationConfig,
     };
   }
 

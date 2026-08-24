@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   cost_ceiling_usd REAL,
   persona TEXT NOT NULL DEFAULT '{}',
   language_config TEXT NOT NULL DEFAULT '{}',
+  -- Phase 8 M1 (migration 023): per-agent keyword/threshold overrides for
+  -- the escalation scanners — appended to the hardcoded defaults in
+  -- src/agents/escalation.ts, never replacing them.
+  escalation_config TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)
@@ -334,6 +338,32 @@ CREATE TABLE IF NOT EXISTS tool_approvals (
 
 CREATE INDEX IF NOT EXISTS idx_tool_approvals_tenant ON tool_approvals(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_tool_approvals_conversation ON tool_approvals(conversation_id);
+
+-- Phase 8 M3: same pending/decided shape as tool_approvals above, for a
+-- different kind of write — a supervisor publishing an agent live (status=
+-- active AND environment=production together) instead of a write tool.
+-- payload is the full agent_defs.publish() input as JSON, replayed verbatim
+-- by an admin/owner's approval rather than re-derived from the (possibly
+-- since-changed) editor state.
+CREATE TABLE IF NOT EXISTS agent_publish_approvals (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  agent_key TEXT NOT NULL,
+  requested_version INTEGER NOT NULL,
+  requested_by TEXT NOT NULL REFERENCES users(id),
+  payload TEXT NOT NULL,
+  from_status TEXT NOT NULL,
+  to_status TEXT NOT NULL,
+  from_environment TEXT NOT NULL,
+  to_environment TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  decided_by TEXT REFERENCES users(id),
+  decided_at TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_publish_approvals_tenant ON agent_publish_approvals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_agent_publish_approvals_tenant_status ON agent_publish_approvals(tenant_id, status);
 
 -- ─── Phase 1b: staff RBAC/auth ────────────────────────────────────────────
 -- FR-2.1/2.2/2.7: staff identity, roles, sessions, and the audit trail for

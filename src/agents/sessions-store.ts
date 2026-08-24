@@ -14,6 +14,8 @@ import type { ChatMessage } from "../gateway/types";
 export interface SessionEntry {
   history: ChatMessage[];
   turnCount: number;
+  /** Phase 8 M1: consecutive tool-call errors within this conversation — reset on any successful tool result, checked against agent_defs.escalation_config.nFailedAttempts (src/agents/runtime.ts). */
+  consecutiveToolFailures: number;
 }
 
 const store = new Map<string, SessionEntry>();
@@ -21,7 +23,7 @@ const store = new Map<string, SessionEntry>();
 export function getOrCreateSession(conversationId: string): SessionEntry {
   let entry = store.get(conversationId);
   if (!entry) {
-    entry = { history: [], turnCount: 0 };
+    entry = { history: [], turnCount: 0, consecutiveToolFailures: 0 };
     store.set(conversationId, entry);
   }
   return entry;

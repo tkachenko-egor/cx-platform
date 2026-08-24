@@ -4,7 +4,7 @@ import { RunRepository } from "../../../../../src/db/repositories/run-repository
 import { ToolDefRepository } from "../../../../../src/db/repositories/tool-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
-import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig } from "../../../../../src/db/repositories/agent-def-repository";
+import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig, AgentEscalationConfig } from "../../../../../src/db/repositories/agent-def-repository";
 import type { ChatMessage } from "../../../../../src/gateway/types";
 
 // better-sqlite3 needs the Node runtime, not edge.
@@ -24,6 +24,7 @@ interface PreviewDraft {
   maxOutputTokens?: number | null;
   persona?: AgentPersonaConfig;
   languageConfig?: AgentLanguageConfig;
+  escalationConfig?: AgentEscalationConfig;
 }
 
 function sseEvent(data: unknown): string {
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
     costCeilingUsd: null,
     persona: draft.persona ?? {},
     languageConfig: draft.languageConfig ?? {},
+    escalationConfig: draft.escalationConfig ?? {},
   };
 
   const runs = new RunRepository(db, tenant);

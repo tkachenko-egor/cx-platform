@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages } from "lucide-react";
+import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages, AlertTriangle, Shield } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input, Label } from "../ui/Input";
@@ -61,6 +61,36 @@ export interface AgentLanguageConfig {
   mixedInputHandling?: "transliterate_to_native" | "answer_as_written" | "ask_preference";
 }
 
+/** Mirrors AgentEscalationConfig in src/db/repositories/agent-def-repository.ts — kept local, same reason as the types above. */
+export interface AgentEscalationConfig {
+  humanRequestKeywords?: string[];
+  negativeSentimentKeywords?: string[];
+  severeSymptomKeywords?: string[];
+  reactionKeywords?: string[];
+  escalateOnLowConfidence?: boolean;
+  confidenceThreshold?: number;
+  nFailedAttempts?: number;
+  turnCountCap?: number;
+}
+
+/** Mirrors AgentGuardrailConfig in src/guardrails/types.ts — kept local, same reason as the types above. */
+export interface AgentGuardrailConfig {
+  input?: {
+    promptInjectionScreening?: boolean;
+    blockedTopics?: string[];
+    competitorNames?: string[];
+  };
+  output?: {
+    groundednessCheck?: boolean;
+    piiLeakageCheck?: boolean;
+    piiMode?: "block" | "redact";
+    forbiddenClaimsCheck?: boolean;
+    profanityCheck?: boolean;
+    aiDisclosureMessage?: string;
+    blockingMode?: boolean;
+  };
+}
+
 export interface AgentEditorInitial {
   key: string;
   version: number;
@@ -84,6 +114,7 @@ export interface AgentEditorInitial {
   costCeilingUsd: number | null;
   persona: AgentPersonaConfig;
   languageConfig: AgentLanguageConfig;
+  escalationConfig: AgentEscalationConfig;
 }
 
 export interface OwnerOption {
@@ -105,6 +136,41 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: bool
   );
 }
 
+/** Phase 8: shared chip-list input for the several new keyword/topic lists (escalation triggers, blocked topics, competitor names) — same visual pattern the do-not-say/brand-vocabulary/supported-language inputs already use inline, pulled into one component once there were enough repeats to justify it. */
+function ChipListInput({ id, label, values, onChange, placeholder }: { id: string; label: string; values: string[]; onChange: (next: string[]) => void; placeholder?: string }) {
+  const [draft, setDraft] = useState("");
+  return (
+    <div>
+      <Label htmlFor={id}>{label}</Label>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {values.map((v, i) => (
+          <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg">
+            {v}
+            <button type="button" onClick={() => onChange(values.filter((_, idx) => idx !== i))} aria-label="Remove" className="text-muted hover:text-danger">
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <Input
+          id={id}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" || !draft.trim()) return;
+            e.preventDefault();
+            onChange([...values, draft.trim()]);
+            setDraft("");
+          }}
+          placeholder={placeholder}
+          className="w-64"
+        />
+      </div>
+    </div>
+  );
+}
+
 export interface ModelAliasOption {
   alias: string;
   provider: string;
@@ -118,7 +184,7 @@ export interface KbCollectionOption {
 
 const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-type SectionTab = "identity" | "prompt" | "persona" | "language" | "knowledge" | "tools" | "behavior";
+type SectionTab = "identity" | "prompt" | "persona" | "language" | "knowledge" | "tools" | "escalation" | "guardrails" | "behavior";
 
 const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
   { key: "identity", label: "Identity", icon: UserCircle },
@@ -127,6 +193,8 @@ const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
   { key: "language", label: "Language", icon: Languages },
   { key: "knowledge", label: "Knowledge", icon: BookOpen },
   { key: "tools", label: "Tools", icon: Wrench },
+  { key: "escalation", label: "Escalation", icon: AlertTriangle },
+  { key: "guardrails", label: "Guardrails", icon: Shield },
   { key: "behavior", label: "Behavior", icon: Sparkles },
 ];
 
@@ -183,6 +251,8 @@ export function AgentEditor({
   const [newQuickReply, setNewQuickReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Phase 8 M3: set when a supervisor's publish was queued for admin approval instead of going live immediately. */
+  const [pendingApprovalMessage, setPendingApprovalMessage] = useState<string | null>(null);
   const [tools, setTools] = useState(availableTools);
   const [collections, setCollections] = useState(availableCollections);
   const [newKbOpen, setNewKbOpen] = useState(false);
@@ -212,6 +282,12 @@ export function AgentEditor({
   const [newBrandWord, setNewBrandWord] = useState("");
   const [newLanguage, setNewLanguage] = useState("");
 
+  // Phase 8 M1: escalation triggers
+  const [escalationConfig, setEscalationConfig] = useState<AgentEscalationConfig>(initial.escalationConfig ?? {});
+  const [confidenceThreshold, setConfidenceThreshold] = useState(initial.escalationConfig?.confidenceThreshold != null ? String(initial.escalationConfig.confidenceThreshold) : "");
+  const [nFailedAttempts, setNFailedAttempts] = useState(initial.escalationConfig?.nFailedAttempts != null ? String(initial.escalationConfig.nFailedAttempts) : "");
+  const [turnCountCap, setTurnCountCap] = useState(initial.escalationConfig?.turnCountCap != null ? String(initial.escalationConfig.turnCountCap) : "");
+
   // Recomputed on every render so the preview pane's next send always uses whatever is currently
   // in the form, not a stale snapshot from when this component mounted.
   const previewDraft = useMemo(() => {
@@ -235,8 +311,29 @@ export function AgentEditor({
       maxOutputTokens: maxOutputTokens.trim() ? Number(maxOutputTokens) : null,
       persona,
       languageConfig,
+      escalationConfig: { ...escalationConfig, confidenceThreshold: confidenceThreshold.trim() ? Number(confidenceThreshold) : undefined, nFailedAttempts: nFailedAttempts.trim() ? Number(nFailedAttempts) : undefined },
     };
-  }, [mode, key, initial.key, initial.guardrails, displayName, systemPrompt, modelAlias, toolIds, guardrailsJson, collectionIds, nativeTools, skills, temperature, maxOutputTokens, persona, languageConfig]);
+  }, [
+    mode,
+    key,
+    initial.key,
+    initial.guardrails,
+    displayName,
+    systemPrompt,
+    modelAlias,
+    toolIds,
+    guardrailsJson,
+    collectionIds,
+    nativeTools,
+    skills,
+    temperature,
+    maxOutputTokens,
+    persona,
+    languageConfig,
+    escalationConfig,
+    confidenceThreshold,
+    nFailedAttempts,
+  ]);
 
   // Older tenants can have leftover role-named aliases (e.g. "support-main") pointing at the
   // same provider+model a catalog-named alias also covers — collapse those duplicate-looking
@@ -256,6 +353,27 @@ export function AgentEditor({
     return ai - bi;
   });
   const selectedProvider = availableModels.find((m) => m.alias === modelAlias)?.provider;
+
+  // Phase 8 M2: guardrailsJson stays the single source of truth (unchanged
+  // from before — previewDraft/publish() already parse it) — these helpers
+  // just let the friendly toggle grid read/write into it instead of raw
+  // JSON, with an "Advanced (raw JSON)" fallback still editing the same string.
+  const parseGuardrails = (): AgentGuardrailConfig => {
+    try {
+      return guardrailsJson.trim() ? JSON.parse(guardrailsJson) : {};
+    } catch {
+      return {};
+    }
+  };
+  const guardrails = parseGuardrails();
+  const updateGuardrailInput = (patch: Partial<NonNullable<AgentGuardrailConfig["input"]>>) => {
+    const g = parseGuardrails();
+    setGuardrailsJson(JSON.stringify({ ...g, input: { ...g.input, ...patch } }, null, 2));
+  };
+  const updateGuardrailOutput = (patch: Partial<NonNullable<AgentGuardrailConfig["output"]>>) => {
+    const g = parseGuardrails();
+    setGuardrailsJson(JSON.stringify({ ...g, output: { ...g.output, ...patch } }, null, 2));
+  };
 
   const toggleTool = (toolKey: string) => {
     setToolIds((prev) => {
@@ -310,10 +428,15 @@ export function AgentEditor({
     setCostCeilingUsd(found.costCeilingUsd != null ? String(found.costCeilingUsd) : "");
     setPersona(found.persona ?? {});
     setLanguageConfig(found.languageConfig ?? {});
+    setEscalationConfig(found.escalationConfig ?? {});
+    setConfidenceThreshold(found.escalationConfig?.confidenceThreshold != null ? String(found.escalationConfig.confidenceThreshold) : "");
+    setNFailedAttempts(found.escalationConfig?.nFailedAttempts != null ? String(found.escalationConfig.nFailedAttempts) : "");
+    setTurnCountCap(found.escalationConfig?.turnCountCap != null ? String(found.escalationConfig.turnCountCap) : "");
   };
 
   const publish = async () => {
     setError(null);
+    setPendingApprovalMessage(null);
     if (mode === "create" && !KEY_PATTERN.test(key)) {
       setError("Key must start with a letter and contain only lowercase letters, numbers, and hyphens");
       return;
@@ -359,9 +482,21 @@ export function AgentEditor({
           costCeilingUsd: costCeilingUsd.trim() ? Number(costCeilingUsd) : null,
           persona,
           languageConfig,
+          escalationConfig: {
+            ...escalationConfig,
+            confidenceThreshold: confidenceThreshold.trim() ? Number(confidenceThreshold) : undefined,
+            nFailedAttempts: nFailedAttempts.trim() ? Number(nFailedAttempts) : undefined,
+            turnCountCap: turnCountCap.trim() ? Number(turnCountCap) : undefined,
+          },
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not publish");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not publish");
+      if (body.pendingApproval) {
+        setPendingApprovalMessage("Submitted for admin approval — this won't go live until an admin or owner approves it.");
+        setBusy(false);
+        return;
+      }
       if (mode === "create") {
         router.push(`/admin/agents/${key}`);
       } else {
@@ -937,6 +1072,142 @@ export function AgentEditor({
             </div>
           )}
 
+          {tab === "escalation" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={AlertTriangle} title="Trigger keywords" subtitle="Appended to this agent's built-in scanner lists — never replaces them." />
+                <div className="mt-4 grid grid-cols-2 gap-6">
+                  <ChipListInput
+                    id="escalation-human-request"
+                    label="Human-request keywords"
+                    values={escalationConfig.humanRequestKeywords ?? []}
+                    onChange={(next) => setEscalationConfig((prev) => ({ ...prev, humanRequestKeywords: next }))}
+                    placeholder="e.g. talk to your manager"
+                  />
+                  <ChipListInput
+                    id="escalation-negative-sentiment"
+                    label="Negative-sentiment keywords"
+                    values={escalationConfig.negativeSentimentKeywords ?? []}
+                    onChange={(next) => setEscalationConfig((prev) => ({ ...prev, negativeSentimentKeywords: next }))}
+                    placeholder="e.g. taking my business elsewhere"
+                  />
+                  <ChipListInput
+                    id="escalation-severe-symptom"
+                    label="Severe-symptom keywords"
+                    values={escalationConfig.severeSymptomKeywords ?? []}
+                    onChange={(next) => setEscalationConfig((prev) => ({ ...prev, severeSymptomKeywords: next }))}
+                    placeholder="e.g. anaphylaxis"
+                  />
+                  <ChipListInput
+                    id="escalation-reaction"
+                    label="Reaction-mention keywords"
+                    values={escalationConfig.reactionKeywords ?? []}
+                    onChange={(next) => setEscalationConfig((prev) => ({ ...prev, reactionKeywords: next }))}
+                    placeholder="e.g. flare-up"
+                  />
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={AlertTriangle} title="Thresholds" />
+                <div className="mt-4 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-fg">Escalate on low KB confidence</p>
+                    <p className="text-xs text-muted">Off by default — a low-confidence retrieval only gets flagged for later review, doesn&apos;t hand off immediately.</p>
+                  </div>
+                  <Toggle checked={Boolean(escalationConfig.escalateOnLowConfidence)} onChange={(next) => setEscalationConfig((prev) => ({ ...prev, escalateOnLowConfidence: next }))} />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-4">
+                  <Field label="Confidence threshold" htmlFor="escalation-confidence-threshold">
+                    <Input id="escalation-confidence-threshold" type="number" min={0} max={1} step={0.01} value={confidenceThreshold} onChange={(e) => setConfidenceThreshold(e.target.value)} placeholder="default" />
+                  </Field>
+                  <Field label="N failed attempts" htmlFor="escalation-n-failed">
+                    <Input id="escalation-n-failed" type="number" min={1} value={nFailedAttempts} onChange={(e) => setNFailedAttempts(e.target.value)} placeholder="Off" />
+                  </Field>
+                  <Field label="Turn-count cap" htmlFor="escalation-turn-cap">
+                    <Input id="escalation-turn-cap" type="number" min={1} value={turnCountCap} onChange={(e) => setTurnCountCap(e.target.value)} placeholder="60" />
+                  </Field>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {tab === "guardrails" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={Shield} title="Input" subtitle="Checked before the model is called." />
+                <div className="mt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-fg">Prompt-injection screening</p>
+                    <Toggle checked={guardrails.input?.promptInjectionScreening !== false} onChange={(next) => updateGuardrailInput({ promptInjectionScreening: next })} />
+                  </div>
+                  <ChipListInput
+                    id="guardrail-blocked-topics"
+                    label="Blocked topics"
+                    values={guardrails.input?.blockedTopics ?? []}
+                    onChange={(next) => updateGuardrailInput({ blockedTopics: next })}
+                    placeholder="e.g. legal advice"
+                  />
+                  <ChipListInput
+                    id="guardrail-competitor-names"
+                    label="Competitor names"
+                    values={guardrails.input?.competitorNames ?? []}
+                    onChange={(next) => updateGuardrailInput({ competitorNames: next })}
+                    placeholder="e.g. Acme Corp"
+                  />
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={Shield} title="Output" subtitle="Checked once the model has a final reply." />
+                <div className="mt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-fg">Groundedness check</p>
+                    <Toggle checked={guardrails.output?.groundednessCheck !== false} onChange={(next) => updateGuardrailOutput({ groundednessCheck: next })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-fg">Forbidden-claims check</p>
+                    <Toggle checked={guardrails.output?.forbiddenClaimsCheck !== false} onChange={(next) => updateGuardrailOutput({ forbiddenClaimsCheck: next })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-fg">Profanity check</p>
+                    <Toggle checked={guardrails.output?.profanityCheck !== false} onChange={(next) => updateGuardrailOutput({ profanityCheck: next })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-fg">Buffer the full reply before sending (blockingMode)</p>
+                    <Toggle checked={Boolean(guardrails.output?.blockingMode)} onChange={(next) => updateGuardrailOutput({ blockingMode: next })} />
+                  </div>
+                  <Field label="PII handling" htmlFor="guardrail-pii-mode">
+                    <select
+                      id="guardrail-pii-mode"
+                      value={guardrails.output?.piiMode ?? "block"}
+                      onChange={(e) => updateGuardrailOutput({ piiMode: e.target.value as "block" | "redact" })}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="block">Block the reply</option>
+                      <option value="redact">Redact and send</option>
+                    </select>
+                    <p className="mt-1.5 text-xs text-muted">Redact only takes effect with &quot;buffer the full reply&quot; on above — a streamed reply has already reached the customer by the time PII is detected.</p>
+                  </Field>
+                  <Field label="AI disclosure message" htmlFor="guardrail-ai-disclosure">
+                    <Input
+                      id="guardrail-ai-disclosure"
+                      value={guardrails.output?.aiDisclosureMessage ?? ""}
+                      onChange={(e) => updateGuardrailOutput({ aiDisclosureMessage: e.target.value })}
+                      placeholder="e.g. You're chatting with an AI assistant."
+                    />
+                    <p className="mt-1.5 text-xs text-muted">Prepended to this agent&apos;s first reply in every new conversation.</p>
+                  </Field>
+                </div>
+              </Card>
+
+              <details className="rounded-xl border border-border bg-surface p-4">
+                <summary className="cursor-pointer text-xs font-medium text-muted">Advanced (raw JSON)</summary>
+                <textarea value={guardrailsJson} onChange={(e) => setGuardrailsJson(e.target.value)} rows={6} className={`mt-3 ${textareaClass} font-mono text-xs`} />
+              </details>
+            </div>
+          )}
+
           {tab === "behavior" && (
             <div className="space-y-5">
               <Card className="p-6">
@@ -973,15 +1244,12 @@ export function AgentEditor({
               </Card>
 
               <Card className="p-6">
-                <SectionHeading icon={Sparkles} title="Skills & guardrails" />
-                <div className="mt-4 space-y-4">
+                <SectionHeading icon={Sparkles} title="Skills" />
+                <div className="mt-4">
                   <Field label="Skills (comma-separated)" htmlFor="agent-skills">
                     <Input id="agent-skills" value={skills} onChange={(e) => setSkills(e.target.value)} />
                   </Field>
-                  <div>
-                    <Label htmlFor="agent-guardrails">Guardrails (JSON)</Label>
-                    <textarea id="agent-guardrails" value={guardrailsJson} onChange={(e) => setGuardrailsJson(e.target.value)} rows={4} className={`mt-1.5 ${textareaClass} font-mono text-xs`} />
-                  </div>
+                  <p className="mt-1.5 text-xs text-muted">Guardrails moved to their own tab.</p>
                 </div>
               </Card>
             </div>
@@ -994,6 +1262,7 @@ export function AgentEditor({
             </div>
           )}
 
+          {pendingApprovalMessage && <p className="text-sm text-warning">{pendingApprovalMessage}</p>}
           {error && <p className="text-sm text-danger">{error}</p>}
 
           <Button disabled={busy} onClick={publish}>

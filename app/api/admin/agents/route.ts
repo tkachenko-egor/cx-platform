@@ -1,12 +1,36 @@
 import type Database from "better-sqlite3";
 import { getPlatformContext } from "../../../../src/platform/context";
-import { AgentDefRepository, type AgentNativeToolsConfig, type AgentPersonaConfig, type AgentLanguageConfig } from "../../../../src/db/repositories/agent-def-repository";
+import {
+  AgentDefRepository,
+  type AgentNativeToolsConfig,
+  type AgentPersonaConfig,
+  type AgentLanguageConfig,
+  type AgentEscalationConfig,
+} from "../../../../src/db/repositories/agent-def-repository";
+import { AgentPublishApprovalRepository } from "../../../../src/db/repositories/agent-publish-approval-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
+import { roleAtLeast } from "../../../../src/auth/permissions";
+import type { User } from "../../../../src/db/repositories/user-repository";
 import { ensureVectorStore } from "../../../../src/kb/openai-vector-store-sync";
 import type { TenantContext } from "../../../../src/tenancy/context";
 
 export const runtime = "nodejs";
+
+/**
+ * Phase 8 M3: a supervisor can save an agent freely as long as it stays
+ * non-live (draft/paused/archived, or sandbox) — only the transition to
+ * *actually customer-facing* (status=active AND environment=production
+ * together) needs an admin/owner's approval. When gated, this queues an
+ * agent_publish_approvals row carrying the exact resolved publish() input
+ * and returns it instead of calling publish() — the caller (POST below)
+ * decides whether to publish immediately or return pendingApproval based on
+ * this function's result.
+ */
+function requiresApprovalGate(actor: User, agentStatus: string, environment: string): boolean {
+  const goingLive = agentStatus === "active" && environment === "production";
+  return goingLive && !roleAtLeast(actor.role, "admin");
+}
 
 /** When File Search is turned on, make sure every KB collection this agent draws from has a vector store — provisioning + backfilling any that don't yet. Best-effort: a failure here shouldn't block publishing the agent itself. */
 async function provisionFileSearch(db: Database.Database, tenant: TenantContext, nativeTools: AgentNativeToolsConfig | undefined, kbScope: Record<string, unknown> | undefined): Promise<void> {
@@ -64,6 +88,7 @@ export async function POST(req: Request) {
     costCeilingUsd?: number | null;
     persona?: AgentPersonaConfig;
     languageConfig?: AgentLanguageConfig;
+    escalationConfig?: AgentEscalationConfig;
   };
   if (!body.key || !body.systemPrompt || !body.modelAlias) {
     return Response.json({ error: "key, systemPrompt, and modelAlias are required" }, { status: 400 });
@@ -72,7 +97,10 @@ export async function POST(req: Request) {
   const { db, tenant } = await getPlatformContext();
   let actor;
   try {
-    actor = await requireRole(db, tenant, "admin");
+    // Phase 8 M3: loosened from "admin" — a supervisor can edit/save an
+    // agent (see requiresApprovalGate below for what still needs an
+    // admin/owner directly).
+    actor = await requireRole(db, tenant, "supervisor");
   } catch (err) {
     if (err instanceof AuthError) return Response.json({ error: err.message }, { status: err.status });
     throw err;
@@ -86,7 +114,7 @@ export async function POST(req: Request) {
 
     await provisionFileSearch(db, tenant, body.nativeTools, body.kbScope);
 
-    const created = agentDefs.publish({
+    const publishInput = {
       key: body.key,
       systemPrompt: body.systemPrompt,
       modelAlias: body.modelAlias,
@@ -112,7 +140,25 @@ export async function POST(req: Request) {
       costCeilingUsd: body.costCeilingUsd ?? null,
       persona: body.persona ?? {},
       languageConfig: body.languageConfig ?? {},
-    });
+      escalationConfig: body.escalationConfig ?? {},
+    };
+
+    if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
+      const approval = new AgentPublishApprovalRepository(db, tenant).create({
+        agentKey: body.key,
+        requestedVersion: 1,
+        requestedBy: actor.id,
+        payload: publishInput,
+        fromStatus: "none",
+        toStatus: publishInput.agentStatus,
+        fromEnvironment: "none",
+        toEnvironment: publishInput.environment,
+      });
+      new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
+      return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
+    }
+
+    const created = agentDefs.publish(publishInput);
 
     new AuditLogRepository(db, tenant).record({
       actorUserId: actor.id,
@@ -130,7 +176,7 @@ export async function POST(req: Request) {
   const kbScope = body.kbScope ?? current.kbScope;
   await provisionFileSearch(db, tenant, nativeTools, kbScope);
 
-  const published = agentDefs.publish({
+  const publishInput = {
     key: body.key,
     systemPrompt: body.systemPrompt,
     modelAlias: body.modelAlias,
@@ -155,7 +201,25 @@ export async function POST(req: Request) {
     costCeilingUsd: body.costCeilingUsd !== undefined ? body.costCeilingUsd : current.costCeilingUsd,
     persona: body.persona ?? current.persona,
     languageConfig: body.languageConfig ?? current.languageConfig,
-  });
+    escalationConfig: body.escalationConfig ?? current.escalationConfig,
+  };
+
+  if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
+    const approval = new AgentPublishApprovalRepository(db, tenant).create({
+      agentKey: body.key,
+      requestedVersion: current.version + 1,
+      requestedBy: actor.id,
+      payload: publishInput,
+      fromStatus: current.agentStatus,
+      toStatus: publishInput.agentStatus,
+      fromEnvironment: current.environment,
+      toEnvironment: publishInput.environment,
+    });
+    new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
+    return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
+  }
+
+  const published = agentDefs.publish(publishInput);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

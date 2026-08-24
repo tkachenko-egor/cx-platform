@@ -30,13 +30,36 @@ export function checkGroundedness(assistantText: string, citableDocIds: string[]
 const EMAIL_PATTERN = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const PHONE_PATTERN = /\+?\d[\d\s().-]{7,}\d/g;
 
-export function checkPiiLeakage(assistantText: string, toolResultsText: string): GuardrailCheckResult {
+/**
+ * Phase 8 M2: `mode: "redact"` masks the unattributed PII in place and
+ * returns it unblocked instead — but see AgentGuardrailConfig.output.piiMode's
+ * doc comment: this only has a real effect when the caller buffers the whole
+ * reply before it reaches the customer (blockingMode). In the default
+ * streaming mode the raw text has already gone out by the time this check
+ * runs, so redactedText is computed correctly here but nothing downstream
+ * can un-send what already streamed.
+ */
+export function checkPiiLeakage(assistantText: string, toolResultsText: string, mode: "block" | "redact" = "block"): GuardrailCheckResult {
   const reasons: string[] = [];
+  let redactedText = assistantText;
   for (const pattern of [EMAIL_PATTERN, PHONE_PATTERN]) {
     for (const match of assistantText.matchAll(pattern)) {
-      if (!toolResultsText.includes(match[0])) reasons.push(`unattributed_pii:${pattern === EMAIL_PATTERN ? "email" : "phone"}`);
+      if (!toolResultsText.includes(match[0])) {
+        reasons.push(`unattributed_pii:${pattern === EMAIL_PATTERN ? "email" : "phone"}`);
+        if (mode === "redact") redactedText = redactedText.split(match[0]).join("[redacted]");
+      }
     }
   }
+  if (reasons.length === 0) return { blocked: false, reasons: [] };
+  return mode === "redact" ? { blocked: false, reasons, redactedText } : { blocked: true, reasons };
+}
+
+/** Phase 8 M2: small built-in profanity/abuse marker list, same style and same "deterministic backstop" spirit as FORBIDDEN_CLAIM_MARKERS below — not an exhaustive NLP classifier. */
+const PROFANITY_MARKERS: string[] = ["fuck", "shit", "asshole", "bastard", "bitch", "cunt", "dumbass", "idiot", "moron", "stupid customer"];
+
+export function checkProfanity(assistantText: string): GuardrailCheckResult {
+  const lower = assistantText.toLowerCase();
+  const reasons = PROFANITY_MARKERS.filter((marker) => lower.includes(marker)).map((marker) => `profanity:${marker}`);
   return { blocked: reasons.length > 0, reasons };
 }
 
