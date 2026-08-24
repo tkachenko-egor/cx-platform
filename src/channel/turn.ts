@@ -76,7 +76,14 @@ export async function processInboundTurn(
     }
 
     if (conversationTurnCapExceeded(session.turnCount)) {
-      const cannedText = "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
+      // Phase 7 M3: an admin-configured handoff message takes precedence over
+      // the hardcoded default — best-effort lookup, falls back silently if
+      // the pinned agent key/version is somehow gone.
+      const pinnedAgent = agentDefs.getVersion(
+        conversation.currentAgentId ?? DEFAULT_AGENT_KEY,
+        (conversation.metadata.agentVersion as number | undefined) ?? 1,
+      );
+      const cannedText = pinnedAgent?.persona.cannedMessages?.default?.handoff || "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
       callbacks.onTextDelta?.(cannedText);
       setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
       startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
@@ -113,7 +120,10 @@ export async function processInboundTurn(
         runs.complete(routerRun.id, "completed");
 
         const target = routed.target ? agentDefs.getForTraffic(routed.target, input.conversationId) : undefined;
-        if (!target) return escalateAndReturn("router_low_confidence");
+        // Phase 7 M1: a draft/paused/archived target is never a valid new-routing
+        // destination — only an in-flight conversation is allowed to keep running
+        // an agent whose status has since changed (see the hops loop below).
+        if (!target || target.agentStatus !== "active") return escalateAndReturn("router_low_confidence");
 
         agentPath = appendToPath(appendToPath(agentPath, ROUTER_AGENT_KEY), target.key);
         currentAgentKey = target.key;
@@ -144,7 +154,7 @@ export async function processInboundTurn(
 
       let result: Awaited<ReturnType<typeof runAgentTurn>>;
       try {
-        result = await runAgentTurn(deps, tenant, input.conversationId, run.id, agent, session.history, input.text, callbacks, handoffContext);
+        result = await runAgentTurn(deps, tenant, input.conversationId, run.id, agent, session.history, input.text, callbacks, handoffContext, tenant.name);
         session.history = result.updatedHistory;
         runs.complete(run.id, "completed");
       } catch (err) {
@@ -162,6 +172,7 @@ export async function processInboundTurn(
       const { target, package: pkg } = result.handoffRequested;
       const nextAgent = target ? agentDefs.getForTraffic(target, input.conversationId) : undefined;
       if (!nextAgent || detectCycle(agentPath, target)) return escalateAndReturn("handoff_cycle_detected");
+      if (nextAgent.agentStatus !== "active") return escalateAndReturn("target_agent_unavailable");
 
       agentPath = appendToPath(agentPath, target);
       currentAgentKey = nextAgent.key;
@@ -220,6 +231,9 @@ export function ensureConversation(
   const conversationId = `CONV-${randomUUID()}`;
   const published = agentDefs.getForTraffic(agentKey, conversationId);
   if (!published) throw new Error("No published agent — run `npm run seed` first.");
+  // Phase 7 M1: a draft/paused/archived agent can't start a brand-new
+  // conversation — only an already-running one is grandfathered in.
+  if (published.agentStatus !== "active") throw new Error(`Agent "${agentKey}" is not active (status: ${published.agentStatus})`);
 
   const conversations = new ConversationRepository(deps.db, tenant);
   const conversation = conversations.create({ id: conversationId, channel, agentKey, metadata: { agentVersion: published.version, ...metadata } });

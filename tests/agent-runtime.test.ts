@@ -65,6 +65,19 @@ async function setup(providerScript: ChatResponse[]) {
     semanticCacheEnabled: false,
     nativeTools: {},
     quickReplies: [],
+    displayName: "",
+    avatarUrl: null,
+    internalDescription: "",
+    ownerUserId: null,
+    tags: [],
+    agentStatus: "active",
+    environment: "production",
+    changeNotes: "",
+    temperature: null,
+    maxOutputTokens: null,
+    costCeilingUsd: null,
+    persona: {},
+    languageConfig: {},
   };
 
   return { db, tenant, gateway, embeddings, agent };

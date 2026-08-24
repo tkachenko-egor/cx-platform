@@ -86,6 +86,73 @@ Reply in the language the customer writes in.
 Say a colleague will follow up when: any skin reaction; the customer asks for a human; they push back on a refusal; a policy exception is needed; or you have failed twice.
 Summarise the issue and what you already tried so the colleague does not have to ask again.`;
 
+/** Phase 7 M2: simple `{{KEY}}` substitution into an agent's stored system prompt — TENANT_NAME/AGENT_NAME/TODAY today, easy to extend. Unknown `{{...}}` tokens are left as-is rather than erroring, since a prompt authored before this feature existed may legitimately contain literal double-braces. */
+export function renderTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key: string) => (key in vars ? vars[key] : match));
+}
+
+const FORMALITY_LABEL: Record<string, string> = {
+  ty: "Use informal address (ти) throughout, never formal ви.",
+  vy: "Use formal, respectful address (ви) throughout, never informal ти.",
+};
+
+const RESPONSE_LENGTH_LABEL: Record<string, string> = {
+  brief: "Keep replies to one or two short sentences unless the customer asks for more detail.",
+  standard: "Two to four sentences for a typical reply.",
+  detailed: "Give thorough, complete answers — don't trim detail for brevity's sake.",
+};
+
+const EMOJI_POLICY_LABEL: Record<string, string> = {
+  never: "Never use emoji.",
+  sparing: "Use at most one emoji, only when it clearly fits the tone.",
+  liberal: "Emoji are welcome where they fit naturally.",
+};
+
+/** Phase 7 M3: renders an agent's persona config into a system block, same shape as knowledgeBlock/sessionBlock below. Only non-empty fields are included, so an agent with no persona configured emits nothing worth the model's attention. */
+export function personaBlock(persona: {
+  tone?: string;
+  customTone?: string;
+  formality?: "ty" | "vy" | "auto";
+  responseLength?: "brief" | "standard" | "detailed";
+  emojiPolicy?: "never" | "sparing" | "liberal";
+  doNotSayList?: string[];
+  brandVocabulary?: string[];
+}): string | null {
+  const lines: string[] = [];
+  if (persona.customTone) lines.push(`Tone: ${persona.customTone}`);
+  else if (persona.tone) lines.push(`Tone: ${persona.tone}`);
+  if (persona.formality && persona.formality !== "auto" && FORMALITY_LABEL[persona.formality]) lines.push(FORMALITY_LABEL[persona.formality]);
+  if (persona.responseLength && RESPONSE_LENGTH_LABEL[persona.responseLength]) lines.push(RESPONSE_LENGTH_LABEL[persona.responseLength]);
+  if (persona.emojiPolicy && EMOJI_POLICY_LABEL[persona.emojiPolicy]) lines.push(EMOJI_POLICY_LABEL[persona.emojiPolicy]);
+  if (persona.doNotSayList && persona.doNotSayList.length > 0) lines.push(`Never say any of: ${persona.doNotSayList.join(", ")}.`);
+  if (persona.brandVocabulary && persona.brandVocabulary.length > 0) lines.push(`Prefer this brand vocabulary where natural: ${persona.brandVocabulary.join(", ")}.`);
+  if (lines.length === 0) return null;
+  return `<persona>\n${lines.join("\n")}\n</persona>`;
+}
+
+const MIXED_INPUT_LABEL: Record<string, string> = {
+  transliterate_to_native: "If the customer writes in a transliterated/Latin-script form of their language (e.g. Ukrainian typed in Latin letters), reply in the standard native script, not transliterated back.",
+  answer_as_written: "If the customer writes in a transliterated/Latin-script form of their language, reply the same way they wrote it.",
+  ask_preference: "If the customer writes in a transliterated/Latin-script form of their language, ask once which script they'd prefer for replies.",
+};
+
+/** Phase 7 M3: renders an agent's language config into a system block. */
+export function languageBlock(config: {
+  supportedLanguages?: string[];
+  defaultLanguage?: string;
+  autoDetect?: boolean;
+  alwaysAnswerInCustomerLanguage?: boolean;
+  mixedInputHandling?: "transliterate_to_native" | "answer_as_written" | "ask_preference";
+}): string | null {
+  const lines: string[] = [];
+  if (config.alwaysAnswerInCustomerLanguage) lines.push("Always reply in the same language the customer's message is written in, regardless of the default language below.");
+  if (config.defaultLanguage) lines.push(`Default language when the customer's language is unclear: ${config.defaultLanguage}.`);
+  if (config.supportedLanguages && config.supportedLanguages.length > 0) lines.push(`Supported languages: ${config.supportedLanguages.join(", ")}. For any other language, say so and offer the default language or a human.`);
+  if (config.mixedInputHandling && MIXED_INPUT_LABEL[config.mixedInputHandling]) lines.push(MIXED_INPUT_LABEL[config.mixedInputHandling]);
+  if (lines.length === 0) return null;
+  return `<language>\n${lines.join("\n")}\n</language>`;
+}
+
 function knowledgeBlock(chunks: { docId: string; title: string; effective: string | null; text: string }[]): string {
   const wrapped = chunks.map((c) => `<document doc_id="${c.docId}" title="${c.title}" effective="${c.effective ?? ""}">\n${c.text}\n</document>`).join("\n");
   return `<knowledge>\n${wrapped}\n</knowledge>`;

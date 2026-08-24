@@ -1,5 +1,5 @@
 import { getPlatformContext } from "../../../../src/platform/context";
-import { ModelAliasRepository } from "../../../../src/db/repositories/model-alias-repository";
+import { ModelAliasRepository, type FallbackTarget } from "../../../../src/db/repositories/model-alias-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
 
@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     alias?: string;
     provider?: string;
     model?: string;
+    fallbackChain?: FallbackTarget[];
   };
   if (!body.alias?.trim() || !body.provider?.trim() || !body.model?.trim()) {
     return Response.json({ error: "alias, provider, and model are required" }, { status: 400 });
@@ -40,14 +41,18 @@ export async function POST(req: Request) {
 
   const modelAliases = new ModelAliasRepository(db, tenant);
   const existing = modelAliases.getByAlias(body.alias.trim());
-  const alias = modelAliases.upsert({ alias: body.alias.trim(), provider: body.provider.trim(), model: body.model.trim() });
+  // Phase 7 M2 fix: an edit that doesn't touch the fallback chain must not
+  // silently wipe one set elsewhere — carry the existing chain forward when
+  // the request body omits the field entirely.
+  const fallbackChain = body.fallbackChain ?? existing?.fallbackChain ?? [];
+  const alias = modelAliases.upsert({ alias: body.alias.trim(), provider: body.provider.trim(), model: body.model.trim(), fallbackChain });
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: existing ? "model_alias_updated" : "model_alias_created",
     target: alias.alias,
-    before: existing ? { provider: existing.provider, model: existing.model } : undefined,
-    after: { provider: alias.provider, model: alias.model },
+    before: existing ? { provider: existing.provider, model: existing.model, fallbackChain: existing.fallbackChain } : undefined,
+    after: { provider: alias.provider, model: alias.model, fallbackChain: alias.fallbackChain },
   });
 
   return Response.json({ ok: true, alias });

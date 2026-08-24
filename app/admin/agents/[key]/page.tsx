@@ -4,6 +4,7 @@ import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-re
 import { ToolDefRepository } from "../../../../src/db/repositories/tool-repository";
 import { ModelAliasRepository } from "../../../../src/db/repositories/model-alias-repository";
 import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
+import { UserRepository } from "../../../../src/db/repositories/user-repository";
 import { AgentEditor } from "../../../../components/admin/AgentEditor";
 import { Tabs } from "../../../../components/ui/Tabs";
 
@@ -21,6 +22,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     .map((t) => ({ key: t.key, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
+  const availableOwners = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email }));
   const versions = new AgentDefRepository(db, tenant).listVersions(key).map((v) => ({
     key: v.key,
     version: v.version,
@@ -32,6 +34,18 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     kbScope: v.kbScope,
     nativeTools: v.nativeTools,
     quickReplies: v.quickReplies,
+    displayName: v.displayName,
+    avatarUrl: v.avatarUrl,
+    internalDescription: v.internalDescription,
+    ownerUserId: v.ownerUserId,
+    tags: v.tags,
+    agentStatus: v.agentStatus,
+    environment: v.environment,
+    temperature: v.temperature,
+    maxOutputTokens: v.maxOutputTokens,
+    costCeilingUsd: v.costCeilingUsd,
+    persona: v.persona,
+    languageConfig: v.languageConfig,
   }));
 
   return (
@@ -62,10 +76,23 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           kbScope: agentDef.kbScope,
           nativeTools: agentDef.nativeTools,
           quickReplies: agentDef.quickReplies,
+          displayName: agentDef.displayName,
+          avatarUrl: agentDef.avatarUrl,
+          internalDescription: agentDef.internalDescription,
+          ownerUserId: agentDef.ownerUserId,
+          tags: agentDef.tags,
+          agentStatus: agentDef.agentStatus,
+          environment: agentDef.environment,
+          temperature: agentDef.temperature,
+          maxOutputTokens: agentDef.maxOutputTokens,
+          costCeilingUsd: agentDef.costCeilingUsd,
+          persona: agentDef.persona,
+          languageConfig: agentDef.languageConfig,
         }}
         availableTools={availableTools}
         availableModels={availableModels}
         availableCollections={availableCollections}
+        availableOwners={availableOwners}
         versions={versions}
       />
     </main>

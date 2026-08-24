@@ -8,13 +8,14 @@ import type { TenantContext } from "../tenancy/context";
 import { today } from "../core/clock";
 import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval";
 import { lookupCache, writeCache } from "../kb/semantic-cache";
-import { knowledgeBlock, sessionBlock, handoffBlock } from "./system-prompt";
+import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
 import type { AgentGuardrailConfig } from "../guardrails/types";
 import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
 import { HANDOFF_TOOL_NAME, handoffToolDefinition, parseHandoffPackage, type HandoffPackage } from "./handoff";
 import { KbRetrievalLogRepository } from "../db/repositories/kb-retrieval-log-repository";
+import { LlmCallRepository } from "../db/repositories/llm-call-repository";
 import { DEFAULT_LOW_CONFIDENCE_THRESHOLD } from "../analytics/coverage";
 
 export interface RuntimeDeps {
@@ -33,7 +34,9 @@ export type EscalationReason =
   | "guardrail_blocked"
   | "handoff_cycle_detected"
   | "router_low_confidence"
-  | "negative_sentiment";
+  | "negative_sentiment"
+  | "cost_ceiling_exceeded"
+  | "target_agent_unavailable";
 
 export interface AgentTurnResult {
   assistantText: string;
@@ -78,17 +81,40 @@ export async function runAgentTurn(
   userText: string,
   callbacks: AgentTurnCallbacks = {},
   handoffContext?: HandoffPackage,
+  tenantName = "",
 ): Promise<AgentTurnResult> {
   const messages: ChatMessage[] = [...history, { role: "user", content: userText }];
   const guardrailConfig = (agent.guardrails as AgentGuardrailConfig | undefined) ?? {};
+  const fallbackMessage = agent.persona.cannedMessages?.default?.fallback || "I'm not able to help with that request.";
+
+  // Phase 7 M2: a per-conversation spend cap — checked once at the start of
+  // the turn (not mid-loop), so a turn already in progress is allowed to
+  // finish rather than being cut off partway through.
+  if (agent.costCeilingUsd != null) {
+    const spentSoFar = new LlmCallRepository(deps.db, tenant).sumCostForConversation(conversationId);
+    if (spentSoFar >= agent.costCeilingUsd) {
+      const overBudget = "Let me get a colleague to take it from here.";
+      return {
+        assistantText: overBudget,
+        cards: [],
+        citableDocs: [],
+        escalate: true,
+        escalationReasons: ["cost_ceiling_exceeded"],
+        loopCapHit: false,
+        guardrailBlocked: false,
+        guardrailReasons: [],
+        lowKbConfidence: false,
+        updatedHistory: [...messages, { role: "assistant", content: overBudget }],
+      };
+    }
+  }
 
   // FR-6.13: cheap, deterministic, and worth failing fast on before spending
   // a retrieval call or a model turn.
   const userInputGuardrail = checkUserInputGuardrails(guardrailConfig, userText);
   if (userInputGuardrail.blocked) {
-    const fallback = "I'm not able to help with that request.";
     return {
-      assistantText: fallback,
+      assistantText: fallbackMessage,
       cards: [],
       citableDocs: [],
       escalate: true,
@@ -97,7 +123,7 @@ export async function runAgentTurn(
       guardrailBlocked: true,
       guardrailReasons: userInputGuardrail.reasons,
       lowKbConfidence: false,
-      updatedHistory: [...messages, { role: "assistant", content: fallback }],
+      updatedHistory: [...messages, { role: "assistant", content: fallbackMessage }],
     };
   }
 
@@ -184,6 +210,9 @@ export async function runAgentTurn(
     const knowledge = knowledgeBlock(retrieved.map((r) => ({ docId: r.article.docId, title: r.article.title, effective: r.article.effective, text: r.chunk.text })));
     const session = sessionBlock({ today: today(), severeSymptomSignal: severe.hit });
     const handoff = handoffContext ? handoffBlock(handoffContext) : null;
+    const persona = personaBlock(agent.persona);
+    const language = languageBlock(agent.languageConfig);
+    const renderedSystemPrompt = renderTemplate(agent.systemPrompt, { TENANT_NAME: tenantName, AGENT_NAME: agent.displayName || agent.key, TODAY: today() });
 
     const toolDefinitions = toGatewayToolDefinitions(deps.db, tenant, agent.toolIds);
     if (agent.handoffTargets.length > 0) {
@@ -191,19 +220,23 @@ export async function runAgentTurn(
     }
 
     const nativeTools = buildNativeTools(deps.db, tenant, agent);
+    const sandbox = agent.environment === "sandbox";
 
     while (round < ROUND_CAP) {
       round++;
       finalText = "";
 
-      const systemMessages = [{ role: "system" as const, content: agent.systemPrompt }, { role: "system" as const, content: knowledge }, { role: "system" as const, content: session }];
+      const systemMessages = [{ role: "system" as const, content: renderedSystemPrompt }, { role: "system" as const, content: knowledge }, { role: "system" as const, content: session }];
+      if (persona) systemMessages.push({ role: "system" as const, content: persona });
+      if (language) systemMessages.push({ role: "system" as const, content: language });
       if (handoff) systemMessages.push({ role: "system" as const, content: handoff });
 
       const request: ChatRequest = {
         messages: [...systemMessages, ...messages],
         tools: toolDefinitions,
         nativeTools,
-        maxOutputTokens: MAX_OUTPUT_TOKENS,
+        maxOutputTokens: agent.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+        temperature: agent.temperature ?? undefined,
       };
 
       const response = await deps.gateway.chatStream(tenant, agent.modelAlias, runId, request, forwardDelta);
@@ -223,7 +256,7 @@ export async function runAgentTurn(
         }
 
         callbacks.onToolStart?.(call.name);
-        const result = await executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments);
+        const result = await executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments, { sandbox });
 
         if (isCardBearing(result) && result.card) cards.push(result.card);
         if (isEscalatingResult(result) && result.escalate?.reason) {

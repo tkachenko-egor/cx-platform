@@ -172,7 +172,15 @@ async function runAndLog(
  * regardless of outcome. FR-8.5/8.6: write tools are gated by their
  * tool_defs.approval_policy and never double-execute on a retry.
  */
-export async function executeTool(db: Database.Database, tenant: TenantContext, conversationId: string, runId: string, toolKey: string, args: unknown): Promise<Record<string, unknown>> {
+export async function executeTool(
+  db: Database.Database,
+  tenant: TenantContext,
+  conversationId: string,
+  runId: string,
+  toolKey: string,
+  args: unknown,
+  opts?: { sandbox?: boolean },
+): Promise<Record<string, unknown>> {
   const spec = resolveToolSpec(db, tenant, toolKey);
   if (!spec) {
     const result = { ok: false, error: `Unknown tool: ${toolKey}` };
@@ -191,6 +199,15 @@ export async function executeTool(db: Database.Database, tenant: TenantContext, 
 
   if (!spec.writeFlag) {
     return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args });
+  }
+
+  // Phase 7 M2: a sandbox-environment agent never actually mutates anything —
+  // short-circuits before idempotency/approval-policy handling entirely, so
+  // no tool_approvals row is ever created for a sandbox agent's write calls.
+  if (opts?.sandbox) {
+    const result = { ok: true, dryRun: true, message: "This is a sandbox agent — the write action was simulated, nothing was actually changed." };
+    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "ok", latencyMs: 0 });
+    return result;
   }
 
   // --- write tool: idempotency + approval-policy gate (FR-8.5/8.6) ---

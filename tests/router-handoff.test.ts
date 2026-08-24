@@ -77,6 +77,19 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     semanticCacheEnabled: false,
     nativeTools: {},
     quickReplies: [],
+    displayName: "",
+    avatarUrl: null,
+    internalDescription: "",
+    ownerUserId: null,
+    tags: [],
+    agentStatus: "active",
+    environment: "production",
+    changeNotes: "",
+    temperature: null,
+    maxOutputTokens: null,
+    costCeilingUsd: null,
+    persona: {},
+    languageConfig: {},
   };
 }
 
@@ -97,6 +110,19 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     semanticCacheEnabled: false,
     nativeTools: {},
     quickReplies: [],
+    displayName: "",
+    avatarUrl: null,
+    internalDescription: "",
+    ownerUserId: null,
+    tags: [],
+    agentStatus: "active",
+    environment: "production",
+    changeNotes: "",
+    temperature: null,
+    maxOutputTokens: null,
+    costCeilingUsd: null,
+    persona: {},
+    languageConfig: {},
   };
 }
 

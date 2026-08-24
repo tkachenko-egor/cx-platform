@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { getPlatformContext } from "../../../../src/platform/context";
-import { AgentDefRepository, type AgentNativeToolsConfig } from "../../../../src/db/repositories/agent-def-repository";
+import { AgentDefRepository, type AgentNativeToolsConfig, type AgentPersonaConfig, type AgentLanguageConfig } from "../../../../src/db/repositories/agent-def-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
 import { ensureVectorStore } from "../../../../src/kb/openai-vector-store-sync";
@@ -51,6 +51,19 @@ export async function POST(req: Request) {
     kbScope?: Record<string, unknown>;
     nativeTools?: AgentNativeToolsConfig;
     quickReplies?: string[];
+    displayName?: string;
+    avatarUrl?: string | null;
+    internalDescription?: string;
+    ownerUserId?: string | null;
+    tags?: string[];
+    agentStatus?: "draft" | "active" | "paused" | "archived";
+    environment?: "sandbox" | "production";
+    changeNotes?: string;
+    temperature?: number | null;
+    maxOutputTokens?: number | null;
+    costCeilingUsd?: number | null;
+    persona?: AgentPersonaConfig;
+    languageConfig?: AgentLanguageConfig;
   };
   if (!body.key || !body.systemPrompt || !body.modelAlias) {
     return Response.json({ error: "key, systemPrompt, and modelAlias are required" }, { status: 400 });
@@ -83,13 +96,29 @@ export async function POST(req: Request) {
       kbScope: body.kbScope ?? {},
       nativeTools: body.nativeTools ?? {},
       quickReplies: body.quickReplies ?? [],
+      displayName: body.displayName ?? "",
+      avatarUrl: body.avatarUrl ?? null,
+      internalDescription: body.internalDescription ?? "",
+      ownerUserId: body.ownerUserId ?? actor.id,
+      tags: body.tags ?? [],
+      // Safe-by-default: a brand-new agent starts non-routable and
+      // write-simulated until an admin explicitly promotes it — see the plan's
+      // confirmed defaults. Still overridable if the form sends an explicit value.
+      agentStatus: body.agentStatus ?? "draft",
+      environment: body.environment ?? "sandbox",
+      changeNotes: body.changeNotes ?? "",
+      temperature: body.temperature ?? null,
+      maxOutputTokens: body.maxOutputTokens ?? null,
+      costCeilingUsd: body.costCeilingUsd ?? null,
+      persona: body.persona ?? {},
+      languageConfig: body.languageConfig ?? {},
     });
 
     new AuditLogRepository(db, tenant).record({
       actorUserId: actor.id,
       action: "agent_def_created",
       target: body.key,
-      after: { version: created.version },
+      after: { version: created.version, agentStatus: created.agentStatus, environment: created.environment },
     });
 
     return Response.json({ ok: true, agentDef: created });
@@ -113,14 +142,27 @@ export async function POST(req: Request) {
     semanticCacheEnabled: current.semanticCacheEnabled,
     nativeTools,
     quickReplies: body.quickReplies ?? current.quickReplies,
+    displayName: body.displayName ?? current.displayName,
+    avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : current.avatarUrl,
+    internalDescription: body.internalDescription ?? current.internalDescription,
+    ownerUserId: body.ownerUserId !== undefined ? body.ownerUserId : current.ownerUserId,
+    tags: body.tags ?? current.tags,
+    agentStatus: body.agentStatus ?? current.agentStatus,
+    environment: body.environment ?? current.environment,
+    changeNotes: body.changeNotes ?? "",
+    temperature: body.temperature !== undefined ? body.temperature : current.temperature,
+    maxOutputTokens: body.maxOutputTokens !== undefined ? body.maxOutputTokens : current.maxOutputTokens,
+    costCeilingUsd: body.costCeilingUsd !== undefined ? body.costCeilingUsd : current.costCeilingUsd,
+    persona: body.persona ?? current.persona,
+    languageConfig: body.languageConfig ?? current.languageConfig,
   });
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_def_published",
     target: body.key,
-    before: { version: current.version },
-    after: { version: published.version },
+    before: { version: current.version, agentStatus: current.agentStatus, environment: current.environment },
+    after: { version: published.version, agentStatus: published.agentStatus, environment: published.environment, changeNotes: published.changeNotes },
   });
 
   return Response.json({ ok: true, agentDef: published });

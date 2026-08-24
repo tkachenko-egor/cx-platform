@@ -8,10 +8,16 @@ const KNOWN_MODELS: Record<string, string[]> = {
   anthropic: ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"],
 };
 
+export interface FallbackTargetRow {
+  provider: string;
+  model: string;
+}
+
 export interface ModelAliasRow {
   alias: string;
   provider: string;
   model: string;
+  fallbackChain?: FallbackTargetRow[];
 }
 
 export function ModelsManagement({ aliases }: { aliases: ModelAliasRow[] }) {
@@ -19,6 +25,7 @@ export function ModelsManagement({ aliases }: { aliases: ModelAliasRow[] }) {
   const [alias, setAlias] = useState("");
   const [provider, setProvider] = useState<string>(PROVIDERS[0]);
   const [model, setModel] = useState("");
+  const [fallbackChain, setFallbackChain] = useState<FallbackTargetRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -29,11 +36,12 @@ export function ModelsManagement({ aliases }: { aliases: ModelAliasRow[] }) {
       const res = await fetch("/api/admin/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alias, provider, model }),
+        body: JSON.stringify({ alias, provider, model, fallbackChain }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not save alias");
       setAlias("");
       setModel("");
+      setFallbackChain([]);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -46,7 +54,13 @@ export function ModelsManagement({ aliases }: { aliases: ModelAliasRow[] }) {
     setAlias(row.alias);
     setProvider(row.provider);
     setModel(row.model);
+    setFallbackChain(row.fallbackChain ?? []);
   };
+
+  const addFallback = () => setFallbackChain((prev) => [...prev, { provider: PROVIDERS[0], model: "" }]);
+  const updateFallback = (index: number, patch: Partial<FallbackTargetRow>) =>
+    setFallbackChain((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  const removeFallback = (index: number) => setFallbackChain((prev) => prev.filter((_, i) => i !== index));
 
   return (
     <div className="mt-6 space-y-6">
@@ -86,7 +100,43 @@ export function ModelsManagement({ aliases }: { aliases: ModelAliasRow[] }) {
             Save alias
           </button>
         </div>
-        <p className="mt-2 text-xs text-muted">The API key used to call this model comes from Admin &gt; API Keys — one key per provider, shared by every agent.</p>
+
+        <div className="mt-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-fg">Fallback chain</span>
+            <button type="button" onClick={addFallback} className="text-xs text-accent hover:underline">
+              + Add fallback
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-muted">Tried in order if a call to the primary model errors or is rate-limited (src/gateway/gateway.ts).</p>
+          {fallbackChain.length === 0 && <p className="mt-1 text-xs text-muted">No fallback configured — a provider error or rate limit fails the turn.</p>}
+          <div className="mt-2 space-y-2">
+            {fallbackChain.map((f, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-xs text-muted">{i + 1}.</span>
+                <select value={f.provider} onChange={(e) => updateFallback(i, { provider: e.target.value })} className="rounded border border-border bg-bg px-2 py-1 text-sm">
+                  {PROVIDERS.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={f.model}
+                  onChange={(e) => updateFallback(i, { model: e.target.value })}
+                  list="known-models"
+                  placeholder="e.g. claude-haiku-4-5-20251001"
+                  className="w-64 rounded border border-border bg-bg px-2 py-1 text-sm"
+                />
+                <button type="button" onClick={() => removeFallback(i)} className="text-xs text-danger hover:underline">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <p className="mt-3 text-xs text-muted">The API key used to call this model comes from Admin &gt; API Keys — one key per provider, shared by every agent.</p>
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </section>
 

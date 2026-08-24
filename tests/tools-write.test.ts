@@ -55,6 +55,30 @@ describe("executeTool — write-tool idempotency (FR-8.6)", () => {
   });
 });
 
+describe("executeTool — sandbox environment (Phase 7 M2)", () => {
+  it("simulates a write tool without mutating anything or ever creating an approval row, regardless of approval_policy", async () => {
+    const { db, tenant } = seededTenant();
+    new ToolDefRepository(db, tenant).upsert({
+      key: cancelOrderToolDef.key,
+      description: cancelOrderToolDef.description,
+      inputSchema: cancelOrderToolDef.inputSchema,
+      writeFlag: true,
+      approvalPolicy: "require_human_approval",
+    });
+
+    const result = await executeTool(db, tenant, "CONV-6", "run-1", "cancel_order", { order_id: PROCESSING_ORDER }, { sandbox: true });
+
+    expect(result).toMatchObject({ ok: true, dryRun: true });
+    expect(new AmarelleRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect(new ToolApprovalRepository(db, tenant).listPendingByConversation("CONV-6")).toHaveLength(0);
+
+    // Still logged for visibility even though nothing actually ran.
+    const rows = new ToolCallRepository(db, tenant).listByRun("run-1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("ok");
+  });
+});
+
 describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () => {
   function withConfirmPolicy(db: ReturnType<typeof seededTenant>["db"], tenant: ReturnType<typeof seededTenant>["tenant"]) {
     new ToolDefRepository(db, tenant).upsert({ key: cancelOrderToolDef.key, description: cancelOrderToolDef.description, inputSchema: cancelOrderToolDef.inputSchema, writeFlag: true, approvalPolicy: "confirm_with_customer" });

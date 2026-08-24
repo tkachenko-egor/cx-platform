@@ -3,6 +3,9 @@ import { getPlatformContext } from "../../../src/platform/context";
 import { AgentDefRepository } from "../../../src/db/repositories/agent-def-repository";
 import { ModelAliasRepository } from "../../../src/db/repositories/model-alias-repository";
 import { displayNameForAlias } from "../../../src/gateway/model-catalog";
+import { Badge } from "../../../components/ui/Badge";
+
+const STATUS_VARIANT = { draft: "neutral", active: "success", paused: "warning", archived: "neutral" } as const;
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +38,8 @@ export default async function AgentsPage() {
         <thead>
           <tr className="border-b border-border text-xs text-muted">
             <th className="py-2 pr-4 font-medium">Key</th>
+            <th className="py-2 pr-4 font-medium">Status</th>
+            <th className="py-2 pr-4 font-medium">Environment</th>
             <th className="py-2 pr-4 font-medium">Version</th>
             <th className="py-2 pr-4 font-medium">Model alias</th>
             <th className="py-2 pr-4 font-medium">Tools</th>
@@ -46,8 +51,15 @@ export default async function AgentsPage() {
             <tr key={agent.key}>
               <td className="py-2 pr-4">
                 <Link href={`/admin/agents/${agent.key}`} className="font-medium text-accent hover:underline">
-                  {agent.key}
+                  {agent.displayName || agent.key}
                 </Link>
+                {agent.displayName && <span className="ml-1.5 font-mono text-[11px] text-muted">{agent.key}</span>}
+              </td>
+              <td className="py-2 pr-4">
+                <Badge variant={STATUS_VARIANT[agent.agentStatus]}>{agent.agentStatus}</Badge>
+              </td>
+              <td className="py-2 pr-4">
+                <Badge variant={agent.environment === "sandbox" ? "warning" : "neutral"}>{agent.environment}</Badge>
               </td>
               <td className="py-2 pr-4 text-xs text-muted">v{agent.version}</td>
               <td className="py-2 pr-4 text-xs text-fg">

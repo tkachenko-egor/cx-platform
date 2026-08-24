@@ -44,6 +44,23 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   semantic_cache_enabled INTEGER NOT NULL DEFAULT 0,
   native_tools TEXT NOT NULL DEFAULT '{}',
   quick_replies TEXT NOT NULL DEFAULT '[]',
+  -- Phase 7 M1/M2/M3 (migration 022): admin-facing identity/lifecycle,
+  -- remaining model controls, and persona/language config. Defaults keep
+  -- every pre-existing row routable and write-enabled exactly as before —
+  -- only the create-agent API route opts new agents into draft/sandbox.
+  display_name TEXT NOT NULL DEFAULT '',
+  avatar_url TEXT,
+  internal_description TEXT NOT NULL DEFAULT '',
+  owner_user_id TEXT REFERENCES users(id),
+  tags TEXT NOT NULL DEFAULT '[]',
+  agent_status TEXT NOT NULL DEFAULT 'active' CHECK (agent_status IN ('draft','active','paused','archived')),
+  environment TEXT NOT NULL DEFAULT 'production' CHECK (environment IN ('sandbox','production')),
+  change_notes TEXT NOT NULL DEFAULT '',
+  temperature REAL,
+  max_output_tokens INTEGER,
+  cost_ceiling_usd REAL,
+  persona TEXT NOT NULL DEFAULT '{}',
+  language_config TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)

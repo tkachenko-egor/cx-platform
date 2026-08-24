@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog } from "lucide-react";
+import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input, Label } from "../ui/Input";
@@ -28,6 +28,39 @@ export interface AgentNativeToolsConfig {
   mcp?: { enabled: boolean; serverLabel?: string; serverUrl?: string; headers?: Record<string, string> };
 }
 
+/** Mirrors AgentPersonaConfig/AgentLanguageConfig in src/db/repositories/agent-def-repository.ts — kept local for the same reason as AgentNativeToolsConfig above. */
+export interface AgentCannedMessages {
+  greeting?: string;
+  fallback?: string;
+  handoff?: string;
+  outOfHours?: string;
+  idleTimeout?: string;
+}
+
+export interface AgentCannedMessageOverride extends AgentCannedMessages {
+  channel?: string;
+  language?: string;
+}
+
+export interface AgentPersonaConfig {
+  tone?: string;
+  customTone?: string;
+  formality?: "ty" | "vy" | "auto";
+  responseLength?: "brief" | "standard" | "detailed";
+  emojiPolicy?: "never" | "sparing" | "liberal";
+  doNotSayList?: string[];
+  brandVocabulary?: string[];
+  cannedMessages?: { default?: AgentCannedMessages; overrides?: AgentCannedMessageOverride[] };
+}
+
+export interface AgentLanguageConfig {
+  supportedLanguages?: string[];
+  defaultLanguage?: string;
+  autoDetect?: boolean;
+  alwaysAnswerInCustomerLanguage?: boolean;
+  mixedInputHandling?: "transliterate_to_native" | "answer_as_written" | "ask_preference";
+}
+
 export interface AgentEditorInitial {
   key: string;
   version: number;
@@ -39,6 +72,23 @@ export interface AgentEditorInitial {
   kbScope: Record<string, unknown>;
   nativeTools: AgentNativeToolsConfig;
   quickReplies: string[];
+  displayName: string;
+  avatarUrl: string | null;
+  internalDescription: string;
+  ownerUserId: string | null;
+  tags: string[];
+  agentStatus: "draft" | "active" | "paused" | "archived";
+  environment: "sandbox" | "production";
+  temperature: number | null;
+  maxOutputTokens: number | null;
+  costCeilingUsd: number | null;
+  persona: AgentPersonaConfig;
+  languageConfig: AgentLanguageConfig;
+}
+
+export interface OwnerOption {
+  id: string;
+  email: string;
 }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (next: boolean) => void }) {
@@ -68,14 +118,20 @@ export interface KbCollectionOption {
 
 const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-type SectionTab = "prompt" | "knowledge" | "tools" | "behavior";
+type SectionTab = "identity" | "prompt" | "persona" | "language" | "knowledge" | "tools" | "behavior";
 
 const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
+  { key: "identity", label: "Identity", icon: UserCircle },
   { key: "prompt", label: "Prompt & model", icon: MessageSquare },
+  { key: "persona", label: "Persona", icon: Smile },
+  { key: "language", label: "Language", icon: Languages },
   { key: "knowledge", label: "Knowledge", icon: BookOpen },
   { key: "tools", label: "Tools", icon: Wrench },
   { key: "behavior", label: "Behavior", icon: Sparkles },
 ];
+
+const TONE_PRESETS = ["Neutral", "Formal", "Friendly", "Playful", "Custom"];
+const AGENT_STATUSES = ["draft", "active", "paused", "archived"] as const;
 
 function SectionHeading({ icon: Icon, title, subtitle }: { icon: typeof Bot; title: string; subtitle?: string }) {
   return (
@@ -98,6 +154,7 @@ export function AgentEditor({
   availableTools,
   availableModels,
   availableCollections,
+  availableOwners = [],
   versions,
   mode = "edit",
 }: {
@@ -105,6 +162,8 @@ export function AgentEditor({
   availableTools: ToolOption[];
   availableModels: ModelAliasOption[];
   availableCollections: KbCollectionOption[];
+  /** Phase 7 M1: for the Identity tab's owner picker. */
+  availableOwners?: OwnerOption[];
   /** Phase 6 M4: every published version of this agent, newest first — powers the Prompt card's version dropdown. Omitted in create mode. */
   versions?: AgentEditorInitial[];
   mode?: "create" | "edit";
@@ -131,6 +190,28 @@ export function AgentEditor({
   const [managingCollection, setManagingCollection] = useState<KbCollectionOption | null>(null);
   const [tab, setTab] = useState<SectionTab>("prompt");
 
+  // Phase 7 M1: identity & lifecycle
+  const [displayName, setDisplayName] = useState(initial.displayName);
+  const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl ?? "");
+  const [internalDescription, setInternalDescription] = useState(initial.internalDescription);
+  const [ownerUserId, setOwnerUserId] = useState(initial.ownerUserId ?? "");
+  const [tags, setTags] = useState(initial.tags.join(", "));
+  const [agentStatus, setAgentStatus] = useState(initial.agentStatus);
+  const [environment, setEnvironment] = useState(initial.environment);
+  const [changeNotes, setChangeNotes] = useState("");
+
+  // Phase 7 M2: model & engine controls
+  const [temperature, setTemperature] = useState(initial.temperature != null ? String(initial.temperature) : "");
+  const [maxOutputTokens, setMaxOutputTokens] = useState(initial.maxOutputTokens != null ? String(initial.maxOutputTokens) : "");
+  const [costCeilingUsd, setCostCeilingUsd] = useState(initial.costCeilingUsd != null ? String(initial.costCeilingUsd) : "");
+
+  // Phase 7 M3: persona & language
+  const [persona, setPersona] = useState<AgentPersonaConfig>(initial.persona ?? {});
+  const [languageConfig, setLanguageConfig] = useState<AgentLanguageConfig>(initial.languageConfig ?? {});
+  const [newDoNotSay, setNewDoNotSay] = useState("");
+  const [newBrandWord, setNewBrandWord] = useState("");
+  const [newLanguage, setNewLanguage] = useState("");
+
   // Recomputed on every render so the preview pane's next send always uses whatever is currently
   // in the form, not a stale snapshot from when this component mounted.
   const previewDraft = useMemo(() => {
@@ -142,6 +223,7 @@ export function AgentEditor({
     }
     return {
       key: mode === "create" ? key : initial.key,
+      displayName,
       systemPrompt,
       modelAlias,
       toolIds: [...toolIds],
@@ -149,8 +231,12 @@ export function AgentEditor({
       kbScope: { collectionIds: [...collectionIds] },
       nativeTools,
       skills: skills.split(",").map((s) => s.trim()).filter(Boolean),
+      temperature: temperature.trim() ? Number(temperature) : null,
+      maxOutputTokens: maxOutputTokens.trim() ? Number(maxOutputTokens) : null,
+      persona,
+      languageConfig,
     };
-  }, [mode, key, initial.key, initial.guardrails, systemPrompt, modelAlias, toolIds, guardrailsJson, collectionIds, nativeTools, skills]);
+  }, [mode, key, initial.key, initial.guardrails, displayName, systemPrompt, modelAlias, toolIds, guardrailsJson, collectionIds, nativeTools, skills, temperature, maxOutputTokens, persona, languageConfig]);
 
   // Older tenants can have leftover role-named aliases (e.g. "support-main") pointing at the
   // same provider+model a catalog-named alias also covers — collapse those duplicate-looking
@@ -212,6 +298,18 @@ export function AgentEditor({
     setGuardrailsJson(JSON.stringify(found.guardrails, null, 2));
     setNativeTools(found.nativeTools ?? {});
     setQuickReplies(found.quickReplies ?? []);
+    setDisplayName(found.displayName);
+    setAvatarUrl(found.avatarUrl ?? "");
+    setInternalDescription(found.internalDescription);
+    setOwnerUserId(found.ownerUserId ?? "");
+    setTags(found.tags.join(", "));
+    setAgentStatus(found.agentStatus);
+    setEnvironment(found.environment);
+    setTemperature(found.temperature != null ? String(found.temperature) : "");
+    setMaxOutputTokens(found.maxOutputTokens != null ? String(found.maxOutputTokens) : "");
+    setCostCeilingUsd(found.costCeilingUsd != null ? String(found.costCeilingUsd) : "");
+    setPersona(found.persona ?? {});
+    setLanguageConfig(found.languageConfig ?? {});
   };
 
   const publish = async () => {
@@ -248,6 +346,19 @@ export function AgentEditor({
           kbScope: { collectionIds: [...collectionIds] },
           nativeTools,
           quickReplies,
+          displayName,
+          avatarUrl: avatarUrl.trim() || null,
+          internalDescription,
+          ownerUserId: ownerUserId || null,
+          tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+          agentStatus,
+          environment,
+          changeNotes,
+          temperature: temperature.trim() ? Number(temperature) : null,
+          maxOutputTokens: maxOutputTokens.trim() ? Number(maxOutputTokens) : null,
+          costCeilingUsd: costCeilingUsd.trim() ? Number(costCeilingUsd) : null,
+          persona,
+          languageConfig,
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not publish");
@@ -267,7 +378,7 @@ export function AgentEditor({
     <div className="mt-6">
       {mode === "create" && (
         <Card className="mb-5 p-6">
-          <SectionHeading icon={Bot} title="Identity" />
+          <SectionHeading icon={Bot} title="Key" />
           <div className="mt-4">
             <Field label="Key" htmlFor="agent-key">
               <Input id="agent-key" value={key} onChange={(e) => setKey(e.target.value.trim().toLowerCase())} placeholder="e.g. billing-specialist" className="w-72 font-mono text-xs" />
@@ -346,6 +457,360 @@ export function AgentEditor({
                     ))}
                   </select>
                   <p className="mt-1.5 text-xs text-muted">Switching this republishes immediately — no redeploy.</p>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-4">
+                  <Field label="Temperature" htmlFor="agent-temperature">
+                    <Input
+                      id="agent-temperature"
+                      type="number"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      value={temperature}
+                      onChange={(e) => setTemperature(e.target.value)}
+                      placeholder="Provider default"
+                    />
+                  </Field>
+                  <Field label="Max response length (tokens)" htmlFor="agent-max-tokens">
+                    <Input id="agent-max-tokens" type="number" min={1} value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} placeholder="1024" />
+                  </Field>
+                  <Field label="Cost ceiling per conversation ($)" htmlFor="agent-cost-ceiling">
+                    <Input id="agent-cost-ceiling" type="number" min={0} step={0.01} value={costCeilingUsd} onChange={(e) => setCostCeilingUsd(e.target.value)} placeholder="Unlimited" />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted">Blank fields use the provider default / no cap. Once the ceiling is spent, the conversation hands off to a colleague instead of calling the model again.</p>
+              </Card>
+            </div>
+          )}
+
+          {tab === "identity" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={UserCircle} title="Identity" subtitle="How this agent is described and organized in the admin — never shown to the model." />
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Display name" htmlFor="agent-display-name">
+                    <Input id="agent-display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Billing Specialist" />
+                  </Field>
+                  <Field label="Avatar URL" htmlFor="agent-avatar-url">
+                    <Input id="agent-avatar-url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://…" />
+                  </Field>
+                </div>
+                <div className="mt-4">
+                  <Label htmlFor="agent-internal-description">Internal description</Label>
+                  <textarea
+                    id="agent-internal-description"
+                    value={internalDescription}
+                    onChange={(e) => setInternalDescription(e.target.value)}
+                    rows={2}
+                    placeholder="What this agent is for, for your own team — not the model."
+                    className={`mt-1.5 ${textareaClass}`}
+                  />
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Owner" htmlFor="agent-owner">
+                    <select
+                      id="agent-owner"
+                      value={ownerUserId}
+                      onChange={(e) => setOwnerUserId(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="">Unassigned</option>
+                      {availableOwners.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.email}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Tags (comma-separated)" htmlFor="agent-tags">
+                    <Input id="agent-tags" value={tags} onChange={(e) => setTags(e.target.value)} placeholder="e.g. billing, tier-1" />
+                  </Field>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={Sparkles} title="Lifecycle" subtitle="Status controls whether this agent can be routed a new conversation." />
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Status" htmlFor="agent-status">
+                    <select
+                      id="agent-status"
+                      value={agentStatus}
+                      onChange={(e) => setAgentStatus(e.target.value as typeof agentStatus)}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      {AGENT_STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div>
+                    <Label htmlFor="agent-environment">Environment</Label>
+                    <div id="agent-environment" className="mt-1.5 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEnvironment("sandbox")}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium ${environment === "sandbox" ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
+                      >
+                        Sandbox
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEnvironment("production")}
+                        className={`rounded-lg border px-3 py-2 text-sm font-medium ${environment === "production" ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
+                      >
+                        Production
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-3 text-xs text-muted">
+                  Draft, paused, and archived agents are never picked for a new conversation (existing conversations keep running unaffected). A sandbox agent&apos;s write tools always simulate — nothing is ever actually
+                  changed.
+                </p>
+              </Card>
+            </div>
+          )}
+
+          {tab === "persona" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={Smile} title="Tone & voice" />
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Tone preset" htmlFor="persona-tone">
+                    <select
+                      id="persona-tone"
+                      value={persona.tone ?? "Neutral"}
+                      onChange={(e) => setPersona((prev) => ({ ...prev, tone: e.target.value }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      {TONE_PRESETS.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Formality" htmlFor="persona-formality">
+                    <select
+                      id="persona-formality"
+                      value={persona.formality ?? "auto"}
+                      onChange={(e) => setPersona((prev) => ({ ...prev, formality: e.target.value as AgentPersonaConfig["formality"] }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="auto">Let the model judge</option>
+                      <option value="ty">Informal (ти)</option>
+                      <option value="vy">Formal (ви)</option>
+                    </select>
+                  </Field>
+                </div>
+                {persona.tone === "Custom" && (
+                  <div className="mt-4">
+                    <Label htmlFor="persona-custom-tone">Custom tone description</Label>
+                    <textarea
+                      id="persona-custom-tone"
+                      value={persona.customTone ?? ""}
+                      onChange={(e) => setPersona((prev) => ({ ...prev, customTone: e.target.value }))}
+                      rows={2}
+                      className={`mt-1.5 ${textareaClass}`}
+                    />
+                  </div>
+                )}
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Response length" htmlFor="persona-response-length">
+                    <select
+                      id="persona-response-length"
+                      value={persona.responseLength ?? "standard"}
+                      onChange={(e) => setPersona((prev) => ({ ...prev, responseLength: e.target.value as AgentPersonaConfig["responseLength"] }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="brief">Brief</option>
+                      <option value="standard">Standard</option>
+                      <option value="detailed">Detailed</option>
+                    </select>
+                  </Field>
+                  <Field label="Emoji policy" htmlFor="persona-emoji">
+                    <select
+                      id="persona-emoji"
+                      value={persona.emojiPolicy ?? "sparing"}
+                      onChange={(e) => setPersona((prev) => ({ ...prev, emojiPolicy: e.target.value as AgentPersonaConfig["emojiPolicy"] }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="never">Never</option>
+                      <option value="sparing">Sparing</option>
+                      <option value="liberal">Liberal</option>
+                    </select>
+                  </Field>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={X} title="Do-not-say list & brand vocabulary" />
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <Label htmlFor="persona-do-not-say">Never say</Label>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {(persona.doNotSayList ?? []).map((word, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg">
+                          {word}
+                          <button
+                            type="button"
+                            onClick={() => setPersona((prev) => ({ ...prev, doNotSayList: (prev.doNotSayList ?? []).filter((_, idx) => idx !== i) }))}
+                            aria-label="Remove"
+                            className="text-muted hover:text-danger"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        id="persona-do-not-say"
+                        value={newDoNotSay}
+                        onChange={(e) => setNewDoNotSay(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" || !newDoNotSay.trim()) return;
+                          e.preventDefault();
+                          setPersona((prev) => ({ ...prev, doNotSayList: [...(prev.doNotSayList ?? []), newDoNotSay.trim()] }));
+                          setNewDoNotSay("");
+                        }}
+                        placeholder="e.g. guaranteed"
+                        className="w-64"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="persona-brand-vocab">Brand vocabulary</Label>
+                    <div className="mt-1.5 flex flex-wrap gap-2">
+                      {(persona.brandVocabulary ?? []).map((word, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg">
+                          {word}
+                          <button
+                            type="button"
+                            onClick={() => setPersona((prev) => ({ ...prev, brandVocabulary: (prev.brandVocabulary ?? []).filter((_, idx) => idx !== i) }))}
+                            aria-label="Remove"
+                            className="text-muted hover:text-danger"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        id="persona-brand-vocab"
+                        value={newBrandWord}
+                        onChange={(e) => setNewBrandWord(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" || !newBrandWord.trim()) return;
+                          e.preventDefault();
+                          setPersona((prev) => ({ ...prev, brandVocabulary: [...(prev.brandVocabulary ?? []), newBrandWord.trim()] }));
+                          setNewBrandWord("");
+                        }}
+                        placeholder="e.g. glow ritual"
+                        className="w-64"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={MessageSquare} title="Canned messages" subtitle="Overridable per channel/language from the same config." />
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  {(["greeting", "fallback", "handoff", "outOfHours", "idleTimeout"] as const).map((field) => (
+                    <Field key={field} label={field.replace(/([A-Z])/g, " $1").replace(/^./, (c) => c.toUpperCase())} htmlFor={`canned-${field}`}>
+                      <Input
+                        id={`canned-${field}`}
+                        value={persona.cannedMessages?.default?.[field] ?? ""}
+                        onChange={(e) =>
+                          setPersona((prev) => ({
+                            ...prev,
+                            cannedMessages: { ...prev.cannedMessages, default: { ...prev.cannedMessages?.default, [field]: e.target.value } },
+                          }))
+                        }
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted">Out-of-hours and idle-timeout messages are stored here for later triggers — no schedule/timeout mechanism sends them automatically yet.</p>
+              </Card>
+            </div>
+          )}
+
+          {tab === "language" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={Languages} title="Language" />
+                <div className="mt-4">
+                  <Label htmlFor="language-supported">Supported languages</Label>
+                  <div className="mt-1.5 flex flex-wrap gap-2">
+                    {(languageConfig.supportedLanguages ?? []).map((lang, i) => (
+                      <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg">
+                        {lang}
+                        <button
+                          type="button"
+                          onClick={() => setLanguageConfig((prev) => ({ ...prev, supportedLanguages: (prev.supportedLanguages ?? []).filter((_, idx) => idx !== i) }))}
+                          aria-label="Remove"
+                          className="text-muted hover:text-danger"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <Input
+                      id="language-supported"
+                      value={newLanguage}
+                      onChange={(e) => setNewLanguage(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || !newLanguage.trim()) return;
+                        e.preventDefault();
+                        setLanguageConfig((prev) => ({ ...prev, supportedLanguages: [...(prev.supportedLanguages ?? []), newLanguage.trim()] }));
+                        setNewLanguage("");
+                      }}
+                      placeholder="e.g. Ukrainian"
+                      className="w-64"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Default language" htmlFor="language-default">
+                    <Input id="language-default" value={languageConfig.defaultLanguage ?? ""} onChange={(e) => setLanguageConfig((prev) => ({ ...prev, defaultLanguage: e.target.value }))} placeholder="e.g. Ukrainian" />
+                  </Field>
+                  <Field label="Mixed / transliterated input" htmlFor="language-mixed-input">
+                    <select
+                      id="language-mixed-input"
+                      value={languageConfig.mixedInputHandling ?? "transliterate_to_native"}
+                      onChange={(e) => setLanguageConfig((prev) => ({ ...prev, mixedInputHandling: e.target.value as AgentLanguageConfig["mixedInputHandling"] }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="transliterate_to_native">Reply in native script</option>
+                      <option value="answer_as_written">Mirror the customer&apos;s script</option>
+                      <option value="ask_preference">Ask once which script to use</option>
+                    </select>
+                  </Field>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-fg">Auto-detect language</p>
+                      <p className="text-xs text-muted">Otherwise always treat the customer as writing in the default language above.</p>
+                    </div>
+                    <Toggle checked={Boolean(languageConfig.autoDetect)} onChange={(next) => setLanguageConfig((prev) => ({ ...prev, autoDetect: next }))} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-fg">Always answer in the customer&apos;s language</p>
+                      <p className="text-xs text-muted">Overrides the default language whenever they differ.</p>
+                    </div>
+                    <Toggle checked={Boolean(languageConfig.alwaysAnswerInCustomerLanguage)} onChange={(next) => setLanguageConfig((prev) => ({ ...prev, alwaysAnswerInCustomerLanguage: next }))} />
+                  </div>
                 </div>
               </Card>
             </div>
@@ -519,6 +984,13 @@ export function AgentEditor({
                   </div>
                 </div>
               </Card>
+            </div>
+          )}
+
+          {mode === "edit" && (
+            <div>
+              <Label htmlFor="agent-change-notes">Change notes (optional)</Label>
+              <Input id="agent-change-notes" value={changeNotes} onChange={(e) => setChangeNotes(e.target.value)} placeholder="What changed in this version, and why" className="mt-1.5" />
             </div>
           )}
 

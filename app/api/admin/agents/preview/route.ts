@@ -4,7 +4,7 @@ import { RunRepository } from "../../../../../src/db/repositories/run-repository
 import { ToolDefRepository } from "../../../../../src/db/repositories/tool-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
-import type { AgentDef, AgentNativeToolsConfig } from "../../../../../src/db/repositories/agent-def-repository";
+import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig } from "../../../../../src/db/repositories/agent-def-repository";
 import type { ChatMessage } from "../../../../../src/gateway/types";
 
 // better-sqlite3 needs the Node runtime, not edge.
@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 
 interface PreviewDraft {
   key?: string;
+  displayName?: string;
   systemPrompt: string;
   modelAlias: string;
   toolIds: string[];
@@ -19,6 +20,10 @@ interface PreviewDraft {
   kbScope?: Record<string, unknown>;
   nativeTools?: AgentNativeToolsConfig;
   skills?: string[];
+  temperature?: number | null;
+  maxOutputTokens?: number | null;
+  persona?: AgentPersonaConfig;
+  languageConfig?: AgentLanguageConfig;
 }
 
 function sseEvent(data: unknown): string {
@@ -103,6 +108,22 @@ export async function POST(req: Request) {
     semanticCacheEnabled: false,
     nativeTools: draft.nativeTools ?? {},
     quickReplies: [],
+    displayName: draft.displayName ?? "",
+    avatarUrl: null,
+    internalDescription: "",
+    ownerUserId: null,
+    tags: [],
+    agentStatus: "active",
+    // Preview always simulates writes regardless of the draft's own environment
+    // setting — write tools are dropped from the toolset entirely above, so
+    // this only matters if that ever changes.
+    environment: "sandbox",
+    changeNotes: "",
+    temperature: draft.temperature ?? null,
+    maxOutputTokens: draft.maxOutputTokens ?? null,
+    costCeilingUsd: null,
+    persona: draft.persona ?? {},
+    languageConfig: draft.languageConfig ?? {},
   };
 
   const runs = new RunRepository(db, tenant);
@@ -115,10 +136,21 @@ export async function POST(req: Request) {
       send({ type: "meta", conversationId });
 
       try {
-        const result = await runAgentTurn({ db, gateway, embeddings }, tenant, conversationId, run.id, agent, body.history ?? [], message, {
-          onTextDelta: (delta) => send({ type: "text", delta }),
-          onToolStart: (name) => send({ type: "tool_start", name }),
-        });
+        const result = await runAgentTurn(
+          { db, gateway, embeddings },
+          tenant,
+          conversationId,
+          run.id,
+          agent,
+          body.history ?? [],
+          message,
+          {
+            onTextDelta: (delta) => send({ type: "text", delta }),
+            onToolStart: (name) => send({ type: "tool_start", name }),
+          },
+          undefined,
+          tenant.name,
+        );
         runs.complete(run.id, "completed");
         send({
           type: "done",

@@ -20,6 +20,7 @@ import { migration018KbCollections } from "./018-kb-collections";
 import { migration019AgentNativeToolsAndQuickReplies } from "./019-agent-native-tools-and-quick-replies";
 import { migration020KbOpenaiVectorStore } from "./020-kb-openai-vector-store";
 import { migration021WidgetThemeFields } from "./021-widget-theme-fields";
+import { migration022AgentIdentityPersonaLanguage } from "./022-agent-identity-persona-language";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -44,4 +45,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration019AgentNativeToolsAndQuickReplies,
   migration020KbOpenaiVectorStore,
   migration021WidgetThemeFields,
+  migration022AgentIdentityPersonaLanguage,
 ];

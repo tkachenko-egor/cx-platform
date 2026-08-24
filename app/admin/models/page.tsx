@@ -10,7 +10,7 @@ export default async function ModelsPage() {
 
   const aliases = new ModelAliasRepository(db, tenant)
     .list()
-    .map((a) => ({ alias: a.alias, provider: a.provider, model: a.model }));
+    .map((a) => ({ alias: a.alias, provider: a.provider, model: a.model, fallbackChain: a.fallbackChain }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

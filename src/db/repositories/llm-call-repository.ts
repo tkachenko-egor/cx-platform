@@ -89,4 +89,16 @@ export class LlmCallRepository extends TenantScopedRepository {
       .all(this.tenantId, runId) as LlmCallRow[];
     return rows.map(rowToRecord);
   }
+
+  /** Phase 7 M2: per-conversation cost ceiling check — sums every llm_calls row across every run (turn) this conversation has had so far, joined through runs.conversation_id since llm_calls itself only carries run_id. */
+  sumCostForConversation(conversationId: string): number {
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(lc.cost_usd), 0) as total FROM llm_calls lc
+         JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id
+         WHERE lc.tenant_id = ? AND r.conversation_id = ?`,
+      )
+      .get(this.tenantId, conversationId) as { total: number };
+    return row.total;
+  }
 }
