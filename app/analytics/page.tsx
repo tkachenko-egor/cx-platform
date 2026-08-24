@@ -1,14 +1,18 @@
 import { redirect } from "next/navigation";
-import { TrendingUp, Timer, MessageSquare, AlertTriangle, DollarSign } from "lucide-react";
+import { TrendingUp, Timer, MessageSquare, AlertTriangle, DollarSign, Smile } from "lucide-react";
 import { getPlatformContext } from "../../src/platform/context";
 import { getSessionUser } from "../../src/auth/session";
+import { roleAtLeast } from "../../src/auth/permissions";
 import { AgentDefRepository } from "../../src/db/repositories/agent-def-repository";
+import { MessageFeedbackRepository } from "../../src/db/repositories/message-feedback-repository";
 import { getAgentVolume, getContainmentRate, getEscalationReasonBreakdown, getLatencyPercentiles, getAgentVersionPerformance } from "../../src/analytics/agent-performance";
+import { getActiveAlerts } from "../../src/analytics/alerts";
 import { Card } from "../../components/ui/Card";
 import { StatTile } from "../../components/ui/StatTile";
 import { BarList } from "../../components/ui/BarList";
 import { Tabs } from "../../components/ui/Tabs";
 import { AgentPicker } from "../../components/admin/AgentPicker";
+import { AlertThresholdsCard } from "../../components/admin/AlertThresholdsCard";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +37,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const totalCost = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.avgCostUsd * v.runCount, 0), 0);
   const avgCostPerRun = totalRuns > 0 ? totalCost / totalRuns : null;
 
+  const feedback = new MessageFeedbackRepository(db, tenant).aggregateForTenant();
+  const csatPct = feedback.total > 0 ? (feedback.up / feedback.total) * 100 : null;
+  const activeAlerts = getActiveAlerts(db, tenant);
+
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">
       <div className="flex items-center justify-between">
@@ -47,7 +55,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <Tabs active={agentKey ? `/analytics?agent=${agentKey}` : "/analytics"} items={[{ href: agentKey ? `/analytics?agent=${agentKey}` : "/analytics", label: "Overview" }, { href: "/analytics/coverage-gaps", label: "Coverage gaps" }]} />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <AlertThresholdsCard
+        activeAlerts={activeAlerts}
+        maxHandoffRatePct={tenant.alertThresholds.maxHandoffRatePct ?? null}
+        minCsatScore={tenant.alertThresholds.minCsatScore ?? null}
+        canEdit={roleAtLeast(user.role, "admin")}
+      />
+
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatTile
           icon={TrendingUp}
           label="Containment"
@@ -57,6 +72,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <StatTile icon={Timer} label="Model latency (p50 / p95)" value={latency.count > 0 ? `${latency.p50}ms / ${latency.p95}ms` : "—"} hint={`${latency.count} calls`} />
         <StatTile icon={MessageSquare} label="Total runs" value={String(volume.reduce((sum, v) => sum + v.runCount, 0))} />
         <StatTile icon={DollarSign} label="Avg cost / run" value={avgCostPerRun !== null ? `$${avgCostPerRun.toFixed(4)}` : "—"} />
+        <StatTile icon={Smile} label="CSAT" value={csatPct !== null ? `${Math.round(csatPct)}%` : "—"} hint={feedback.total > 0 ? `${feedback.total} ratings` : "No feedback yet"} />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

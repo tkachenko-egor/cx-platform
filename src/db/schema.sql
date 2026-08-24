@@ -7,6 +7,11 @@ CREATE TABLE IF NOT EXISTS tenants (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   timezone TEXT NOT NULL DEFAULT 'UTC',
+  -- Phase 9 (migration 024): weekly schedule + alert-threshold config, both
+  -- tenant-wide (not per-agent) — see src/core/business-hours.ts and
+  -- src/analytics/alerts.ts.
+  business_hours TEXT NOT NULL DEFAULT '{}',
+  alert_thresholds TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -65,6 +70,11 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   -- the escalation scanners — appended to the hardcoded defaults in
   -- src/agents/escalation.ts, never replacing them.
   escalation_config TEXT NOT NULL DEFAULT '{}',
+  -- Phase 9 (migration 024): structured conversation-logic config (topics/
+  -- slots/memory-scope/variables, src/agents/system-prompt.ts's scopeBlock)
+  -- and a per-agent channel allowlist (empty = all channels, src/channel/turn.ts).
+  conversation_config TEXT NOT NULL DEFAULT '{}',
+  enabled_channels TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)
@@ -660,9 +670,41 @@ CREATE TABLE IF NOT EXISTS widget_configs (
   font_family TEXT NOT NULL DEFAULT 'inter',
   user_bubble_color TEXT NOT NULL DEFAULT '#13141a',
   bot_bubble_color TEXT NOT NULL DEFAULT '#f1f2f6',
+  -- Phase 9 (migration 024): URL-pattern audience targeting — see
+  -- app/api/embed-chat/[publicKey]/should-mount/route.ts.
+  audience_rules TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, agent_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_widget_configs_public_key ON widget_configs(public_key);
+
+-- Phase 9: thumbs up/down per bot message. One row per message (re-submitting
+-- overwrites via upsert, see MessageFeedbackRepository) — see
+-- app/api/chat/feedback/route.ts / app/api/embed-chat/[publicKey]/feedback/route.ts.
+CREATE TABLE IF NOT EXISTS message_feedback (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  conversation_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  rating TEXT NOT NULL CHECK (rating IN ('up','down')),
+  comment TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (tenant_id, message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_message_feedback_tenant ON message_feedback(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_message_feedback_conversation ON message_feedback(conversation_id);
+
+-- Phase 9: keyword -> tag mappings for auto-tagging conversations (deterministic,
+-- not an LLM classifier — see src/channel/turn.ts's scanAutoTags).
+CREATE TABLE IF NOT EXISTS auto_tag_rules (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  tag TEXT NOT NULL,
+  keywords TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_auto_tag_rules_tenant ON auto_tag_rules(tenant_id);

@@ -95,7 +95,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/embed-chat/[pub
         });
 
         if (result.handoff) send({ type: "handoff", state: result.state });
-        send({ type: "done", cards: result.cards ?? [], citableDocs: result.citableDocs, loopCapHit: result.loopCapHit });
+        send({ type: "done", cards: result.cards ?? [], citableDocs: result.citableDocs, loopCapHit: result.loopCapHit, assistantMessageId: result.assistantMessageId });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         send({ type: "error", message: "I'm having trouble reaching my systems — give me a moment and try again.", detail: message });

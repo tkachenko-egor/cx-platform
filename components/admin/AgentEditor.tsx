@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages, AlertTriangle, Shield } from "lucide-react";
+import { Bot, MessageSquare, Cpu, Wrench, BookOpen, Sparkles, Globe, FileSearch, Plug, X, Settings, FolderCog, UserCircle, Smile, Languages, AlertTriangle, Shield, Waypoints } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input, Label } from "../ui/Input";
@@ -91,6 +91,16 @@ export interface AgentGuardrailConfig {
   };
 }
 
+/** Mirrors AgentConversationConfig in src/db/repositories/agent-def-repository.ts — kept local, same reason as the types above. */
+export interface AgentConversationConfig {
+  inScopeTopics?: string[];
+  outOfScopeTopics?: string[];
+  requiredSlots?: string[];
+  memoryScope?: "full" | "recent";
+  recentTurnLimit?: number;
+  variables?: Record<string, string>;
+}
+
 export interface AgentEditorInitial {
   key: string;
   version: number;
@@ -115,6 +125,8 @@ export interface AgentEditorInitial {
   persona: AgentPersonaConfig;
   languageConfig: AgentLanguageConfig;
   escalationConfig: AgentEscalationConfig;
+  conversationConfig: AgentConversationConfig;
+  enabledChannels: string[];
 }
 
 export interface OwnerOption {
@@ -184,13 +196,14 @@ export interface KbCollectionOption {
 
 const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-type SectionTab = "identity" | "prompt" | "persona" | "language" | "knowledge" | "tools" | "escalation" | "guardrails" | "behavior";
+type SectionTab = "identity" | "prompt" | "persona" | "language" | "conversation" | "knowledge" | "tools" | "escalation" | "guardrails" | "behavior";
 
 const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
   { key: "identity", label: "Identity", icon: UserCircle },
   { key: "prompt", label: "Prompt & model", icon: MessageSquare },
   { key: "persona", label: "Persona", icon: Smile },
   { key: "language", label: "Language", icon: Languages },
+  { key: "conversation", label: "Conversation", icon: Waypoints },
   { key: "knowledge", label: "Knowledge", icon: BookOpen },
   { key: "tools", label: "Tools", icon: Wrench },
   { key: "escalation", label: "Escalation", icon: AlertTriangle },
@@ -200,6 +213,7 @@ const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
 
 const TONE_PRESETS = ["Neutral", "Formal", "Friendly", "Playful", "Custom"];
 const AGENT_STATUSES = ["draft", "active", "paused", "archived"] as const;
+const CHANNEL_OPTIONS = ["widget", "email"] as const;
 
 function SectionHeading({ icon: Icon, title, subtitle }: { icon: typeof Bot; title: string; subtitle?: string }) {
   return (
@@ -288,6 +302,13 @@ export function AgentEditor({
   const [nFailedAttempts, setNFailedAttempts] = useState(initial.escalationConfig?.nFailedAttempts != null ? String(initial.escalationConfig.nFailedAttempts) : "");
   const [turnCountCap, setTurnCountCap] = useState(initial.escalationConfig?.turnCountCap != null ? String(initial.escalationConfig.turnCountCap) : "");
 
+  // Phase 9 M2/M3: conversation logic + channel allowlist
+  const [conversationConfig, setConversationConfig] = useState<AgentConversationConfig>(initial.conversationConfig ?? {});
+  const [recentTurnLimit, setRecentTurnLimit] = useState(initial.conversationConfig?.recentTurnLimit != null ? String(initial.conversationConfig.recentTurnLimit) : "");
+  const [newVariableKey, setNewVariableKey] = useState("");
+  const [newVariableValue, setNewVariableValue] = useState("");
+  const [enabledChannels, setEnabledChannels] = useState<Set<string>>(new Set(initial.enabledChannels ?? []));
+
   // Recomputed on every render so the preview pane's next send always uses whatever is currently
   // in the form, not a stale snapshot from when this component mounted.
   const previewDraft = useMemo(() => {
@@ -312,6 +333,7 @@ export function AgentEditor({
       persona,
       languageConfig,
       escalationConfig: { ...escalationConfig, confidenceThreshold: confidenceThreshold.trim() ? Number(confidenceThreshold) : undefined, nFailedAttempts: nFailedAttempts.trim() ? Number(nFailedAttempts) : undefined },
+      conversationConfig: { ...conversationConfig, recentTurnLimit: recentTurnLimit.trim() ? Number(recentTurnLimit) : undefined },
     };
   }, [
     mode,
@@ -333,6 +355,8 @@ export function AgentEditor({
     escalationConfig,
     confidenceThreshold,
     nFailedAttempts,
+    conversationConfig,
+    recentTurnLimit,
   ]);
 
   // Older tenants can have leftover role-named aliases (e.g. "support-main") pointing at the
@@ -432,6 +456,9 @@ export function AgentEditor({
     setConfidenceThreshold(found.escalationConfig?.confidenceThreshold != null ? String(found.escalationConfig.confidenceThreshold) : "");
     setNFailedAttempts(found.escalationConfig?.nFailedAttempts != null ? String(found.escalationConfig.nFailedAttempts) : "");
     setTurnCountCap(found.escalationConfig?.turnCountCap != null ? String(found.escalationConfig.turnCountCap) : "");
+    setConversationConfig(found.conversationConfig ?? {});
+    setRecentTurnLimit(found.conversationConfig?.recentTurnLimit != null ? String(found.conversationConfig.recentTurnLimit) : "");
+    setEnabledChannels(new Set(found.enabledChannels ?? []));
   };
 
   const publish = async () => {
@@ -488,6 +515,8 @@ export function AgentEditor({
             nFailedAttempts: nFailedAttempts.trim() ? Number(nFailedAttempts) : undefined,
             turnCountCap: turnCountCap.trim() ? Number(turnCountCap) : undefined,
           },
+          conversationConfig: { ...conversationConfig, recentTurnLimit: recentTurnLimit.trim() ? Number(recentTurnLimit) : undefined },
+          enabledChannels: [...enabledChannels],
         }),
       });
       const body = await res.json();
@@ -704,6 +733,29 @@ export function AgentEditor({
                   Draft, paused, and archived agents are never picked for a new conversation (existing conversations keep running unaffected). A sandbox agent&apos;s write tools always simulate — nothing is ever actually
                   changed.
                 </p>
+                <div className="mt-4 border-t border-border pt-4">
+                  <Label htmlFor="agent-channels">Enabled channels</Label>
+                  <div id="agent-channels" className="mt-1.5 flex items-center gap-4">
+                    {CHANNEL_OPTIONS.map((c) => (
+                      <label key={c} className="flex items-center gap-2 text-sm text-fg">
+                        <input
+                          type="checkbox"
+                          checked={enabledChannels.has(c)}
+                          onChange={() =>
+                            setEnabledChannels((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(c)) next.delete(c);
+                              else next.add(c);
+                              return next;
+                            })
+                          }
+                        />
+                        {c}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted">Nothing checked means every channel (today&apos;s behavior). Check one or more to restrict this agent to only those.</p>
+                </div>
               </Card>
             </div>
           )}
@@ -870,7 +922,7 @@ export function AgentEditor({
                     </Field>
                   ))}
                 </div>
-                <p className="mt-2 text-xs text-muted">Out-of-hours and idle-timeout messages are stored here for later triggers — no schedule/timeout mechanism sends them automatically yet.</p>
+                <p className="mt-2 text-xs text-muted">Out-of-hours is used instead of the usual handoff line when a handoff happens outside business hours (set at Business hours). Idle-timeout is stored here for a later trigger — no idle-timeout mechanism sends it automatically yet.</p>
               </Card>
             </div>
           )}
@@ -946,6 +998,102 @@ export function AgentEditor({
                     </div>
                     <Toggle checked={Boolean(languageConfig.alwaysAnswerInCustomerLanguage)} onChange={(next) => setLanguageConfig((prev) => ({ ...prev, alwaysAnswerInCustomerLanguage: next }))} />
                   </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {tab === "conversation" && (
+            <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading icon={Waypoints} title="Scope" subtitle="Prompt-level guidance, not a hard gate — the model can still stray." />
+                <div className="mt-4 grid grid-cols-2 gap-6">
+                  <ChipListInput
+                    id="conversation-in-scope"
+                    label="In-scope topics"
+                    values={conversationConfig.inScopeTopics ?? []}
+                    onChange={(next) => setConversationConfig((prev) => ({ ...prev, inScopeTopics: next }))}
+                    placeholder="e.g. billing, order status"
+                  />
+                  <ChipListInput
+                    id="conversation-out-of-scope"
+                    label="Out-of-scope topics"
+                    values={conversationConfig.outOfScopeTopics ?? []}
+                    onChange={(next) => setConversationConfig((prev) => ({ ...prev, outOfScopeTopics: next }))}
+                    placeholder="e.g. legal advice"
+                  />
+                </div>
+                <div className="mt-4">
+                  <ChipListInput
+                    id="conversation-required-slots"
+                    label="Required slots (ask for these before proceeding)"
+                    values={conversationConfig.requiredSlots ?? []}
+                    onChange={(next) => setConversationConfig((prev) => ({ ...prev, requiredSlots: next }))}
+                    placeholder="e.g. order number"
+                  />
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={Waypoints} title="Memory" />
+                <div className="mt-4 grid grid-cols-2 gap-4">
+                  <Field label="Scope" htmlFor="conversation-memory-scope">
+                    <select
+                      id="conversation-memory-scope"
+                      value={conversationConfig.memoryScope ?? "full"}
+                      onChange={(e) => setConversationConfig((prev) => ({ ...prev, memoryScope: e.target.value as AgentConversationConfig["memoryScope"] }))}
+                      className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+                    >
+                      <option value="full">Full conversation history</option>
+                      <option value="recent">Recent turns only</option>
+                    </select>
+                  </Field>
+                  {conversationConfig.memoryScope === "recent" && (
+                    <Field label="Turn limit" htmlFor="conversation-recent-limit">
+                      <Input id="conversation-recent-limit" type="number" min={1} value={recentTurnLimit} onChange={(e) => setRecentTurnLimit(e.target.value)} placeholder="20" />
+                    </Field>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6">
+                <SectionHeading icon={Waypoints} title="Custom variables" subtitle="Usable in the prompt as {{KEY}}, alongside the built-in TENANT_NAME/AGENT_NAME/TODAY." />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {Object.entries(conversationConfig.variables ?? {}).map(([k, v]) => (
+                    <span key={k} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 text-xs font-medium text-fg">
+                      <span className="font-mono">{`{{${k}}}`}</span> = {v}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConversationConfig((prev) => {
+                            const next = { ...(prev.variables ?? {}) };
+                            delete next[k];
+                            return { ...prev, variables: next };
+                          })
+                        }
+                        aria-label="Remove"
+                        className="text-muted hover:text-danger"
+                      >
+                        <X size={12} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <Input value={newVariableKey} onChange={(e) => setNewVariableKey(e.target.value)} placeholder="KEY" className="w-32 font-mono text-xs" />
+                  <Input value={newVariableValue} onChange={(e) => setNewVariableValue(e.target.value)} placeholder="value" className="w-48" />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!newVariableKey.trim() || !newVariableValue.trim()}
+                    onClick={() => {
+                      setConversationConfig((prev) => ({ ...prev, variables: { ...(prev.variables ?? {}), [newVariableKey.trim()]: newVariableValue.trim() } }));
+                      setNewVariableKey("");
+                      setNewVariableValue("");
+                    }}
+                  >
+                    Add
+                  </Button>
                 </div>
               </Card>
             </div>

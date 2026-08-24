@@ -53,6 +53,10 @@ export interface AgentDef {
   languageConfig: AgentLanguageConfig;
   /** Phase 8 M1: per-agent keyword/threshold overrides for the escalation scanners — see src/agents/escalation.ts. */
   escalationConfig: AgentEscalationConfig;
+  /** Phase 9: topics/slots/memory-scope/custom-variables — see src/agents/system-prompt.ts's scopeBlock(). */
+  conversationConfig: AgentConversationConfig;
+  /** Phase 9: which channels this agent may serve — empty means all (safe default). See src/channel/turn.ts's ensureConversation. */
+  enabledChannels: string[];
 }
 
 export interface AgentNativeToolsConfig {
@@ -109,6 +113,19 @@ export interface AgentEscalationConfig {
   turnCountCap?: number;
 }
 
+export interface AgentConversationConfig {
+  /** Prompt-level guidance only, not a hard gate — see scopeBlock() in src/agents/system-prompt.ts. */
+  inScopeTopics?: string[];
+  outOfScopeTopics?: string[];
+  /** Prompt-level "ask for these before proceeding" guidance, not a deterministic slot-filling state machine. */
+  requiredSlots?: string[];
+  /** Default 'full' (today's only behavior, unchanged). 'recent' trims the model's replay context to recentTurnLimit messages — never the persisted transcript. */
+  memoryScope?: "full" | "recent";
+  recentTurnLimit?: number;
+  /** Custom {{KEY}} substitutions merged into renderTemplate's vars map alongside TENANT_NAME/AGENT_NAME/TODAY. */
+  variables?: Record<string, string>;
+}
+
 interface AgentDefRow {
   id: string;
   tenant_id: string;
@@ -139,6 +156,8 @@ interface AgentDefRow {
   persona: string;
   language_config: string;
   escalation_config: string;
+  conversation_config: string;
+  enabled_channels: string;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -172,6 +191,8 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     persona: JSON.parse(row.persona) as AgentPersonaConfig,
     languageConfig: JSON.parse(row.language_config) as AgentLanguageConfig,
     escalationConfig: JSON.parse(row.escalation_config) as AgentEscalationConfig,
+    conversationConfig: JSON.parse(row.conversation_config) as AgentConversationConfig,
+    enabledChannels: JSON.parse(row.enabled_channels) as string[],
   };
 }
 
@@ -209,6 +230,8 @@ export class AgentDefRepository extends TenantScopedRepository {
     persona?: AgentPersonaConfig;
     languageConfig?: AgentLanguageConfig;
     escalationConfig?: AgentEscalationConfig;
+    conversationConfig?: AgentConversationConfig;
+    enabledChannels?: string[];
   }): AgentDef {
     const nextVersion = this.latestVersion(input.key) + 1;
     const id = randomUUID();
@@ -227,17 +250,19 @@ export class AgentDefRepository extends TenantScopedRepository {
     const persona = input.persona ?? {};
     const languageConfig = input.languageConfig ?? {};
     const escalationConfig = input.escalationConfig ?? {};
+    const conversationConfig = input.conversationConfig ?? {};
+    const enabledChannels = input.enabledChannels ?? [];
+    const columns = [
+      "id", "tenant_id", "key", "version", "status", "system_prompt", "model_alias",
+      "tool_ids", "kb_scope", "handoff_targets", "guardrails", "skills", "semantic_cache_enabled",
+      "native_tools", "quick_replies", "display_name", "avatar_url", "internal_description",
+      "owner_user_id", "tags", "agent_status", "environment", "change_notes",
+      "temperature", "max_output_tokens", "cost_ceiling_usd", "persona", "language_config",
+      "escalation_config", "conversation_config", "enabled_channels", "created_at", "updated_at",
+    ];
+    const placeholders = columns.map((c) => (c === "status" ? "'published'" : "?")).join(", ");
     this.db
-      .prepare(
-        `INSERT INTO agent_defs (
-           id, tenant_id, key, version, status, system_prompt, model_alias,
-           tool_ids, kb_scope, handoff_targets, guardrails, skills, semantic_cache_enabled,
-           native_tools, quick_replies, display_name, avatar_url, internal_description,
-           owner_user_id, tags, agent_status, environment, change_notes,
-           temperature, max_output_tokens, cost_ceiling_usd, persona, language_config,
-           escalation_config, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
+      .prepare(`INSERT INTO agent_defs (${columns.join(", ")}) VALUES (${placeholders})`)
       .run(
         id,
         this.tenantId,
@@ -267,6 +292,8 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(persona),
         JSON.stringify(languageConfig),
         JSON.stringify(escalationConfig),
+        JSON.stringify(conversationConfig),
+        JSON.stringify(enabledChannels),
         now,
         now,
       );
@@ -300,6 +327,8 @@ export class AgentDefRepository extends TenantScopedRepository {
       persona,
       languageConfig,
       escalationConfig,
+      conversationConfig,
+      enabledChannels,
     };
   }
 

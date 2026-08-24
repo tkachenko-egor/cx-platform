@@ -22,6 +22,7 @@ import { migration020KbOpenaiVectorStore } from "./020-kb-openai-vector-store";
 import { migration021WidgetThemeFields } from "./021-widget-theme-fields";
 import { migration022AgentIdentityPersonaLanguage } from "./022-agent-identity-persona-language";
 import { migration023EscalationConfigAndPublishApprovals } from "./023-escalation-config-and-publish-approvals";
+import { migration024ConversationChannelsFeedbackTagging } from "./024-conversation-channels-feedback-tagging";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -48,4 +49,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration021WidgetThemeFields,
   migration022AgentIdentityPersonaLanguage,
   migration023EscalationConfigAndPublishApprovals,
+  migration024ConversationChannelsFeedbackTagging,
 ];

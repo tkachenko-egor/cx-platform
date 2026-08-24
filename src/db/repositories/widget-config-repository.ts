@@ -6,6 +6,11 @@ import type { WidgetFontKey } from "../../platform/widget-fonts";
 
 export type WidgetPosition = "bottom-right" | "bottom-left";
 
+/** Phase 9: simple `*`-glob path patterns — see app/api/embed-chat/[publicKey]/should-mount/route.ts. Empty/absent urlPatterns means "mount everywhere" (today's only behavior, unchanged). */
+export interface AudienceRules {
+  urlPatterns?: string[];
+}
+
 export interface WidgetConfig {
   id: string;
   tenantId: string;
@@ -19,6 +24,7 @@ export interface WidgetConfig {
   fontFamily: WidgetFontKey;
   userBubbleColor: string;
   botBubbleColor: string;
+  audienceRules: AudienceRules;
 }
 
 interface WidgetConfigRow {
@@ -34,6 +40,7 @@ interface WidgetConfigRow {
   font_family: WidgetFontKey;
   user_bubble_color: string;
   bot_bubble_color: string;
+  audience_rules: string;
 }
 
 function rowToConfig(row: WidgetConfigRow): WidgetConfig {
@@ -50,6 +57,7 @@ function rowToConfig(row: WidgetConfigRow): WidgetConfig {
     fontFamily: row.font_family,
     userBubbleColor: row.user_bubble_color,
     botBubbleColor: row.bot_bubble_color,
+    audienceRules: JSON.parse(row.audience_rules) as AudienceRules,
   };
 }
 
@@ -79,13 +87,15 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     fontFamily: WidgetFontKey;
     userBubbleColor: string;
     botBubbleColor: string;
+    audienceRules?: AudienceRules;
   }): WidgetConfig {
     const existing = this.getByAgentKey(input.agentKey);
     const now = new Date().toISOString();
+    const audienceRules = input.audienceRules ?? existing?.audienceRules ?? {};
     if (existing) {
       this.db
         .prepare(
-          `UPDATE widget_configs SET title = ?, greeting_text = ?, primary_color = ?, logo_url = ?, position = ?, font_family = ?, user_bubble_color = ?, bot_bubble_color = ?, updated_at = ?
+          `UPDATE widget_configs SET title = ?, greeting_text = ?, primary_color = ?, logo_url = ?, position = ?, font_family = ?, user_bubble_color = ?, bot_bubble_color = ?, audience_rules = ?, updated_at = ?
            WHERE id = ? AND tenant_id = ?`,
         )
         .run(
@@ -97,19 +107,20 @@ export class WidgetConfigRepository extends TenantScopedRepository {
           input.fontFamily,
           input.userBubbleColor,
           input.botBubbleColor,
+          JSON.stringify(audienceRules),
           now,
           existing.id,
           this.tenantId,
         );
-      return { ...existing, ...input };
+      return { ...existing, ...input, audienceRules };
     }
 
     const id = randomUUID();
     const publicKey = mintPublicKey();
     this.db
       .prepare(
-        `INSERT INTO widget_configs (id, tenant_id, agent_key, public_key, title, greeting_text, primary_color, logo_url, position, font_family, user_bubble_color, bot_bubble_color, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO widget_configs (id, tenant_id, agent_key, public_key, title, greeting_text, primary_color, logo_url, position, font_family, user_bubble_color, bot_bubble_color, audience_rules, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -124,10 +135,11 @@ export class WidgetConfigRepository extends TenantScopedRepository {
         input.fontFamily,
         input.userBubbleColor,
         input.botBubbleColor,
+        JSON.stringify(audienceRules),
         now,
         now,
       );
-    return { id, tenantId: this.tenantId, publicKey, ...input };
+    return { id, tenantId: this.tenantId, publicKey, ...input, audienceRules };
   }
 
   /** Invalidates a leaked/scraped key — the old one 404s from then on, the agent keeps its config under a fresh key. */

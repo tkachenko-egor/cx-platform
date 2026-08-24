@@ -17,6 +17,8 @@ export interface WidgetConfigInitial {
   fontFamily: WidgetFontKey;
   userBubbleColor: string;
   botBubbleColor: string;
+  /** Phase 9 M3: `*`-glob URL path patterns — see app/api/embed-chat/[publicKey]/should-mount/route.ts. */
+  urlPatterns: string[];
 }
 
 export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; initial: WidgetConfigInitial | null }) {
@@ -30,6 +32,8 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
   const [fontFamily, setFontFamily] = useState<WidgetFontKey>(initial?.fontFamily ?? "inter");
   const [userBubbleColor, setUserBubbleColor] = useState(initial?.userBubbleColor ?? "#13141a");
   const [botBubbleColor, setBotBubbleColor] = useState(initial?.botBubbleColor ?? "#f1f2f6");
+  const [urlPatterns, setUrlPatterns] = useState<string[]>(initial?.urlPatterns ?? []);
+  const [newUrlPattern, setNewUrlPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -43,7 +47,7 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
       const res = await fetch("/api/admin/widget-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentKey, title, greetingText, primaryColor, logoUrl: logoUrl || null, position, fontFamily, userBubbleColor, botBubbleColor }),
+        body: JSON.stringify({ agentKey, title, greetingText, primaryColor, logoUrl: logoUrl || null, position, fontFamily, userBubbleColor, botBubbleColor, audienceRules: { urlPatterns } }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not save widget config");
       const { config } = await res.json();
@@ -127,7 +131,39 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
             </label>
           </div>
         </div>
-        <div className="mt-4 flex items-center gap-3">
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <h2 className="text-sm font-medium text-fg">Audience targeting</h2>
+        <p className="mt-1 text-xs text-muted">Which pages this widget mounts on, by URL path (e.g. <code>/support/*</code>). Empty means every page the embed snippet is pasted on.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {urlPatterns.map((p, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg px-3 py-1.5 font-mono text-xs text-fg">
+              {p}
+              <button type="button" onClick={() => setUrlPatterns((prev) => prev.filter((_, idx) => idx !== i))} aria-label="Remove" className="text-muted hover:text-danger">
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            value={newUrlPattern}
+            onChange={(e) => setNewUrlPattern(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" || !newUrlPattern.trim()) return;
+              e.preventDefault();
+              setUrlPatterns((prev) => [...prev, newUrlPattern.trim()]);
+              setNewUrlPattern("");
+            }}
+            placeholder="e.g. /support/*"
+            className="w-64 rounded border border-border bg-bg px-2 py-1 font-mono text-xs"
+          />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-surface p-4 lg:col-span-2">
+        <div className="flex items-center gap-3">
           <button type="button" disabled={busy} onClick={save} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg disabled:opacity-50">
             {publicKey ? "Save changes" : "Create widget"}
           </button>

@@ -76,6 +76,8 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         persona: cloneSource.persona,
         languageConfig: cloneSource.languageConfig,
         escalationConfig: cloneSource.escalationConfig,
+        conversationConfig: cloneSource.conversationConfig,
+        enabledChannels: cloneSource.enabledChannels,
       }
     : {
         key: "",
@@ -101,6 +103,8 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         persona: chosenTemplate?.persona ?? {},
         languageConfig: {},
         escalationConfig: {},
+        conversationConfig: {},
+        enabledChannels: [],
       };
 
   return (

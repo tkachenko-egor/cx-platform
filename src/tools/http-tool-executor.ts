@@ -8,6 +8,12 @@ const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 const ARGS_LOCATIONS = ["body", "query"] as const;
 const AUTH_STYLES = ["bearer", "header", "query_param", "none"] as const;
 
+/** Phase 9 M1: dot-path extraction (e.g. "customer.email"), optionally renamed via `as`. */
+export interface OutputFieldMapping {
+  path: string;
+  as?: string;
+}
+
 export interface HttpToolConfig {
   url: string;
   method: (typeof HTTP_METHODS)[number];
@@ -17,6 +23,27 @@ export interface HttpToolConfig {
   authStyle: (typeof AUTH_STYLES)[number];
   authParamName: string | null;
   timeoutMs: number;
+  /** Phase 9 M1: when non-empty, `data` is replaced with just these plucked/renamed fields instead of the full upstream response verbatim. Empty/absent means today's behavior, unchanged. */
+  outputFields: OutputFieldMapping[];
+  /** Phase 9 M1: shown to the model instead of the technical error on a non-2xx/timeout/network failure — the real message still goes into `detail` (and the tool_calls log) either way. Unset means today's raw technical message, unchanged. */
+  fallbackMessage: string | null;
+}
+
+/** Dot-path extraction/rename — no external dependency, mirrors this file's existing "small, self-contained, no new lib" style (see json-schema-lite.ts). Missing paths are silently omitted, not errors — a flaky upstream field shouldn't break the whole result. */
+export function pluckFields(data: unknown, mapping: OutputFieldMapping[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const { path, as } of mapping) {
+    let value: unknown = data;
+    for (const segment of path.split(".")) {
+      if (value === null || typeof value !== "object") {
+        value = undefined;
+        break;
+      }
+      value = (value as Record<string, unknown>)[segment];
+    }
+    if (value !== undefined) result[as?.trim() || path] = value;
+  }
+  return result;
 }
 
 /** Validates + defaults a tool_defs.handler_config JSON blob into an HttpToolConfig. Called both when building a runtime ToolSpec and server-side on tool creation — never trusts client JSON as-is. */
@@ -29,6 +56,9 @@ export function parseHttpToolConfig(raw: Record<string, unknown>): HttpToolConfi
   const authStyle = typeof raw.authStyle === "string" && (AUTH_STYLES as readonly string[]).includes(raw.authStyle) ? (raw.authStyle as HttpToolConfig["authStyle"]) : "none";
   const headers = raw.headers && typeof raw.headers === "object" ? (raw.headers as Record<string, string>) : {};
   const requestedTimeout = typeof raw.timeoutMs === "number" ? raw.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const outputFields = Array.isArray(raw.outputFields)
+    ? (raw.outputFields as unknown[]).filter((f): f is OutputFieldMapping => Boolean(f) && typeof f === "object" && typeof (f as OutputFieldMapping).path === "string" && (f as OutputFieldMapping).path.length > 0)
+    : [];
 
   return {
     url: raw.url,
@@ -39,6 +69,8 @@ export function parseHttpToolConfig(raw: Record<string, unknown>): HttpToolConfi
     authStyle,
     authParamName: typeof raw.authParamName === "string" ? raw.authParamName : null,
     timeoutMs: Math.min(requestedTimeout, MAX_TIMEOUT_MS),
+    outputFields,
+    fallbackMessage: typeof raw.fallbackMessage === "string" && raw.fallbackMessage.trim() ? raw.fallbackMessage : null,
   };
 }
 
@@ -96,12 +128,15 @@ export async function runHttpTool(db: Database.Database, tenant: TenantContext, 
     }
 
     if (!response.ok) {
-      return { ok: false, error: `HTTP tool returned ${response.status}`, status: response.status, data };
+      const detail = `HTTP tool returned ${response.status}`;
+      return config.fallbackMessage ? { ok: false, error: config.fallbackMessage, detail, status: response.status, data } : { ok: false, error: detail, status: response.status, data };
     }
-    return { ok: true, status: response.status, data };
+    const mappedData = config.outputFields.length > 0 ? pluckFields(data, config.outputFields) : data;
+    return { ok: true, status: response.status, data: mappedData };
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "AbortError";
-    return { ok: false, error: timedOut ? `HTTP tool timed out after ${config.timeoutMs}ms` : err instanceof Error ? err.message : String(err) };
+    const detail = timedOut ? `HTTP tool timed out after ${config.timeoutMs}ms` : err instanceof Error ? err.message : String(err);
+    return config.fallbackMessage ? { ok: false, error: config.fallbackMessage, detail } : { ok: false, error: detail };
   } finally {
     clearTimeout(timeout);
   }

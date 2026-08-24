@@ -10,6 +10,9 @@ export type ChatMessage = {
   cards: CardPayload[];
   streaming?: boolean;
   error?: string;
+  /** Phase 9 M4: the real messages.id row this bubble was persisted as — set once the "done" event arrives, since the client-side `id` above is generated before the server even responds. Feedback submission needs this, not the client id. */
+  dbId?: string;
+  feedback?: "up" | "down";
 };
 
 type ConversationPhase = "bot_active" | "awaiting_human" | "human_active" | "resolved";
@@ -20,6 +23,7 @@ type ChatContextValue = {
   messages: ChatMessage[];
   sendMessage: (text: string) => Promise<void>;
   retryMessage: (assistantMessageId: string) => void;
+  submitFeedback: (assistantMessageId: string, rating: "up" | "down") => Promise<void>;
   isStreaming: boolean;
   toolLabel: string | null;
   phase: ConversationPhase;
@@ -48,6 +52,7 @@ export function ChatProvider({
   children,
   chatEndpoint = "/api/chat",
   messagesEndpointBase = "/api/conversations",
+  feedbackEndpoint = "/api/chat/feedback",
   greeting = DEFAULT_GREETING,
   quickReplies,
 }: {
@@ -55,6 +60,8 @@ export function ChatProvider({
   /** Phase 4 M4: an embed page points these at /api/embed-chat/{publicKey} instead — same-origin demo widget (app/page.tsx) keeps the defaults untouched. */
   chatEndpoint?: string;
   messagesEndpointBase?: string;
+  /** Phase 9 M4: same same-origin-default / embed-override split as chatEndpoint. */
+  feedbackEndpoint?: string;
   greeting?: string;
   /** Phase 6 M5: the agent's admin-authored quick-reply chips — undefined (not just empty) falls back to ChatPanel's hardcoded SUGGESTIONS. */
   quickReplies?: string[];
@@ -189,7 +196,7 @@ export function ChatProvider({
               case "done": {
                 const cards: CardPayload[] = (event.cards as CardPayload[] | undefined) ?? [];
                 const docs = (event.citableDocs as { docId: string; title: string }[] | undefined) ?? [];
-                updateAssistant({ streaming: false, cards });
+                updateAssistant({ streaming: false, cards, dbId: event.assistantMessageId as string | undefined });
                 if (docs.length) {
                   setCitableDocs((prev) => ({ ...prev, ...Object.fromEntries(docs.map((d) => [d.docId, d.title])) }));
                 }
@@ -212,6 +219,25 @@ export function ChatProvider({
     [startPolling, chatEndpoint],
   );
 
+  const submitFeedback = useCallback(
+    async (assistantMessageId: string, rating: "up" | "down") => {
+      const conversationId = conversationIdRef.current;
+      if (!conversationId) return;
+      // Optimistic — a failed submit just leaves the buttons re-clickable rather than showing an error state, low-stakes enough not to need one.
+      setMessages((prev) => prev.map((m) => (m.dbId === assistantMessageId ? { ...m, feedback: rating } : m)));
+      try {
+        await fetch(feedbackEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ conversationId, messageId: assistantMessageId, rating }),
+        });
+      } catch {
+        // best-effort
+      }
+    },
+    [feedbackEndpoint],
+  );
+
   const retryMessage = useCallback(
     (assistantMessageId: string) => {
       const current = messagesRef.current;
@@ -226,7 +252,7 @@ export function ChatProvider({
   );
 
   return (
-    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, hasUnread, greeting, quickReplies }}>
+    <ChatContext.Provider value={{ open, setOpen, messages, sendMessage, retryMessage, submitFeedback, isStreaming, toolLabel, phase, citableDocs, hasUnread, greeting, quickReplies }}>
       {children}
     </ChatContext.Provider>
   );

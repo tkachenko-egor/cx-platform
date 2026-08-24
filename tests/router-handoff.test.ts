@@ -91,6 +91,8 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     persona: {},
     languageConfig: {},
     escalationConfig: {},
+    conversationConfig: {},
+    enabledChannels: [],
   };
 }
 
@@ -125,6 +127,8 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     persona: {},
     languageConfig: {},
     escalationConfig: {},
+    conversationConfig: {},
+    enabledChannels: [],
   };
 }
 

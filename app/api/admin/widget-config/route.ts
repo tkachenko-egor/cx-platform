@@ -1,5 +1,5 @@
 import { getPlatformContext } from "../../../../src/platform/context";
-import { WidgetConfigRepository, type WidgetPosition } from "../../../../src/db/repositories/widget-config-repository";
+import { WidgetConfigRepository, type WidgetPosition, type AudienceRules } from "../../../../src/db/repositories/widget-config-repository";
 import { AgentDefRepository } from "../../../../src/db/repositories/agent-def-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../src/auth/require-role";
@@ -38,6 +38,7 @@ export async function POST(req: Request) {
     fontFamily?: string;
     userBubbleColor?: string;
     botBubbleColor?: string;
+    audienceRules?: AudienceRules;
   };
   if (!body.agentKey?.trim()) return Response.json({ error: "agentKey is required" }, { status: 400 });
   if (body.position && !VALID_POSITIONS.includes(body.position)) {
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
     fontFamily: (body.fontFamily as WidgetFontKey | undefined) ?? "inter",
     userBubbleColor: body.userBubbleColor || "#13141a",
     botBubbleColor: body.botBubbleColor || "#f1f2f6",
+    audienceRules: body.audienceRules,
   });
 
   new AuditLogRepository(db, tenant).record({

@@ -78,9 +78,18 @@ export class ConversationRepository extends TenantScopedRepository {
     this.db.prepare(`UPDATE conversations SET current_agent_key = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(agentKey, new Date().toISOString(), this.tenantId, id);
   }
 
-  /** Phase 2 M6b: cheapest "skill area" signal — set to [currentAgentKey] whenever the handling agent changes. */
+  /** Phase 2 M6b: cheapest "skill area" signal — set to [currentAgentKey] whenever the handling agent changes. Fully replaces the array — see addTags below for the merge variant Phase 9's auto-tagging needs instead. */
   setTags(id: string, tags: string[]): void {
     this.db.prepare(`UPDATE conversations SET tags = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(JSON.stringify(tags), new Date().toISOString(), this.tenantId, id);
+  }
+
+  /** Phase 9 M4: union newTags into whatever's already there, instead of replacing — auto-tagging must coexist with setTags' agent-key bookkeeping (src/channel/turn.ts) regardless of which one ran most recently in a turn. */
+  addTags(id: string, newTags: string[]): void {
+    if (newTags.length === 0) return;
+    const current = this.get(id);
+    if (!current) return;
+    const merged = [...new Set([...current.tags, ...newTags])];
+    this.db.prepare(`UPDATE conversations SET tags = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(JSON.stringify(merged), new Date().toISOString(), this.tenantId, id);
   }
 
   /** Phase 2 M4: null clears the SLA clock (e.g. a conversation leaving awaiting_human). */

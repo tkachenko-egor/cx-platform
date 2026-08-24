@@ -79,6 +79,8 @@ async function setup(providerScript: ChatResponse[]) {
     persona: {},
     languageConfig: {},
     escalationConfig: {},
+    conversationConfig: {},
+    enabledChannels: [],
   };
 
   return { db, tenant, gateway, embeddings, agent };

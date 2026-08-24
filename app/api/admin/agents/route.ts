@@ -6,6 +6,7 @@ import {
   type AgentPersonaConfig,
   type AgentLanguageConfig,
   type AgentEscalationConfig,
+  type AgentConversationConfig,
 } from "../../../../src/db/repositories/agent-def-repository";
 import { AgentPublishApprovalRepository } from "../../../../src/db/repositories/agent-publish-approval-repository";
 import { AuditLogRepository } from "../../../../src/db/repositories/audit-log-repository";
@@ -89,6 +90,8 @@ export async function POST(req: Request) {
     persona?: AgentPersonaConfig;
     languageConfig?: AgentLanguageConfig;
     escalationConfig?: AgentEscalationConfig;
+    conversationConfig?: AgentConversationConfig;
+    enabledChannels?: string[];
   };
   if (!body.key || !body.systemPrompt || !body.modelAlias) {
     return Response.json({ error: "key, systemPrompt, and modelAlias are required" }, { status: 400 });
@@ -141,6 +144,8 @@ export async function POST(req: Request) {
       persona: body.persona ?? {},
       languageConfig: body.languageConfig ?? {},
       escalationConfig: body.escalationConfig ?? {},
+      conversationConfig: body.conversationConfig ?? {},
+      enabledChannels: body.enabledChannels ?? [],
     };
 
     if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
@@ -202,6 +207,8 @@ export async function POST(req: Request) {
     persona: body.persona ?? current.persona,
     languageConfig: body.languageConfig ?? current.languageConfig,
     escalationConfig: body.escalationConfig ?? current.escalationConfig,
+    conversationConfig: body.conversationConfig ?? current.conversationConfig,
+    enabledChannels: body.enabledChannels ?? current.enabledChannels,
   };
 
   if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {

@@ -47,6 +47,8 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     persona: v.persona,
     languageConfig: v.languageConfig,
     escalationConfig: v.escalationConfig,
+    conversationConfig: v.conversationConfig,
+    enabledChannels: v.enabledChannels,
   }));
 
   return (
@@ -90,6 +92,8 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           persona: agentDef.persona,
           languageConfig: agentDef.languageConfig,
           escalationConfig: agentDef.escalationConfig,
+          conversationConfig: agentDef.conversationConfig,
+          enabledChannels: agentDef.enabledChannels,
         }}
         availableTools={availableTools}
         availableModels={availableModels}

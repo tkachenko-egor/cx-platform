@@ -63,9 +63,25 @@
     }
   }
 
+  function checkAudienceThenMount() {
+    var path = window.location.pathname;
+    var url = platformOrigin + "/api/embed-chat/" + encodeURIComponent(widgetKey) + "/should-mount?path=" + encodeURIComponent(path);
+    fetch(url)
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
+        if (data && data.allowed) mount();
+      })
+      .catch(function () {
+        // Audience-check failure shouldn't hide the widget entirely — fail open, same as "no rules configured."
+        mount();
+      });
+  }
+
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", mount);
+    document.addEventListener("DOMContentLoaded", checkAudienceThenMount);
   } else {
-    mount();
+    checkAudienceThenMount();
   }
 })();

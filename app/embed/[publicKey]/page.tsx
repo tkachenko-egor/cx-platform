@@ -39,6 +39,7 @@ export default async function EmbedPage(props: PageProps<"/embed/[publicKey]">) 
       <ChatProvider
         chatEndpoint={`/api/embed-chat/${publicKey}`}
         messagesEndpointBase={`/api/embed-chat/${publicKey}/messages`}
+        feedbackEndpoint={`/api/embed-chat/${publicKey}/feedback`}
         greeting={greetingText || undefined}
         quickReplies={quickReplies?.length ? quickReplies : undefined}
       >

@@ -153,6 +153,16 @@ export function languageBlock(config: {
   return `<language>\n${lines.join("\n")}\n</language>`;
 }
 
+/** Phase 9 M2: renders an agent's conversation-logic config into a system block. Prompt-level guidance only — neither the topic scope nor the required-slots list is deterministically enforced, same spirit as personaBlock/languageBlock above. */
+export function scopeBlock(config: { inScopeTopics?: string[]; outOfScopeTopics?: string[]; requiredSlots?: string[] }): string | null {
+  const lines: string[] = [];
+  if (config.inScopeTopics && config.inScopeTopics.length > 0) lines.push(`This agent specializes in: ${config.inScopeTopics.join(", ")}.`);
+  if (config.outOfScopeTopics && config.outOfScopeTopics.length > 0) lines.push(`Do not attempt to help with: ${config.outOfScopeTopics.join(", ")}. Acknowledge the request and offer to hand off to a human or the right specialist instead.`);
+  if (config.requiredSlots && config.requiredSlots.length > 0) lines.push(`Before proceeding with a request that needs it, make sure you have collected: ${config.requiredSlots.join(", ")}. Ask for whichever of these are still missing before calling a tool that needs them.`);
+  if (lines.length === 0) return null;
+  return `<scope>\n${lines.join("\n")}\n</scope>`;
+}
+
 function knowledgeBlock(chunks: { docId: string; title: string; effective: string | null; text: string }[]): string {
   const wrapped = chunks.map((c) => `<document doc_id="${c.docId}" title="${c.title}" effective="${c.effective ?? ""}">\n${c.text}\n</document>`).join("\n");
   return `<knowledge>\n${wrapped}\n</knowledge>`;

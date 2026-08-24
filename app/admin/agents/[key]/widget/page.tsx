@@ -47,6 +47,7 @@ export default async function AgentWidgetPage(props: PageProps<"/admin/agents/[k
                 fontFamily: config.fontFamily,
                 userBubbleColor: config.userBubbleColor,
                 botBubbleColor: config.botBubbleColor,
+                urlPatterns: config.audienceRules.urlPatterns ?? [],
               }
             : null
         }

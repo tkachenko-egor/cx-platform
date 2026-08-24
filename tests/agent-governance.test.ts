@@ -174,6 +174,8 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
       persona: {},
       languageConfig: {},
       escalationConfig: { nFailedAttempts: 2 },
+      conversationConfig: {},
+      enabledChannels: [],
     };
 
     const result = await runAgentTurn({ db, gateway, embeddings: new StubEmbeddingProvider() }, tenant, "CONV-nfailed", "run-1", agent, [], "please cancel my order");

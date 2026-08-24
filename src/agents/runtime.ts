@@ -8,7 +8,7 @@ import type { TenantContext } from "../tenancy/context";
 import { today } from "../core/clock";
 import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval";
 import { lookupCache, writeCache } from "../kb/semantic-cache";
-import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock } from "./system-prompt";
+import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock, scopeBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
 import { getOrCreateSession } from "./sessions-store";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
@@ -222,7 +222,8 @@ export async function runAgentTurn(
     const handoff = handoffContext ? handoffBlock(handoffContext) : null;
     const persona = personaBlock(agent.persona);
     const language = languageBlock(agent.languageConfig);
-    const renderedSystemPrompt = renderTemplate(agent.systemPrompt, { TENANT_NAME: tenantName, AGENT_NAME: agent.displayName || agent.key, TODAY: today() });
+    const scope = scopeBlock(agent.conversationConfig);
+    const renderedSystemPrompt = renderTemplate(agent.systemPrompt, { TENANT_NAME: tenantName, AGENT_NAME: agent.displayName || agent.key, TODAY: today(), ...agent.conversationConfig.variables });
 
     const toolDefinitions = toGatewayToolDefinitions(deps.db, tenant, agent.toolIds);
     if (agent.handoffTargets.length > 0) {
@@ -239,6 +240,7 @@ export async function runAgentTurn(
       const systemMessages = [{ role: "system" as const, content: renderedSystemPrompt }, { role: "system" as const, content: knowledge }, { role: "system" as const, content: session }];
       if (persona) systemMessages.push({ role: "system" as const, content: persona });
       if (language) systemMessages.push({ role: "system" as const, content: language });
+      if (scope) systemMessages.push({ role: "system" as const, content: scope });
       if (handoff) systemMessages.push({ role: "system" as const, content: handoff });
 
       const request: ChatRequest = {

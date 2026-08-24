@@ -1,7 +1,7 @@
 import { getDb } from "../db/client";
 import { TenantRepository } from "../db/repositories/tenant-repository";
 import { buildContext, type PlatformContext } from "./context";
-import type { WidgetPosition } from "../db/repositories/widget-config-repository";
+import type { WidgetPosition, AudienceRules } from "../db/repositories/widget-config-repository";
 import type { WidgetFontKey } from "./widget-fonts";
 
 export interface WidgetContext extends PlatformContext {
@@ -15,6 +15,7 @@ export interface WidgetContext extends PlatformContext {
     fontFamily: WidgetFontKey;
     userBubbleColor: string;
     botBubbleColor: string;
+    audienceRules: AudienceRules;
   };
 }
 
@@ -31,6 +32,7 @@ interface WidgetConfigRow {
   font_family: WidgetFontKey;
   user_bubble_color: string;
   bot_bubble_color: string;
+  audience_rules: string;
 }
 
 /**
@@ -74,6 +76,7 @@ export function getWidgetContext(publicKey: string): WidgetContext | undefined {
       fontFamily: row.font_family,
       userBubbleColor: row.user_bubble_color,
       botBubbleColor: row.bot_bubble_color,
+      audienceRules: JSON.parse(row.audience_rules) as AudienceRules,
     },
   };
 }

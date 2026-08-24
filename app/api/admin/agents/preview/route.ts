@@ -4,7 +4,7 @@ import { RunRepository } from "../../../../../src/db/repositories/run-repository
 import { ToolDefRepository } from "../../../../../src/db/repositories/tool-repository";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { runAgentTurn } from "../../../../../src/agents/runtime";
-import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig, AgentEscalationConfig } from "../../../../../src/db/repositories/agent-def-repository";
+import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig, AgentEscalationConfig, AgentConversationConfig } from "../../../../../src/db/repositories/agent-def-repository";
 import type { ChatMessage } from "../../../../../src/gateway/types";
 
 // better-sqlite3 needs the Node runtime, not edge.
@@ -25,6 +25,7 @@ interface PreviewDraft {
   persona?: AgentPersonaConfig;
   languageConfig?: AgentLanguageConfig;
   escalationConfig?: AgentEscalationConfig;
+  conversationConfig?: AgentConversationConfig;
 }
 
 function sseEvent(data: unknown): string {
@@ -126,6 +127,10 @@ export async function POST(req: Request) {
     persona: draft.persona ?? {},
     languageConfig: draft.languageConfig ?? {},
     escalationConfig: draft.escalationConfig ?? {},
+    conversationConfig: draft.conversationConfig ?? {},
+    // Preview always runs on the internal test_harness channel regardless of
+    // the draft's own enabledChannels setting — nothing to gate here.
+    enabledChannels: [],
   };
 
   const runs = new RunRepository(db, tenant);

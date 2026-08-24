@@ -5,6 +5,7 @@ import { MessageRepository } from "../db/repositories/message-repository";
 import { EventRepository } from "../db/repositories/event-repository";
 import { RunRepository } from "../db/repositories/run-repository";
 import { AgentDefRepository } from "../db/repositories/agent-def-repository";
+import { AutoTagRuleRepository } from "../db/repositories/auto-tag-rule-repository";
 import { SlaPolicyRepository } from "../db/repositories/sla-policy-repository";
 import { startSlaClock } from "../core/sla";
 import { ReviewQueueRepository } from "../db/repositories/review-queue-repository";
@@ -18,6 +19,8 @@ import { getOrCreateSession } from "../agents/sessions-store";
 import { withConversationLock } from "../agents/conversation-lock";
 import { conversationTurnCapExceeded } from "./rate-limit";
 import { setConversationState } from "../core/state-transition";
+import { isWithinBusinessHours } from "../core/business-hours";
+import { now } from "../core/clock";
 import type { Conversation, ConversationChannel, ConversationState } from "../core/types";
 
 export const DEFAULT_AGENT_KEY = "support-generalist";
@@ -25,6 +28,12 @@ export const DEFAULT_AGENT_KEY = "support-generalist";
 export const ROUTER_AGENT_KEY = "router";
 /** FR-6.8: a small per-request cap on specialist-to-specialist handoffs — hitting it escalates rather than looping the customer's message indefinitely. */
 const MAX_HOPS_PER_REQUEST = 2;
+
+/** Phase 9 M4: deterministic keyword matching, not an LLM classifier — same "cheap check first" preference as src/agents/escalation.ts. */
+function scanAutoTags(text: string, rules: { tag: string; keywords: string[] }[]): string[] {
+  const lower = text.toLowerCase();
+  return rules.filter((rule) => rule.keywords.some((k) => lower.includes(k.toLowerCase()))).map((rule) => rule.tag);
+}
 
 export interface ProcessTurnResult {
   conversationId: string;
@@ -65,6 +74,13 @@ export async function processInboundTurn(
     if (!conversation) throw new Error(`Conversation ${input.conversationId} not found`);
 
     messages.append({ conversationId: input.conversationId, role: "user", content: input.text, channelMessageId: input.channelMessageId });
+
+    // Phase 9 M4: additive — never touches the router/handoff agent-key tag
+    // (conversations.setTags below), regardless of which one runs first in
+    // this turn, since addTags always reads-then-unions the latest state.
+    const matchedTags = scanAutoTags(input.text, new AutoTagRuleRepository(db, tenant).list());
+    if (matchedTags.length > 0) conversations.addTags(input.conversationId, matchedTags);
+
     const session = getOrCreateSession(input.conversationId);
 
     if (conversation.state !== "bot_active") {
@@ -84,7 +100,14 @@ export async function processInboundTurn(
     );
 
     if (conversationTurnCapExceeded(session.turnCount, pinnedAgent?.escalationConfig?.turnCountCap)) {
-      const cannedText = pinnedAgent?.persona.cannedMessages?.default?.handoff || "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
+      // Phase 9 M3: business hours, when configured, take precedence over the
+      // ordinary handoff message — wired to persona.cannedMessages.default.outOfHours
+      // (added in Phase 7, unused until now).
+      const closed = !isWithinBusinessHours(tenant.businessHours, now(), tenant.timezone);
+      const cannedText =
+        (closed && pinnedAgent?.persona.cannedMessages?.default?.outOfHours) ||
+        pinnedAgent?.persona.cannedMessages?.default?.handoff ||
+        "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
       callbacks.onTextDelta?.(cannedText);
       setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
       startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
@@ -151,12 +174,15 @@ export async function processInboundTurn(
     // re-derived from the pre-routing pinnedAgent lookup above, which can be
     // stale/wrong on exactly this — a brand-new conversation's first turn.
     let entryAgentDisclosure: string | undefined;
+    /** Phase 9 M3: same "capture at hops===0, use after the loop" pattern as entryAgentDisclosure above — persona.cannedMessages.default.outOfHours only makes sense from the agent that actually picked up the conversation. */
+    let entryAgentOutOfHours: string | undefined;
 
     for (let hops = 0; ; hops++) {
       const agent = agentDefs.getVersion(currentAgentKey, currentAgentVersion) ?? agentDefs.getLatestPublished(currentAgentKey);
       if (!agent) throw new Error(`No agent definition available for "${currentAgentKey}"`);
       if (hops === 0) {
         entryAgentDisclosure = (agent.guardrails as { output?: { aiDisclosureMessage?: string } } | undefined)?.output?.aiDisclosureMessage;
+        entryAgentOutOfHours = agent.persona.cannedMessages?.default?.outOfHours;
         // Streamed eagerly, ahead of the model's own reply deltas below, so a
         // live widget conversation actually sees it arrive first — not just
         // the persisted transcript (see the assistantText prepend after the loop).
@@ -165,9 +191,19 @@ export async function processInboundTurn(
 
       const run = runs.start({ conversationId: input.conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: hops === 0 ? "user_message" : "handoff" });
 
+      // Phase 9 M2: 'recent' trims the model's in-memory replay context —
+      // session.history (src/agents/sessions-store.ts) is a process-local
+      // cache, not the transcript of record; MessageRepository still has
+      // every message regardless of this. Trimming here means session.history
+      // itself stays bounded near recentTurnLimit turn over turn too (each
+      // turn's updatedHistory builds on the already-trimmed base) rather than
+      // being re-trimmed from an ever-growing full history every time.
+      const { memoryScope, recentTurnLimit } = agent.conversationConfig;
+      const historyForTurn = memoryScope === "recent" ? session.history.slice(-(recentTurnLimit ?? 20)) : session.history;
+
       let result: Awaited<ReturnType<typeof runAgentTurn>>;
       try {
-        result = await runAgentTurn(deps, tenant, input.conversationId, run.id, agent, session.history, input.text, callbacks, handoffContext, tenant.name);
+        result = await runAgentTurn(deps, tenant, input.conversationId, run.id, agent, historyForTurn, input.text, callbacks, handoffContext, tenant.name);
         session.history = result.updatedHistory;
         runs.complete(run.id, "completed");
       } catch (err) {
@@ -203,6 +239,17 @@ export async function processInboundTurn(
     // model sees as its own prior turns on replay.
     if (session.turnCount === 1 && entryAgentDisclosure) {
       finalResult = { ...finalResult, assistantText: `${entryAgentDisclosure}\n\n${finalResult.assistantText}` };
+    }
+
+    // Phase 9 M3: appended (not replacing the model's own reply) — the agent
+    // already explained why it's escalating; this just adds the out-of-hours
+    // expectation-setting on top. Streamed too (not just baked into the
+    // persisted/returned assistantText) so a live widget conversation
+    // actually sees it, matching the entryAgentDisclosure pattern above —
+    // the `done` SSE event carries no assistantText, only accumulated deltas.
+    if (finalResult.escalate && entryAgentOutOfHours && !isWithinBusinessHours(tenant.businessHours, now(), tenant.timezone)) {
+      callbacks.onTextDelta?.(`\n\n${entryAgentOutOfHours}`);
+      finalResult = { ...finalResult, assistantText: `${finalResult.assistantText}\n\n${entryAgentOutOfHours}` };
     }
 
     const assistantMessage = messages.append({ conversationId: input.conversationId, role: "assistant", content: finalResult.assistantText });
@@ -255,6 +302,11 @@ export function ensureConversation(
   // Phase 7 M1: a draft/paused/archived agent can't start a brand-new
   // conversation — only an already-running one is grandfathered in.
   if (published.agentStatus !== "active") throw new Error(`Agent "${agentKey}" is not active (status: ${published.agentStatus})`);
+  // Phase 9 M3: empty enabledChannels means "all channels" (safe default,
+  // matches every pre-existing agent) — this only ever narrows.
+  if (published.enabledChannels.length > 0 && !published.enabledChannels.includes(channel)) {
+    throw new Error(`Agent "${agentKey}" is not enabled for the "${channel}" channel`);
+  }
 
   const conversations = new ConversationRepository(deps.db, tenant);
   const conversation = conversations.create({ id: conversationId, channel, agentKey, metadata: { agentVersion: published.version, ...metadata } });

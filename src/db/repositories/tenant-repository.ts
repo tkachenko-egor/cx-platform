@@ -11,6 +11,28 @@ export interface Tenant extends TenantContext {
   id: string;
   name: string;
   slug: string;
+  timezone: string;
+  /** Phase 9: weekly schedule — see src/core/business-hours.ts. */
+  businessHours: BusinessHoursConfig;
+  /** Phase 9: analytics alert config — see src/analytics/alerts.ts. */
+  alertThresholds: AlertThresholdsConfig;
+}
+
+export interface WeeklyHoursRule {
+  /** 0 = Sunday, matching Date#getDay(). */
+  day: number;
+  start: string;
+  end: string;
+}
+
+export interface BusinessHoursConfig {
+  enabled?: boolean;
+  weeklyHours?: WeeklyHoursRule[];
+}
+
+export interface AlertThresholdsConfig {
+  maxHandoffRatePct?: number;
+  minCsatScore?: number;
 }
 
 /**
@@ -22,10 +44,23 @@ interface TenantRow {
   id: string;
   name: string;
   slug: string;
+  timezone: string;
+  business_hours: string;
+  alert_thresholds: string;
 }
 
+const TENANT_COLUMNS = "id, name, slug, timezone, business_hours, alert_thresholds";
+
 function rowToTenant(row: TenantRow): Tenant {
-  return { ...row, tenantId: row.id };
+  return {
+    id: row.id,
+    tenantId: row.id,
+    name: row.name,
+    slug: row.slug,
+    timezone: row.timezone,
+    businessHours: JSON.parse(row.business_hours) as BusinessHoursConfig,
+    alertThresholds: JSON.parse(row.alert_thresholds) as AlertThresholdsConfig,
+  };
 }
 
 export class TenantRepository {
@@ -37,21 +72,21 @@ export class TenantRepository {
     this.db
       .prepare(`INSERT INTO tenants (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
       .run(id, name, slug, now, now);
-    return { id, tenantId: id, name, slug };
+    return { id, tenantId: id, name, slug, timezone: "UTC", businessHours: {}, alertThresholds: {} };
   }
 
   getBySlug(slug: string): Tenant | undefined {
-    const row = this.db.prepare(`SELECT id, name, slug FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
+    const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
   getById(id: string): Tenant | undefined {
-    const row = this.db.prepare(`SELECT id, name, slug FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
+    const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
   list(): Tenant[] {
-    const rows = this.db.prepare(`SELECT id, name, slug FROM tenants ORDER BY name`).all() as TenantRow[];
+    const rows = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants ORDER BY name`).all() as TenantRow[];
     return rows.map(rowToTenant);
   }
 
@@ -61,6 +96,16 @@ export class TenantRepository {
     const name = input.name ?? existing.name;
     const slug = input.slug ?? existing.slug;
     this.db.prepare(`UPDATE tenants SET name = ?, slug = ?, updated_at = ? WHERE id = ?`).run(name, slug, new Date().toISOString(), id);
-    return { id, tenantId: id, name, slug };
+    return { ...existing, name, slug };
+  }
+
+  /** Phase 9: admin-facing business-hours editor (app/admin/business-hours/page.tsx). */
+  updateBusinessHours(id: string, config: BusinessHoursConfig): void {
+    this.db.prepare(`UPDATE tenants SET business_hours = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
+  }
+
+  /** Phase 9: admin-facing alert-threshold editor on /analytics. */
+  updateAlertThresholds(id: string, config: AlertThresholdsConfig): void {
+    this.db.prepare(`UPDATE tenants SET alert_thresholds = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
   }
 }

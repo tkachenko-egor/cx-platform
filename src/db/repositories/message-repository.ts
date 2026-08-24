@@ -97,6 +97,12 @@ export class MessageRepository extends TenantScopedRepository {
     return row?.conversation_id;
   }
 
+  /** Phase 9 M4: lets a feedback-submission route confirm the message actually belongs to the conversation/tenant it claims before recording anything. */
+  get(id: string): CanonicalMessage | undefined {
+    const row = this.db.prepare(`SELECT * FROM messages WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as MessageRow | undefined;
+    return row ? rowToMessage(row) : undefined;
+  }
+
   listByConversation(conversationId: string, opts: { includeInternal?: boolean } = {}): CanonicalMessage[] {
     const visibilityClause = opts.includeInternal ? "" : `AND visibility = 'public'`;
     const rows = this.db

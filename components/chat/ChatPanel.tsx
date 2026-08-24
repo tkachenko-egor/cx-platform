@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
 import { useChat } from "./ChatProvider";
 import { Composer } from "./Composer";
 import { MessageContent } from "./MessageContent";
@@ -15,7 +16,7 @@ const PHASE_BANNER: Record<string, string> = {
 };
 
 export function ChatPanel() {
-  const { messages, sendMessage, retryMessage, isStreaming, toolLabel, phase, citableDocs, greeting, quickReplies } = useChat();
+  const { messages, sendMessage, retryMessage, submitFeedback, isStreaming, toolLabel, phase, citableDocs, greeting, quickReplies } = useChat();
   const scrollRef = useRef<HTMLDivElement>(null);
   const suggestions = quickReplies && quickReplies.length > 0 ? quickReplies : SUGGESTIONS;
 
@@ -78,6 +79,28 @@ export function ChatPanel() {
                 {m.cards.map((card, i) => (
                   <CardRenderer key={i} card={card} />
                 ))}
+                {m.role === "assistant" && !m.streaming && !m.error && m.dbId && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => submitFeedback(m.dbId!, "up")}
+                      aria-label="Good response"
+                      aria-pressed={m.feedback === "up"}
+                      className={`rounded-lg p-1 transition-colors ${m.feedback === "up" ? "text-accent" : "text-muted hover:text-fg"}`}
+                    >
+                      <ThumbsUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submitFeedback(m.dbId!, "down")}
+                      aria-label="Bad response"
+                      aria-pressed={m.feedback === "down"}
+                      className={`rounded-lg p-1 transition-colors ${m.feedback === "down" ? "text-danger" : "text-muted hover:text-fg"}`}
+                    >
+                      <ThumbsDown size={13} />
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>

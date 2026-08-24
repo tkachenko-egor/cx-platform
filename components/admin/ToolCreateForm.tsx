@@ -28,6 +28,13 @@ const DEFAULT_INPUT_SCHEMA = `{
   "required": []
 }`;
 
+const DEFAULT_SAMPLE_ARGS = `{}`;
+
+interface OutputFieldRow {
+  path: string;
+  as: string;
+}
+
 const selectClass = "rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
 
 export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCredentialOption[] }) {
@@ -43,8 +50,58 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
   const [authParamName, setAuthParamName] = useState("");
   const [writeFlag, setWriteFlag] = useState(false);
   const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>("auto");
+  const [outputFields, setOutputFields] = useState<OutputFieldRow[]>([]);
+  const [fallbackMessage, setFallbackMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [sampleArgsJson, setSampleArgsJson] = useState(DEFAULT_SAMPLE_ARGS);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+
+  const handlerConfig = () => ({
+    url,
+    method,
+    argsLocation,
+    credentialId: credentialId || null,
+    authStyle,
+    authParamName: authParamName || null,
+    outputFields: outputFields.filter((f) => f.path.trim()).map((f) => ({ path: f.path.trim(), as: f.as.trim() || undefined })),
+    fallbackMessage: fallbackMessage.trim() || null,
+  });
+
+  const addOutputField = () => setOutputFields((prev) => [...prev, { path: "", as: "" }]);
+  const updateOutputField = (index: number, patch: Partial<OutputFieldRow>) => setOutputFields((prev) => prev.map((f, i) => (i === index ? { ...f, ...patch } : f)));
+  const removeOutputField = (index: number) => setOutputFields((prev) => prev.filter((_, i) => i !== index));
+
+  const runTest = async () => {
+    setTestError(null);
+    setTestResult(null);
+    let sampleArgs: Record<string, unknown>;
+    try {
+      sampleArgs = sampleArgsJson.trim() ? JSON.parse(sampleArgsJson) : {};
+    } catch {
+      setTestError("Sample args must be valid JSON");
+      return;
+    }
+
+    setTesting(true);
+    try {
+      const res = await fetch("/api/admin/tools/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handlerConfig: handlerConfig(), sampleArgs }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Test failed");
+      setTestResult(JSON.stringify(body.result, null, 2));
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const create = async () => {
     setError(null);
@@ -67,14 +124,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
           inputSchema,
           writeFlag,
           approvalPolicy,
-          handlerConfig: {
-            url,
-            method,
-            argsLocation,
-            credentialId: credentialId || null,
-            authStyle,
-            authParamName: authParamName || null,
-          },
+          handlerConfig: handlerConfig(),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not create tool");
@@ -165,7 +215,58 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
             ))}
           </select>
         </Field>
+        <div className="sm:col-span-2">
+          <Field label="Fallback error message (optional)" htmlFor="tool-fallback-message">
+            <Input id="tool-fallback-message" value={fallbackMessage} onChange={(e) => setFallbackMessage(e.target.value)} placeholder="e.g. Shipping lookup is temporarily unavailable — apologize and offer to try again shortly." />
+          </Field>
+          <p className="mt-1.5 text-xs text-muted">Shown to the model instead of the raw technical error on a failed call. Leave blank to keep today&apos;s raw error message.</p>
+        </div>
+        <div className="sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-fg">Output field mapping (optional)</span>
+            <button type="button" onClick={addOutputField} className="text-xs text-accent hover:underline">
+              + Add field
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-muted">Blank means the model sees the full response verbatim. Add fields to send only a plucked/renamed subset instead.</p>
+          <div className="mt-2 space-y-2">
+            {outputFields.map((f, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={f.path} onChange={(e) => updateOutputField(i, { path: e.target.value })} placeholder="e.g. data.customer.email" className="font-mono text-xs" />
+                <span className="text-xs text-muted">as</span>
+                <Input value={f.as} onChange={(e) => updateOutputField(i, { as: e.target.value })} placeholder="(same name)" className="font-mono text-xs" />
+                <button type="button" onClick={() => removeOutputField(i)} className="shrink-0 text-xs text-danger hover:underline">
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
+
+      <div className="mt-6 rounded-xl border border-border p-4">
+        <p className="text-sm font-medium text-fg">Test this configuration</p>
+        <p className="mt-1 text-xs text-muted">Runs a real request with the settings above — nothing here gets saved until you click Create tool.</p>
+        <div className="mt-3">
+          <Field label="Sample arguments (JSON)" htmlFor="tool-sample-args">
+            <textarea
+              id="tool-sample-args"
+              value={sampleArgsJson}
+              onChange={(e) => setSampleArgsJson(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </Field>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <Button type="button" variant="secondary" disabled={testing || !url} onClick={runTest}>
+            {testing ? "Running…" : "Run test"}
+          </Button>
+          {testError && <p className="text-xs text-danger">{testError}</p>}
+        </div>
+        {testResult && <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-border bg-bg p-3 text-xs text-fg">{testResult}</pre>}
+      </div>
+
       <div className="mt-5 flex items-center gap-3">
         <Button disabled={busy || !key || !description || !url} onClick={create}>
           {busy ? "Creating…" : "Create tool"}

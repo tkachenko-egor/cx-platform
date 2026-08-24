@@ -13,6 +13,8 @@ import {
   FlaskConical,
   MessageSquare,
   ClipboardCheck,
+  Clock,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 import { SignOutButton } from "../desk/SignOutButton";
@@ -35,6 +37,8 @@ const BUILD_ITEMS: NavItem[] = [
 
 const OPERATE_ITEMS: NavItem[] = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/admin/business-hours", label: "Business hours", icon: Clock, adminOnly: true },
+  { href: "/admin/tag-rules", label: "Tag rules", icon: Tags, adminOnly: true },
   { href: "/admin/api-keys", label: "API keys", icon: KeyRound, adminOnly: true },
   { href: "/admin/team", label: "Team", icon: Users, adminOnly: true },
   { href: "/admin/audit-log", label: "Audit log", icon: History, adminOnly: true },
