@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
+import { slugify } from "../../core/slugify";
 
 export type ApprovalPolicy = "auto" | "confirm_with_customer" | "require_human_approval";
 export type ToolType = "code" | "http";
@@ -9,7 +10,10 @@ export type ToolType = "code" | "http";
 export interface ToolDef {
   id: string;
   tenantId: string;
+  /** Derived from displayName when the tool is created, then immutable — agent_defs.tool_ids, tool_calls rows and write-tool idempotency keys all reference it. */
   key: string;
+  /** What admins see and edit. Renaming a tool changes only this. */
+  displayName: string;
   description: string;
   inputSchema: Record<string, unknown>;
   writeFlag: boolean;
@@ -24,6 +28,7 @@ interface ToolDefRow {
   id: string;
   tenant_id: string;
   key: string;
+  display_name: string;
   description: string;
   input_schema: string;
   write_flag: number;
@@ -37,6 +42,7 @@ function rowToToolDef(row: ToolDefRow): ToolDef {
     id: row.id,
     tenantId: row.tenant_id,
     key: row.key,
+    displayName: row.display_name || row.key,
     description: row.description,
     inputSchema: JSON.parse(row.input_schema) as Record<string, unknown>,
     writeFlag: Boolean(row.write_flag),
@@ -54,6 +60,7 @@ export class ToolDefRepository extends TenantScopedRepository {
 
   upsert(input: {
     key: string;
+    displayName?: string;
     description: string;
     inputSchema: Record<string, unknown>;
     writeFlag: boolean;
@@ -64,23 +71,51 @@ export class ToolDefRepository extends TenantScopedRepository {
     const type = input.type ?? "code";
     const handlerConfig = input.handlerConfig ?? {};
     const existing = this.getByKey(input.key);
+    const displayName = input.displayName?.trim() || existing?.displayName || input.key;
     if (existing) {
       this.db
         .prepare(
-          `UPDATE tool_defs SET description = ?, input_schema = ?, write_flag = ?, approval_policy = ?, type = ?, handler_config = ?
+          `UPDATE tool_defs SET display_name = ?, description = ?, input_schema = ?, write_flag = ?, approval_policy = ?, type = ?, handler_config = ?
            WHERE id = ? AND tenant_id = ?`,
         )
-        .run(input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), existing.id, this.tenantId);
-      return { ...existing, ...input, type, handlerConfig };
+        .run(displayName, input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), existing.id, this.tenantId);
+      return { ...existing, ...input, displayName, type, handlerConfig };
     }
     const id = randomUUID();
     this.db
       .prepare(
-        `INSERT INTO tool_defs (id, tenant_id, key, description, input_schema, write_flag, approval_policy, type, handler_config, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tool_defs (id, tenant_id, key, display_name, description, input_schema, write_flag, approval_policy, type, handler_config, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, this.tenantId, input.key, input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), new Date().toISOString());
-    return { id, tenantId: this.tenantId, key: input.key, description: input.description, inputSchema: input.inputSchema, writeFlag: input.writeFlag, approvalPolicy: input.approvalPolicy, type, handlerConfig };
+      .run(
+        id,
+        this.tenantId,
+        input.key,
+        displayName,
+        input.description,
+        JSON.stringify(input.inputSchema),
+        input.writeFlag ? 1 : 0,
+        input.approvalPolicy,
+        type,
+        JSON.stringify(handlerConfig),
+        new Date().toISOString(),
+      );
+    return { id, tenantId: this.tenantId, key: input.key, displayName, description: input.description, inputSchema: input.inputSchema, writeFlag: input.writeFlag, approvalPolicy: input.approvalPolicy, type, handlerConfig };
+  }
+
+  /**
+   * Derives a tool key from an admin-typed name, probing for collisions.
+   * Only ever called when creating a tool — a key is immutable afterwards,
+   * since agent_defs.tool_ids, tool_calls and idempotency keys reference it.
+   */
+  generateUniqueKey(alias: string): string {
+    const base = slugify(alias) || "tool";
+    if (!this.getByKey(base)) return base;
+    for (let suffix = 2; suffix < 1000; suffix++) {
+      const candidate = `${base}_${suffix}`;
+      if (!this.getByKey(candidate)) return candidate;
+    }
+    return `${base}_${randomUUID().slice(0, 8)}`;
   }
 
   getByKey(key: string): ToolDef | undefined {

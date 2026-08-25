@@ -12,7 +12,7 @@ import { runAgentTurn } from "../src/agents/runtime";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { scanForSevereSymptoms } from "../src/agents/escalation";
 import { checkPiiLeakage } from "../src/guardrails/output";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 
 /** Same scripted-provider pattern as tests/agent-runtime.test.ts. */
 class ScriptedProvider implements ProviderAdapter {
@@ -47,7 +47,7 @@ beforeAll(() => {
 
 function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   return { db, tenant };
 }
@@ -56,12 +56,12 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
   it("round-trips a pending request, then approving it publishes the exact requested config and removes it from the pending list", () => {
     const { db, tenant } = seededTenant();
     const users = new UserRepository(db, tenant);
-    const supervisor = users.create({ email: "supervisor@amarelle.demo", passwordHash: "x", role: "supervisor" });
-    const admin = users.create({ email: "admin@amarelle.demo", passwordHash: "x", role: "admin" });
+    const supervisor = users.create({ email: "supervisor@example.com", passwordHash: "x", role: "supervisor" });
+    const admin = users.create({ email: "admin@example.com", passwordHash: "x", role: "admin" });
     const agentDefs = new AgentDefRepository(db, tenant);
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
-    const payload = { key: "billing-specialist", systemPrompt: buildCorePrompt("Amarelle Botanique") + " v-requested", modelAlias: "support-main", agentStatus: "active" as const, environment: "production" as const };
+    const payload = { key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co") + " v-requested", modelAlias: "support-main", agentStatus: "active" as const, environment: "production" as const };
     const approval = approvals.create({
       agentKey: "billing-specialist",
       requestedVersion: 1,
@@ -92,8 +92,8 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
   it("a rejected request never gets published and stays out of the pending list", () => {
     const { db, tenant } = seededTenant();
     const users = new UserRepository(db, tenant);
-    const supervisor = users.create({ email: "supervisor2@amarelle.demo", passwordHash: "x", role: "supervisor" });
-    const admin = users.create({ email: "admin2@amarelle.demo", passwordHash: "x", role: "admin" });
+    const supervisor = users.create({ email: "supervisor2@example.com", passwordHash: "x", role: "supervisor" });
+    const admin = users.create({ email: "admin2@example.com", passwordHash: "x", role: "admin" });
     const agentDefs = new AgentDefRepository(db, tenant);
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
@@ -133,8 +133,8 @@ describe("per-agent escalation keyword extension (Phase 8 M1)", () => {
 describe("N failed attempts escalation (Phase 8 M1)", () => {
   it("escalates once consecutive tool-call errors reach the configured threshold, without waiting for ROUND_CAP", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
 
     // cancel_order on a Delivered order returns ok:false (a legitimate business "no" —
@@ -150,7 +150,7 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
       key: "support-generalist",
       version: 1,
       status: "published",
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       toolIds: ["cancel_order"],
       kbScope: { audience: ["customer"] },
@@ -177,6 +177,7 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
       conversationConfig: {},
       enabledChannels: [],
       businessHours: null,
+      toolSettings: {},
     };
 
     const result = await runAgentTurn({ db, gateway, embeddings: new StubEmbeddingProvider() }, tenant, "CONV-nfailed", "run-1", agent, [], "please cancel my order");

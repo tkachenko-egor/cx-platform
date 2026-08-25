@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { Field, Input } from "../ui/Input";
+import { slugify } from "../../src/core/slugify";
 
 type ApprovalPolicy = "auto" | "confirm_with_customer" | "require_human_approval";
 const APPROVAL_POLICIES: ApprovalPolicy[] = ["auto", "confirm_with_customer", "require_human_approval"];
@@ -39,7 +41,8 @@ const selectClass = "rounded-lg border border-border bg-bg px-3 py-2 text-sm tex
 
 export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCredentialOption[] }) {
   const router = useRouter();
-  const [key, setKey] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [inputSchemaJson, setInputSchemaJson] = useState(DEFAULT_INPUT_SCHEMA);
   const [url, setUrl] = useState("");
@@ -128,7 +131,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key,
+          displayName,
           description,
           inputSchema,
           writeFlag,
@@ -136,8 +139,9 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
           handlerConfig: handlerConfig(),
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not create tool");
-      router.push("/admin/tools");
+      const created = await res.json();
+      if (!res.ok) throw new Error(created.error ?? "Could not create tool");
+      setCreatedKey(created.tool?.key ?? slugify(displayName));
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -149,8 +153,12 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
   return (
     <Card className="mt-6 p-6">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Key" htmlFor="tool-key">
-          <Input id="tool-key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="e.g. check_shipping_status" className="font-mono text-xs" />
+        <Field label="Name" htmlFor="tool-display-name">
+          <Input id="tool-display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Check Shipping Status" />
+        </Field>
+        <Field label="Identifier (generated)" htmlFor="tool-key-preview">
+          <Input id="tool-key-preview" value={createdKey ?? slugify(displayName)} readOnly disabled className="font-mono text-xs" />
+          <p className="mt-1.5 text-xs text-muted">Derived from the name and fixed once the tool exists — renaming it later never changes this.</p>
         </Field>
         <div className="sm:col-span-2">
           <Field label="Description (shown to the model — this is the model's entire instruction for when to call it)" htmlFor="tool-description">
@@ -296,10 +304,18 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
         {testResult && <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-border bg-bg p-3 text-xs text-fg">{testResult}</pre>}
       </div>
 
-      <div className="mt-5 flex items-center gap-3">
-        <Button disabled={busy || !key || !description || !url} onClick={create}>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <Button disabled={busy || !displayName || !description || !url || Boolean(createdKey)} onClick={create}>
           {busy ? "Creating…" : "Create tool"}
         </Button>
+        {createdKey && (
+          <p className="text-xs text-muted">
+            Created as <code className="font-mono text-fg">{createdKey}</code> —{" "}
+            <Link href="/admin/tools" className="text-accent hover:underline">
+              back to tools
+            </Link>
+          </p>
+        )}
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
     </Card>

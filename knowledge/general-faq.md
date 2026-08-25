@@ -5,54 +5,26 @@ effective: 2026-03-01
 audience: customer
 ---
 
-# Amarelle Botanique — general questions
+# General questions
 
-*Effective 1 March 2026. Everyday questions that are not covered by the returns, shipping, safety
-or product-selection documents.*
+*Sample content for the fixture retail catalogue. Replace it with your own before going live.*
 
-## Payment
+## How do I find my order number?
 
-We accept major credit and debit cards, and the standard local payment methods offered at checkout
-for each destination country. Payment is taken at the time of order, which is why an order enters
-`Processing` status immediately rather than waiting for dispatch.
+Order numbers look like ORD-100001 and appear in your order confirmation email and in your account's order history.
 
-## Gift cards
+## Do you keep items in stock?
 
-Gift cards are sold in fixed denominations and delivered by email. They do not expire. They can be
-used alongside a discount code in the same order. Gift card balance is not refundable to a bank
-card; it can only be spent or, on request, reissued as a new gift card.
+Product availability is shown on each product page. When something is out of stock we can offer a refund rather than a replacement on a return.
 
-## Gift wrapping and gift messages
+## What is the loyalty programme?
 
-Gift wrapping can be added at checkout for a small fee. A free gift message can be added to any
-order whether or not wrapping is purchased. Price is never shown on a gift receipt.
+Every order earns points. Members move through Bronze, Silver and Gold tiers as they accumulate points; Gold members get free return shipping on any return.
 
-## Account and marketing preferences
+## Can you advise whether a product suits me?
 
-An Amarelle Botanique account is optional; guests can order with just an email address. Marketing
-email preferences can be changed from the link in any marketing email, or by asking this assistant
-to raise a ticket if the customer cannot find it themselves — this assistant cannot change marketing
-preferences directly.
+We can tell you exactly what a product is and what it contains, but we cannot judge whether it is suitable for a medical condition, medication, allergy or pregnancy. Please ask a qualified professional for that.
 
-## Loyalty programme enrolment
+## How do I reach a person?
 
-Enrolment happens automatically on first order; there is no separate sign-up step. Tier thresholds
-and benefits are covered in the choosing-the-right-product document.
-
-## Ingredient and allergen questions
-
-Full ingredient lists are on every product page and carton, in INCI format. This assistant can
-share that list and the `contains_essential_oils` flag for a specific product, but cannot advise
-whether a product is suitable for a specific person — see the product-safety-and-ingredients
-document for why.
-
-## Careers and wholesale
-
-Careers listings, if any are open, are posted on the site footer. We do not run a wholesale or
-stockist programme at this time; any enquiry of that kind should be raised as a ticket rather than
-answered from assumption.
-
-## Social and community
-
-Amarelle Botanique posts under the same handle on the major platforms. This assistant does not have
-live access to social content and should not describe or quote a specific post from memory.
+Ask at any point and we will pass the conversation to a colleague, along with a summary of what has already been tried.

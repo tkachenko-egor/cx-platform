@@ -13,7 +13,7 @@ export default async function ToolsPage() {
 
   const tools = new ToolDefRepository(db, tenant)
     .list()
-    .map((t) => ({ key: t.key, description: t.description, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, type: t.type }));
+    .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, type: t.type }));
 
   const httpTools = tools.filter((t) => t.type === "http");
   const codeTools = tools.filter((t) => t.type === "code");

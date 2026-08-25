@@ -1,17 +1,17 @@
 import { z } from "zod";
 import type Database from "better-sqlite3";
 import type { TenantContext } from "../../tenancy/context";
-import { AmarelleRepo } from "./repo";
-import { checkReturnEligibility, type EligibilityContext } from "./rules";
+import { CommerceRepo } from "./repo";
+import { checkReturnEligibility, REASON_CODES, resolveReturnPolicy, type EligibilityContext } from "./rules";
 import { today } from "../../core/clock";
 import { KbArticleRepository } from "../../db/repositories/kb-repository";
-import type { RefusalCard } from "./cards";
+import type { RefusalCard } from "../cards";
 
 export const checkReturnEligibilityInputSchema = z.object({
   order_id: z.string().regex(/^ORD-\d{6}$/),
   line_id: z.string().optional(),
   product_name: z.string().optional(),
-  reason_code: z.enum(["SEALED_UNWANTED", "OPENED_UNWANTED", "REACTION", "DEFECT", "WRONG_ITEM", "DAMAGED", "SHADE"]),
+  reason_code: z.enum(REASON_CODES),
   opened_confirmed_by_customer: z.boolean().optional(),
 });
 
@@ -19,8 +19,9 @@ export type CheckReturnEligibilityInput = z.infer<typeof checkReturnEligibilityI
 
 export const checkReturnEligibilityToolDef = {
   key: "check_return_eligibility",
+  displayName: "Check Return Eligibility",
   description:
-    "Use when a customer wants to return, refund or exchange something, before you promise anything at all. It weighs whether the item was opened, how long ago it was delivered, whether it was a gift with purchase, and the reason given. It returns a verdict, the governing rule, and the alternatives available. Do not guess an outcome — always call this.",
+    "Use when a customer wants to return, refund or exchange something, before you promise anything at all. It weighs whether the item was opened, how long ago it was delivered, whether it was a promotional item, and the reason given. It returns a verdict, the governing rule, and the alternatives available. Do not guess an outcome — always call this.",
   inputSchema: {
     type: "object" as const,
     required: ["order_id", "reason_code"],
@@ -28,8 +29,8 @@ export const checkReturnEligibilityToolDef = {
       order_id: { type: "string", pattern: "^ORD-\\d{6}$" },
       line_id: { type: "string", description: "Preferred when known, e.g. LINE-5004" },
       product_name: { type: "string", description: "Use when the line id is unknown; matched case-insensitively within the order" },
-      reason_code: { type: "string", enum: ["SEALED_UNWANTED", "OPENED_UNWANTED", "REACTION", "DEFECT", "WRONG_ITEM", "DAMAGED", "SHADE"] },
-      opened_confirmed_by_customer: { type: "boolean", description: "Set only when the stored open state is Unknown and the customer has told you whether the seal was broken." },
+      reason_code: { type: "string", enum: [...REASON_CODES] },
+      opened_confirmed_by_customer: { type: "boolean", description: "Set only when the stored open state is Unknown and the customer has told you whether the packaging was sealed." },
     },
   },
 };
@@ -38,12 +39,13 @@ const ALTERNATIVE_ACTION_MAP: Record<string, string> = {
   CANCEL_ORDER: "cancel_order",
   WAIT_FOR_DELIVERY: "track_order",
   RETURN_WHOLE_ORDER: "return_whole_order",
-  NOT_WHY: "report_reaction",
+  NOT_WHY: "report_issue",
   SUPERVISOR_REVIEW: "request_review",
 };
 
-export function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput) {
-  const repo = new AmarelleRepo(db, tenant);
+export function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
+  const policy = resolveReturnPolicy(settings);
+  const repo = new CommerceRepo(db, tenant);
   const order = repo.findOrder(input.order_id);
   if (!order) return { ok: false as const, error: `No order found for ${input.order_id}` };
 
@@ -60,12 +62,13 @@ export function runCheckReturnEligibility(db: Database.Database, tenant: TenantC
 
   const ctx: EligibilityContext = {
     order: { order_id: order.order_id, status: order.status, delivered_date: order.delivered_date },
-    line: { line_id: line.line_id, product_name: line.product_name, is_opened: line.is_opened, line_total_eur: line.line_total_eur },
-    product: { is_gift_with_purchase: Boolean(product.is_gift_with_purchase), stock_qty: product.stock_qty },
+    line: { line_id: line.line_id, product_name: line.product_name, is_opened: line.is_opened, line_total: line.line_total },
+    product: { is_promotional_item: Boolean(product.is_promotional_item), stock_qty: product.stock_qty },
     customer: { loyalty_tier: customer.loyalty_tier },
     reason: input.reason_code,
     today: today(),
     opened_confirmed_by_customer: input.opened_confirmed_by_customer,
+    policy,
   };
 
   const result = checkReturnEligibility(ctx);

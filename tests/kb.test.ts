@@ -102,11 +102,11 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
       kbScope: { audience: ["customer"] },
     });
 
-    await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agent, [], "skin reaction refund");
+    await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agent, [], "returns and refunds");
 
     const logged = new KbRetrievalLogRepository(db, tenant).listLowConfidence(1); // 1 is above any real RRF score, so this returns everything
     expect(logged).toHaveLength(1);
-    expect(logged[0].queryText).toBe("skin reaction refund");
+    expect(logged[0].queryText).toBe("returns and refunds");
     expect(logged[0].bestScore).toBeGreaterThan(0);
     expect(logged[0].retrievedDocIds).toContain("doc-a");
   });

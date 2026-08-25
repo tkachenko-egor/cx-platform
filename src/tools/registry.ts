@@ -4,20 +4,30 @@ import type { TenantContext } from "../tenancy/context";
 import { ToolCallRepository, ToolDefRepository, type ToolDef } from "../db/repositories/tool-repository";
 import { ToolApprovalRepository, type ToolApproval } from "../db/repositories/tool-approval-repository";
 import type { ToolDefinition } from "../gateway/types";
-import { lookupOrderInputSchema, lookupOrderToolDef, runLookupOrder } from "./amarelle/lookup-order";
-import { searchProductsInputSchema, searchProductsToolDef, runSearchProducts } from "./amarelle/search-products";
-import { checkReturnEligibilityInputSchema, checkReturnEligibilityToolDef, runCheckReturnEligibility } from "./amarelle/check-return-eligibility";
-import { cancelOrderInputSchema, cancelOrderToolDef, runCancelOrder } from "./amarelle/cancel-order";
+import { lookupOrderInputSchema, lookupOrderToolDef, runLookupOrder } from "./commerce/lookup-order";
+import { searchProductsInputSchema, searchProductsToolDef, runSearchProducts } from "./commerce/search-products";
+import { checkReturnEligibilityInputSchema, checkReturnEligibilityToolDef, runCheckReturnEligibility } from "./commerce/check-return-eligibility";
+import { cancelOrderInputSchema, cancelOrderToolDef, runCancelOrder } from "./commerce/cancel-order";
 import { parseHttpToolConfig, runHttpTool } from "./http-tool-executor";
 import { validateAgainstJsonSchema } from "./json-schema-lite";
 
+/** agent_defs.tool_settings: each tool owns its own slice, keyed by tool key. */
+export type AgentToolSettings = Record<string, Record<string, unknown>>;
+
 export interface ToolSpec {
   key: string;
+  /** Admin-facing alias. Code tools carry a fixed one; HTTP tools take it from their tool_defs row. */
+  displayName: string;
   description: string;
   inputSchema: Record<string, unknown>;
   writeFlag: boolean;
   parse: (args: unknown) => unknown;
-  run: (db: Database.Database, tenant: TenantContext, args: unknown) => Record<string, unknown> | Promise<Record<string, unknown>>;
+  run: (
+    db: Database.Database,
+    tenant: TenantContext,
+    args: unknown,
+    settings?: Record<string, unknown>,
+  ) => Record<string, unknown> | Promise<Record<string, unknown>>;
 }
 
 /**
@@ -29,35 +39,39 @@ export interface ToolSpec {
 const REGISTRY: Record<string, ToolSpec> = {
   [lookupOrderToolDef.key]: {
     key: lookupOrderToolDef.key,
+    displayName: lookupOrderToolDef.displayName,
     description: lookupOrderToolDef.description,
     inputSchema: lookupOrderToolDef.inputSchema,
     writeFlag: false,
     parse: (args) => lookupOrderInputSchema.parse(args),
-    run: (db, tenant, args) => runLookupOrder(db, tenant, args as ReturnType<typeof lookupOrderInputSchema.parse>),
+    run: (db, tenant, args, settings) => runLookupOrder(db, tenant, args as ReturnType<typeof lookupOrderInputSchema.parse>, settings),
   },
   [searchProductsToolDef.key]: {
     key: searchProductsToolDef.key,
+    displayName: searchProductsToolDef.displayName,
     description: searchProductsToolDef.description,
     inputSchema: searchProductsToolDef.inputSchema,
     writeFlag: false,
     parse: (args) => searchProductsInputSchema.parse(args),
-    run: (db, tenant, args) => runSearchProducts(db, tenant, args as ReturnType<typeof searchProductsInputSchema.parse>),
+    run: (db, tenant, args, settings) => runSearchProducts(db, tenant, args as ReturnType<typeof searchProductsInputSchema.parse>, settings),
   },
   [checkReturnEligibilityToolDef.key]: {
     key: checkReturnEligibilityToolDef.key,
+    displayName: checkReturnEligibilityToolDef.displayName,
     description: checkReturnEligibilityToolDef.description,
     inputSchema: checkReturnEligibilityToolDef.inputSchema,
     writeFlag: false,
     parse: (args) => checkReturnEligibilityInputSchema.parse(args),
-    run: (db, tenant, args) => runCheckReturnEligibility(db, tenant, args as ReturnType<typeof checkReturnEligibilityInputSchema.parse>),
+    run: (db, tenant, args, settings) => runCheckReturnEligibility(db, tenant, args as ReturnType<typeof checkReturnEligibilityInputSchema.parse>, settings),
   },
   [cancelOrderToolDef.key]: {
     key: cancelOrderToolDef.key,
+    displayName: cancelOrderToolDef.displayName,
     description: cancelOrderToolDef.description,
     inputSchema: cancelOrderToolDef.inputSchema,
     writeFlag: true,
     parse: (args) => cancelOrderInputSchema.parse(args),
-    run: (db, tenant, args) => runCancelOrder(db, tenant, args as ReturnType<typeof cancelOrderInputSchema.parse>),
+    run: (db, tenant, args, settings) => runCancelOrder(db, tenant, args as ReturnType<typeof cancelOrderInputSchema.parse>, settings),
   },
 };
 
@@ -70,6 +84,7 @@ function buildHttpToolSpec(def: ToolDef): ToolSpec {
   const config = parseHttpToolConfig(def.handlerConfig);
   return {
     key: def.key,
+    displayName: def.displayName || def.key,
     description: def.description,
     inputSchema: def.inputSchema,
     writeFlag: def.writeFlag,
@@ -150,12 +165,13 @@ async function runAndLog(
   spec: ToolSpec,
   parsedArgs: unknown,
   logInput: { runId: string; toolKey: string; arguments: unknown; idempotencyKey?: string },
+  settings?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const start = Date.now();
   let result: Record<string, unknown>;
   let status: "ok" | "error" = "ok";
   try {
-    result = await spec.run(db, tenant, parsedArgs);
+    result = await spec.run(db, tenant, parsedArgs, settings);
     if ((result as { ok?: unknown }).ok === false) status = "error";
   } catch (err) {
     result = { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -179,9 +195,12 @@ export async function executeTool(
   runId: string,
   toolKey: string,
   args: unknown,
-  opts?: { sandbox?: boolean },
+  opts?: { sandbox?: boolean; toolSettings?: AgentToolSettings },
 ): Promise<Record<string, unknown>> {
   const spec = resolveToolSpec(db, tenant, toolKey);
+  // Per-tool slice of the running agent's tool_settings; each tool applies
+  // its own defaults when the agent hasn't configured anything.
+  const settings = opts?.toolSettings?.[toolKey];
   if (!spec) {
     const result = { ok: false, error: `Unknown tool: ${toolKey}` };
     logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
@@ -198,7 +217,7 @@ export async function executeTool(
   }
 
   if (!spec.writeFlag) {
-    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args });
+    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args }, settings);
   }
 
   // Phase 7 M2: a sandbox-environment agent never actually mutates anything —
@@ -222,7 +241,7 @@ export async function executeTool(
   const approvalPolicy = new ToolDefRepository(db, tenant).getByKey(toolKey)?.approvalPolicy ?? "auto";
 
   if (approvalPolicy === "auto") {
-    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
+    return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey }, settings);
   }
 
   const approvals = new ToolApprovalRepository(db, tenant);
@@ -233,7 +252,7 @@ export async function executeTool(
     // customer having confirmed — re-calling within the same turn (the
     // model looping on its own, with no new customer input) must not.
     if (existing?.status === "pending" && existing.runId !== runId) {
-      const result = await runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey });
+      const result = await runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey }, settings);
       approvals.markDecided(existing.id, "approved", null);
       return result;
     }
@@ -253,7 +272,12 @@ export async function executeTool(
   return { ok: false, needsApproval: true, message: "A colleague needs to approve this before it can happen. Let the customer know you've flagged it for review." };
 }
 
-/** Executes a require_human_approval tool call once staff have approved it in the desk (FR-8.5/8.10). */
+/**
+ * Executes a require_human_approval tool call once staff have approved it in
+ * the desk (FR-8.5/8.10). Runs with each tool's default settings: the approval
+ * row records the call, not which agent version raised it, so there's no
+ * agent_defs.tool_settings slice to resolve here.
+ */
 export async function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Promise<Record<string, unknown>> {
   const spec = resolveToolSpec(db, tenant, approval.toolKey);
   if (!spec) return { ok: false, error: `Unknown tool: ${approval.toolKey}` };

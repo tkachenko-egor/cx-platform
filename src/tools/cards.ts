@@ -1,10 +1,8 @@
 /**
- * Structured UI payloads for the Amarelle tenant. Tools return these;
- * React renders them. The model never emits card markup. Ported from
- * amarelle-handoff's lib/cards.ts — tenant-specific shapes (EUR amounts,
- * order steps), so this lives under src/tools/amarelle/, not the platform
- * layer. Only the three kinds Phase 1's read-only tools produce are here;
- * the two safety-case cards return once report_product_safety_case exists.
+ * Structured UI payloads. Tools return these; React renders them. The model
+ * never emits card markup. Generic across tenants — money is carried as a
+ * pre-formatted string plus its currency code, so no card shape assumes a
+ * particular currency or vertical.
  */
 
 export type StatusTone = "good" | "warning" | "attention" | "accent";
@@ -21,7 +19,8 @@ export type OrderStatusCard = {
   tracking_number: string | null;
   tracking_url: string | null;
   shipping_address: string | null;
-  items: { product_name: string; quantity: number; line_total_eur: string; product_url: string }[];
+  currency: string;
+  items: { product_name: string; quantity: number; line_total: string; product_url: string }[];
   actions: { label: string; action: "cancel_order" | "change_address" | "track" | "start_return" }[];
 };
 
@@ -42,11 +41,10 @@ export type RefusalCard = {
 export type ProductResultCard = {
   product_id: string;
   name: string;
-  product_line: string | null;
-  price_eur: string;
-  volume_ml: number | null;
-  key_botanical: string | null;
-  suitable_for: string | null;
+  category: string | null;
+  price: string;
+  currency: string;
+  tags: string[];
   in_stock: boolean;
   image_url: string | null;
   url: string;

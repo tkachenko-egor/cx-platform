@@ -3,8 +3,7 @@ import type { ChatMessage } from "../gateway/types";
 /**
  * The full gateway-shape turn history (including tool_use/tool_result
  * blocks the model needs for continuity) lives here, in-process — the
- * same simplification amarelle-handoff's lib/agent/sessions-store.ts made,
- * and for the same reason: it's fine for a single-process Phase 1
+ * a deliberate simplification: it's fine for a single-process Phase 1
  * deployment, and NFR-3.1's "conversation state in the database, not
  * process memory" is explicitly not in this phase's scope. The
  * customer/human-desk-visible transcript is persisted separately via

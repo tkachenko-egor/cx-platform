@@ -4,7 +4,7 @@ import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { ConversationRepository } from "../src/db/repositories/conversation-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -47,8 +47,8 @@ const OK_RESPONSE: ChatResponse = { content: "Happy to help with that.", toolCal
 
 async function baseSetup(script: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -64,8 +64,8 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
   it("ensureConversation refuses to start a new conversation on a paused agent", async () => {
     const { db, tenant } = await baseSetup([OK_RESPONSE]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "active" }); // v1
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "paused" }); // v2
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
 
     expect(() => ensureConversation({ db }, tenant, undefined, "widget")).toThrow(/not active/);
   });
@@ -73,14 +73,14 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
   it("lets an already-running conversation keep going on its pinned version after the agent is later paused", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE, OK_RESPONSE]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "active" }); // v1
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
 
     const conversation = ensureConversation({ db }, tenant, undefined, "widget");
     const first = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi" });
     expect(first.state).toBe("bot_active");
 
     // Republish as paused — the conversation above is already pinned to v1.
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "paused" }); // v2
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
 
     const second = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "still there?" });
     expect(second.state).toBe("bot_active");
@@ -90,11 +90,11 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
   it("escalates instead of routing to a paused specialist", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([{ content: "", toolCalls: [{ id: "r1", name: "route_to_agent", arguments: { target: "billing-specialist" } }], stopReason: "tool_use", usage: usage() }]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "active" });
-    agentDefs.publish({ key: "billing-specialist", systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main", agentStatus: "paused" });
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" });
+    agentDefs.publish({ key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" });
     agentDefs.publish({
       key: "router",
-      systemPrompt: buildRouterPrompt("Amarelle Botanique", [{ key: "billing-specialist", description: "Billing" }]),
+      systemPrompt: buildRouterPrompt("Fixture Retail Co", [{ key: "billing-specialist", description: "Billing" }]),
       modelAlias: "triage-fast",
       handoffTargets: ["billing-specialist"],
     });
@@ -112,7 +112,7 @@ describe("per-conversation cost ceiling (Phase 7 M2)", () => {
     const { db, tenant, gateway, embeddings, provider } = await baseSetup([{ ...OK_RESPONSE, usage: usage(10) }, OK_RESPONSE]);
     new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       costCeilingUsd: 5,
     });

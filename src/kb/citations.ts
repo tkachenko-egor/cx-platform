@@ -1,10 +1,9 @@
 /**
  * Splits assistant text on [doc_id] citation markers (see the CITATION
  * section of the system prompt) into plain-text and citation segments the
- * UI can render as chips. Unlike amarelle-handoff's version, this has no
- * hardcoded doc_id allowlist — with real hybrid retrieval, any doc_id the
- * KB actually returned this turn is a legitimate citation, not just a
- * fixed set of four.
+ * UI can render as chips. Deliberately no hardcoded doc_id allowlist —
+ * with real hybrid retrieval, any doc_id the KB actually returned this
+ * turn is a legitimate citation.
  */
 export type TextSegment = { type: "text"; text: string };
 export type CitationSegment = { type: "citation"; docId: string };

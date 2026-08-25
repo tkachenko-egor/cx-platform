@@ -1,4 +1,4 @@
-import type { OrderStatusCard as OrderStatusCardData } from "../../src/tools/amarelle/cards";
+import type { OrderStatusCard as OrderStatusCardData } from "../../src/tools/cards";
 
 const TONE_CLASSES: Record<string, string> = {
   good: "bg-success/10 text-success",
@@ -34,7 +34,7 @@ export function OrderStatusCard({ data }: { data: OrderStatusCardData }) {
             <span>
               {item.quantity}× {item.product_name}
             </span>
-            <span>€{item.line_total_eur}</span>
+            <span>{item.line_total}</span>
           </li>
         ))}
       </ul>

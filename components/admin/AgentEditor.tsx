@@ -18,6 +18,7 @@ import { MODEL_CATALOG, PROVIDER_DISPLAY_NAMES, displayNameForAlias } from "../.
 
 export interface ToolOption {
   key: string;
+  displayName?: string;
   description: string;
   type?: "code" | "http";
   writeFlag?: boolean;
@@ -1563,7 +1564,7 @@ export function AgentEditor({
                   {tools.map((tool) => (
                     <div key={tool.key} className="flex items-center gap-3 py-2.5">
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-fg">{tool.key}</p>
+                        <p className="truncate text-sm text-fg">{tool.displayName || tool.key}</p>
                         <p className="truncate text-xs text-muted">{tool.description}</p>
                       </div>
                       {tool.type === "http" && mode === "edit" && (
@@ -1905,8 +1906,9 @@ type HandlerConfig = { url?: string; method?: string; argsLocation?: string; cre
  */
 function ForkToolModal({ tool, agentKey, onClose, onForked }: { tool: ToolOption; agentKey: string; onClose: () => void; onForked: (tool: ToolOption) => void }) {
   const original = (tool.handlerConfig ?? {}) as HandlerConfig;
-  const suggestedKey = agentKey ? `${tool.key}__${agentKey}` : `${tool.key}__custom`;
-  const [key, setKey] = useState(suggestedKey);
+  const originalName = tool.displayName || tool.key;
+  const suggestedName = agentKey ? `${originalName} (${agentKey})` : `${originalName} (custom)`;
+  const [name, setName] = useState(suggestedName);
   const [description, setDescription] = useState(tool.description);
   const [url, setUrl] = useState(original.url ?? "");
   const [method, setMethod] = useState(original.method ?? "POST");
@@ -1923,7 +1925,7 @@ function ForkToolModal({ tool, agentKey, onClose, onForked }: { tool: ToolOption
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          key,
+          displayName: name,
           description,
           inputSchema: { type: "object", properties: {}, required: [] },
           writeFlag,
@@ -1931,8 +1933,11 @@ function ForkToolModal({ tool, agentKey, onClose, onForked }: { tool: ToolOption
           handlerConfig: { ...original, url, method },
         }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not create a custom copy");
-      onForked({ key, description, type: "http", writeFlag, approvalPolicy, handlerConfig: { ...original, url, method } });
+      const created = await res.json();
+      if (!res.ok) throw new Error(created.error ?? "Could not create a custom copy");
+      // The server derives the key — never guess it here, or the agent would
+      // reference a tool_defs row that doesn't exist.
+      onForked({ key: created.tool.key, displayName: created.tool.displayName, description, type: "http", writeFlag, approvalPolicy, handlerConfig: { ...original, url, method } });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1941,11 +1946,11 @@ function ForkToolModal({ tool, agentKey, onClose, onForked }: { tool: ToolOption
   };
 
   return (
-    <Modal title={`Customize "${tool.key}" for this agent`} onClose={onClose}>
+    <Modal title={`Customize "${originalName}" for this agent`} onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-muted">Creates a private copy this agent uses instead — the original tool, and every other agent using it, is unaffected.</p>
-        <Field label="New key" htmlFor="fork-tool-key">
-          <Input id="fork-tool-key" value={key} onChange={(e) => setKey(e.target.value)} className="font-mono text-xs" />
+        <Field label="Name" htmlFor="fork-tool-name">
+          <Input id="fork-tool-name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Description (shown to the model)" htmlFor="fork-tool-description">
           <Input id="fork-tool-description" value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -1977,7 +1982,7 @@ function ForkToolModal({ tool, agentKey, onClose, onForked }: { tool: ToolOption
         </Field>
         <p className="text-xs text-muted">Credential and auth style are carried over from the original — manage credentials at Admin &gt; API keys.</p>
         {error && <p className="text-xs text-danger">{error}</p>}
-        <Button disabled={busy || !key || !description || !url} onClick={fork}>
+        <Button disabled={busy || !name || !description || !url} onClick={fork}>
           {busy ? "Creating…" : "Create custom copy"}
         </Button>
       </div>

@@ -78,6 +78,10 @@ CREATE TABLE IF NOT EXISTS agent_defs (
   -- Admin UI batch item 1 (migration 025): NULL = inherit tenants.business_hours,
   -- same BusinessHoursConfig JSON shape when set. See src/core/business-hours.ts.
   business_hours TEXT,
+  -- Migration 027: per-tool config keyed by tool key, e.g.
+  -- {"check_return_eligibility":{"standardWindowDays":45}}. Empty = every
+  -- tool falls back to its own defaults (src/tools/commerce/*).
+  tool_settings TEXT NOT NULL DEFAULT '{}',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   UNIQUE (tenant_id, key, version)
@@ -287,7 +291,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
 CREATE TABLE IF NOT EXISTS tool_defs (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL REFERENCES tenants(id),
+  -- Derived from display_name at creation time (src/core/slugify.ts) and
+  -- immutable afterwards: agent_defs.tool_ids, tool_calls and write-tool
+  -- idempotency keys all reference it, so a rename must not regenerate it.
   key TEXT NOT NULL,
+  -- Migration 028: what admins see and edit; backfilled from key.
+  display_name TEXT NOT NULL DEFAULT '',
   description TEXT NOT NULL,
   input_schema TEXT NOT NULL,
   write_flag INTEGER NOT NULL DEFAULT 0,
@@ -530,10 +539,12 @@ CREATE TABLE IF NOT EXISTS agent_experiments (
 CREATE INDEX IF NOT EXISTS idx_agent_experiments_tenant ON agent_experiments(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_experiments_one_active ON agent_experiments(tenant_id, agent_key) WHERE status = 'active';
 
--- ─── Amarelle tenant business data (read-only for tools) ─────────────────
--- Ported from amarelle-handoff's CSVs. This is tenant DATA, not platform
--- code — see CLAUDE.md invariant #5. Only the tables the three read-only
--- tools need; returns/tickets/safety_cases are out of scope this phase.
+-- ─── Generic commerce domain tables ──────────────────────────────────────
+-- Read by the built-in commerce tools (src/tools/commerce/). Deliberately
+-- vertical-neutral: anything tenant- or agent-specific belongs in
+-- agent_defs.tool_settings or tool_defs.handler_config, never in a column
+-- here. Amounts are stored in major units; the currency they're rendered in
+-- is per-agent tool settings, not a column.
 
 CREATE TABLE IF NOT EXISTS customers (
   tenant_id TEXT NOT NULL REFERENCES tenants(id),
@@ -543,7 +554,6 @@ CREATE TABLE IF NOT EXISTS customers (
   email TEXT NOT NULL,
   loyalty_tier TEXT NOT NULL,
   loyalty_points INTEGER NOT NULL,
-  skin_profile TEXT,
   country TEXT,
   PRIMARY KEY (tenant_id, customer_id)
 );
@@ -562,10 +572,10 @@ CREATE TABLE IF NOT EXISTS orders (
   carrier TEXT,
   tracking_number TEXT,
   shipping_method TEXT,
-  subtotal_eur REAL NOT NULL,
-  shipping_eur REAL NOT NULL,
-  tax_eur REAL NOT NULL,
-  total_eur REAL NOT NULL,
+  subtotal_amount REAL NOT NULL,
+  shipping_amount REAL NOT NULL,
+  tax_amount REAL NOT NULL,
+  total_amount REAL NOT NULL,
   shipping_address TEXT,
   PRIMARY KEY (tenant_id, order_id)
 );
@@ -580,8 +590,8 @@ CREATE TABLE IF NOT EXISTS order_lines (
   sku TEXT NOT NULL,
   product_name TEXT NOT NULL,
   quantity INTEGER NOT NULL,
-  unit_price_eur REAL NOT NULL,
-  line_total_eur REAL NOT NULL,
+  unit_price REAL NOT NULL,
+  line_total REAL NOT NULL,
   batch_number TEXT,
   expiry_date TEXT,
   is_opened TEXT NOT NULL CHECK (is_opened IN ('Yes','No','Unknown')),
@@ -595,21 +605,13 @@ CREATE TABLE IF NOT EXISTS products (
   product_id TEXT NOT NULL,
   sku TEXT NOT NULL,
   name TEXT NOT NULL,
-  product_line TEXT,
-  form TEXT,
-  key_botanical TEXT,
-  concern TEXT,
-  suitable_for TEXT,
-  price_eur REAL NOT NULL,
-  volume_ml INTEGER,
-  pao_months INTEGER,
+  category TEXT,
+  -- Free-form, comma-separated. The catalogue's only extensibility point, so
+  -- no vertical's taxonomy ever has to become a column or a code-level enum.
+  tags TEXT,
+  price REAL NOT NULL,
   stock_qty INTEGER NOT NULL,
-  is_refillable INTEGER NOT NULL DEFAULT 0,
-  refill_sku TEXT,
-  is_gift_with_purchase INTEGER NOT NULL DEFAULT 0,
-  shade TEXT,
-  contains_essential_oils INTEGER NOT NULL DEFAULT 0,
-  vegan INTEGER NOT NULL DEFAULT 0,
+  is_promotional_item INTEGER NOT NULL DEFAULT 0,
   rating REAL,
   short_description TEXT,
   image_url TEXT,

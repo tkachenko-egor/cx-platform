@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { CardPayload } from "../../src/tools/amarelle/cards";
+import type { CardPayload } from "../../src/tools/cards";
 
 export type ChatMessage = {
   id: string;

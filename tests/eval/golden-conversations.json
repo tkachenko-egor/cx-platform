@@ -109,11 +109,11 @@
     "tags": ["tools", "escalation"],
     "turns": [
       {
-        "userText": "I had a skin reaction, I want to return it",
+        "userText": "This product hurt me, I want to return it",
         "scriptedResponse": [
           {
             "content": "",
-            "toolCalls": [{ "name": "check_return_eligibility", "arguments": { "order_id": "ORD-100001", "line_id": "LINE-5001", "reason_code": "REACTION" } }],
+            "toolCalls": [{ "name": "check_return_eligibility", "arguments": { "order_id": "ORD-100001", "line_id": "LINE-5001", "reason_code": "SAFETY_CONCERN" } }],
             "stopReason": "tool_use"
           },
           { "content": "You're eligible — a colleague will follow up to complete the return.", "toolCalls": [] }
@@ -143,9 +143,9 @@
     "tags": ["routing"],
     "turns": [
       {
-        "userText": "The pump on my bottle is broken and won't dispense",
+        "userText": "The charging port on my headphones is broken and won't work",
         "scriptedRouterResponse": { "content": "", "toolCalls": [{ "name": "route_to_agent", "arguments": { "target": "technical-specialist" } }], "stopReason": "tool_use" },
-        "scriptedResponse": { "content": "Sorry about the broken pump — let's get that sorted.", "toolCalls": [] },
+        "scriptedResponse": { "content": "Sorry about the broken charging port — let's get that sorted.", "toolCalls": [] },
         "expectedRoute": "technical-specialist"
       }
     ]

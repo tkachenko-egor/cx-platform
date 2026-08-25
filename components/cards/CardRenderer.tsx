@@ -1,4 +1,4 @@
-import type { CardPayload } from "../../src/tools/amarelle/cards";
+import type { CardPayload } from "../../src/tools/cards";
 import { OrderStatusCard } from "./OrderStatusCard";
 import { RefusalCard } from "./RefusalCard";
 import { ProductResultsCard } from "./ProductResultsCard";

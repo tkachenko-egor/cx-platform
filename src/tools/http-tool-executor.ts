@@ -83,7 +83,7 @@ export function parseHttpToolConfig(raw: Record<string, unknown>): HttpToolConfi
 
 /**
  * Generic mechanics for admin-authored HTTP tools — no tenant-specific
- * logic, lives alongside registry.ts rather than under src/tools/amarelle/.
+ * logic, lives alongside registry.ts rather than under src/tools/commerce/.
  * Mirrors every code tool's { ok: false, error } contract (FR-8.9): never
  * throws to the caller, so a bad integration can't break the agent loop.
  */

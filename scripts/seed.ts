@@ -14,10 +14,10 @@ import type { ApprovalPolicy } from "../src/db/repositories/tool-repository";
 /**
  * Per the requirements doc's own risk mitigation: "resist building the
  * admin UI before the runtime works — configure via seed scripts until the
- * shape is stable." Creates the "demo" tenant (Amarelle Botanique's data),
- * its model aliases, tool registry entries, KB, router + specialist agent
- * defs (src/testing/seed-fixtures.ts — shared with the eval harness), and
- * a staff owner account.
+ * shape is stable." Creates the fixture tenant (generic sample commerce
+ * data), its model aliases, tool registry entries, KB, router + specialist
+ * agent defs (src/testing/seed-fixtures.ts — shared with the eval harness),
+ * and a staff owner account.
  */
 async function main() {
   const db = createDb();
@@ -49,7 +49,7 @@ async function main() {
   console.log("Seeded business data, model aliases (one per catalog model, plus the router/support-main targets), tool defs, KB, and router + billing/technical/support-generalist agent defs.");
 
   const users = new UserRepository(db, tenant);
-  const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@amarelle.demo";
+  const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@example.com";
   if (!users.getByEmail(ownerEmail)) {
     const password = process.env.SEED_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
     const passwordHash = await hashPassword(password);

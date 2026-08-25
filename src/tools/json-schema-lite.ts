@@ -1,7 +1,7 @@
 /**
  * Deliberately weak validation for admin-authored HTTP tools: required-key
  * presence + a loose `typeof` check per declared property type. Code tools
- * keep their zod schemas (src/tools/amarelle/*.ts) — this only covers tools
+ * keep their zod schemas (src/tools/commerce/*.ts) — this only covers tools
  * that have no code behind them, so there's no zod schema to write. Enough
  * to catch an obviously wrong call, not a substitute for real validation.
  */

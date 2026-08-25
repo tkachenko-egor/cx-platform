@@ -4,7 +4,7 @@ import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { SemanticCacheRepository } from "../src/db/repositories/semantic-cache-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -75,7 +75,7 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 
     await writeCache(db, tenant, "support-generalist", "Where is my order?", "It shipped yesterday.", [], embeddings);
 
-    const hit = await lookupCache(db, tenant, "support-generalist", "Can I get a refund on a broken bottle of serum?", embeddings);
+    const hit = await lookupCache(db, tenant, "support-generalist", "Can I get a refund on a broken pair of headphones?", embeddings);
     expect(hit).toBeUndefined();
   });
 
@@ -94,8 +94,8 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
   async function setup(providerScript: ChatResponse[], semanticCacheEnabled: boolean) {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -104,7 +104,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
 
     const agent = new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       toolIds: [],
       kbScope: { audience: ["customer"] },
@@ -142,21 +142,21 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
   it("does not write to the cache when the turn called a tool", async () => {
     const toolResponse: ChatResponse = {
       content: "",
-      toolCalls: [{ id: "c1", name: "search_products", arguments: { query: "serum" } }],
+      toolCalls: [{ id: "c1", name: "search_products", arguments: { query: "headphones" } }],
       stopReason: "tool_use",
       usage: usage(),
     };
     const { db, tenant, gateway, embeddings } = await setup([toolResponse, OK_RESPONSE], true);
     const agentWithTool = new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       toolIds: ["search_products"],
       kbScope: { audience: ["customer"] },
       semanticCacheEnabled: true,
     });
 
-    await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agentWithTool, [], "Do you have a vitamin C serum?");
+    await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agentWithTool, [], "Do you have wireless headphones?");
 
     expect(new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(0);
   });

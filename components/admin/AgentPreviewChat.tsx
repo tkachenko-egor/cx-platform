@@ -5,7 +5,7 @@ import { RotateCcw, Sparkles, X } from "lucide-react";
 import { MessageContent } from "../chat/MessageContent";
 import { Composer } from "../chat/Composer";
 import { CardRenderer } from "../cards/CardRenderer";
-import type { CardPayload } from "../../src/tools/amarelle/cards";
+import type { CardPayload } from "../../src/tools/cards";
 import type { ChatMessage as GatewayMessage } from "../../src/gateway/types";
 import type { AgentNativeToolsConfig } from "../../src/db/repositories/agent-def-repository";
 

@@ -9,7 +9,7 @@ import { EventRepository } from "../src/db/repositories/event-repository";
 import { ReviewQueueRepository } from "../src/db/repositories/review-queue-repository";
 import { AgentExperimentRepository } from "../src/db/repositories/agent-experiment-repository";
 import { RunRepository } from "../src/db/repositories/run-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -47,8 +47,8 @@ class ScriptedProvider implements ProviderAdapter {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
@@ -58,7 +58,7 @@ async function setup(providerScript: ChatResponse[]) {
 
   new AgentDefRepository(db, tenant).publish({
     key: DEFAULT_AGENT_KEY,
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order", "search_products", "check_return_eligibility"],
     kbScope: { audience: ["customer"] },
@@ -96,14 +96,14 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     // DEFAULT_LOW_CONFIDENCE_THRESHOLD), independent of RRF's rank-based
     // scoring quirks or any real KB content's incidental keyword overlap.
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE]) } });
     new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       kbScope: { audience: ["customer"] },
     });
@@ -122,8 +122,8 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
   it("pins the version an A/B-tested conversation was assigned, surviving later turns and experiment changes (Phase 2 M6a)", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -131,8 +131,8 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE, OK_RESPONSE]) } });
 
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique") + " v1", modelAlias: "support-main", toolIds: [] }); // v1
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique") + " v2", modelAlias: "support-main", toolIds: [] }); // v2
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v1", modelAlias: "support-main", toolIds: [] }); // v1
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v2", modelAlias: "support-main", toolIds: [] }); // v2
 
     const experiments = new AgentExperimentRepository(db, tenant);
     const experiment = experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 0 }); // always A (v1) at creation time

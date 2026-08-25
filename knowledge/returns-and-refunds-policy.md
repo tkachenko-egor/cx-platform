@@ -5,56 +5,38 @@ effective: 2026-03-01
 audience: customer
 ---
 
-# Amarelle Botanique — returns and refunds policy
+# Returns and refunds policy
 
-*Effective 1 March 2026. Applies to all orders placed online and by catalogue.*
+*Sample policy for the fixture retail catalogue. Replace it with your own before going live.*
 
 ## Standard return window
 
-You may return products within 30 calendar days of the delivery date shown on your order. The delivery date, not the order date, starts the clock. Requests made after 30 days cannot be accepted by our advisors, though you may ask for a supervisor review.
+You may return items within 30 calendar days of the delivery date shown on your order. The window runs from delivery, not from the day the order was placed.
 
-## Sealed and opened products
+Unopened items in their original packaging are refunded to the original payment method. A return shipping fee applies unless the return qualifies as free below.
 
-Because cosmetics are hygiene products, whether the item has been opened matters more than anything else.
+## Opened items
 
-- Sealed and unused, with any protective film or hygiene seal intact: full refund, no reason required.
-- Opened or used: cannot be returned for change of mind, shade preference or scent preference. This is a hygiene requirement, not a commercial choice.
+An opened or used item cannot be returned for a change of mind, because it can no longer be sold as new. This is a condition requirement, not a commercial preference.
 
-Three situations override the opened-product rule entirely. An opened product is always accepted if it caused a skin reaction, if it is defective, or if it was the wrong item. These are covered below.
+Opened items are always accepted when the reason is a safety concern, a defect, damage in transit, or the wrong item being sent.
 
-## Skin reactions
+## Faulty, damaged, and wrong items
 
-If a product caused redness, itching, burning, swelling or any other reaction, we accept the return regardless of whether it was opened and regardless of the 30-day window, for up to 90 days after delivery. You receive a full refund including original shipping, and we never ask you to return the remaining product before refunding.
+Items that arrived faulty or damaged, and wrong items sent in error, are accepted whether opened or not, for up to 60 days after delivery. You can choose a refund or a replacement where stock allows.
 
-Every reported reaction is logged as a product safety case and reviewed by our product safety team. Please keep the packaging: the batch number printed on it is what allows us to investigate.
+## Safety concerns
 
-## Defective or incorrect items
-
-Broken pumps, cracked caps, leaking bottles, products that arrived contaminated, and wrong items sent in error are accepted whether opened or not, for up to 60 days after delivery. Photographs speed up approval. Return shipping is free.
-
-## Items that cannot be returned
-
-- Gift-with-purchase items and free samples. These have no standalone refund value. If you return the qualifying order in full, please include the gift.
-- Gift cards and digital vouchers.
-- Personalised or engraved items.
-- Products past their printed expiry date at the time of the request.
-
-## How refunds are issued
-
-| Resolution | Timing | Notes |
-| --- | --- | --- |
-| Refund to original payment | 5–7 working days after inspection | Original shipping refunded only for reactions, defects and wrong items |
-| Store credit | Within 24 hours of approval | Adds 10% bonus value; never expires |
-| Replacement | Ships once the return is registered | Subject to stock; alternative shade or size may be offered |
+If a product caused harm or a health problem, tell us as soon as you can. We accept the return regardless of whether it was opened and regardless of the 30-day window, for up to 90 days after delivery, and a colleague reviews every report.
 
 ## Return shipping
 
-- Approved returns receive an RMA number and a prepaid label by email.
-- Return parcels must be posted within 10 days of the RMA being issued. RMAs expire after that and a new request is needed.
-- Change-of-mind returns: a flat 3.95 EUR label fee is deducted from the refund.
-- Reactions, defects and wrong items: return shipping is always free.
-- Or loyalty members: return shipping is free on every return.
+Return shipping is free when the reason is a safety concern, a defect, damage, or a wrong item, and for Gold loyalty members on any return. Otherwise a return label fee is deducted from the refund.
 
-## Cancelling an order
+## Promotional and free items
 
-Orders can be cancelled free of charge while the status is still Processing. Once an order is Shipped or In transit it cannot be cancelled, but it can be returned after delivery under the rules above.
+Free gifts and promotional items have no standalone refund value. If you return the qualifying order in full, please include them.
+
+## After the window
+
+Requests made after 30 days cannot be accepted by our advisors, though you may ask for a supervisor review.

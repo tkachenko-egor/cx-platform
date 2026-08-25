@@ -134,6 +134,7 @@ export async function POST(req: Request) {
     enabledChannels: [],
     // Business-hours gating isn't part of the preview turn loop (see turn.ts vs. runtime.ts) — irrelevant here either way.
     businessHours: null,
+    toolSettings: {},
   };
 
   const runs = new RunRepository(db, tenant);

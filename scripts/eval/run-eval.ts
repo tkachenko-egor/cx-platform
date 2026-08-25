@@ -13,6 +13,11 @@ import { evaluateTurn, summarize, checkThresholds, type GoldenCase, type Scripte
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
+// CLAUDE.md invariant #6: the return-window cases below are dated against
+// the fixture orders, so the harness pins "today" exactly like the tests do
+// — otherwise the gate silently starts failing once a window lapses.
+process.env.DEMO_DATE ??= "2026-08-21";
+
 /** Plays back a fixed, hand-authored sequence of "what the model would say" — deterministic, no API key, no network. */
 class ScriptedProvider implements ProviderAdapter {
   readonly provider = "scripted";
