@@ -1,23 +1,23 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
-import { runLookupOrder } from "../src/tools/amarelle/lookup-order";
-import { runCheckReturnEligibility } from "../src/tools/amarelle/check-return-eligibility";
-import { runSearchProducts } from "../src/tools/amarelle/search-products";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
+import { runLookupOrder } from "../src/tools/commerce/lookup-order";
+import { runCheckReturnEligibility } from "../src/tools/commerce/check-return-eligibility";
+import { runSearchProducts } from "../src/tools/commerce/search-products";
 import { executeTool } from "../src/tools/registry";
 
-// Freeze the clock like amarelle-handoff's own DEMO_DATE mechanism — the
-// REACTION window for ORD-100001 (delivered 2026-06-30) runs out on
-// 2026-09-28; without pinning "today" this test would start failing then.
+// CLAUDE.md invariant #6: the extended return window for ORD-100001
+// (delivered 2026-06-30) runs out on 2026-09-28 — without pinning "today"
+// this test would silently start failing then.
 beforeAll(() => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
 function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
   return { db, tenant };
 }
 
@@ -40,44 +40,80 @@ describe("lookup_order", () => {
   });
 });
 
-describe("check_return_eligibility — the centerpiece REACTION-override case", () => {
-  it("ORD-100001 is ELIGIBLE via REACTION_OVERRIDE, ahead of the opened/window rules", () => {
+describe("check_return_eligibility — the centerpiece extended-window override", () => {
+  it("ORD-100001 is ELIGIBLE via EXTENDED_WINDOW_OVERRIDE, ahead of the opened/window rules", () => {
     const { db, tenant } = seededTenant();
+    // Delivered 52 days before the pinned date: past the 30-day standard
+    // window and opened, so only the extended-window override can approve it.
     const result = runCheckReturnEligibility(db, tenant, {
       order_id: "ORD-100001",
       line_id: "LINE-5001",
-      reason_code: "REACTION",
+      reason_code: "SAFETY_CONCERN",
     });
     expect(result.ok).toBe(true);
     if ("verdict" in result) {
       expect(result.verdict).toBe("ELIGIBLE");
-      expect(result.rule).toBe("REACTION_OVERRIDE");
+      expect(result.rule).toBe("EXTENDED_WINDOW_OVERRIDE");
     }
   });
 
-  it("returns NOT_ELIGIBLE with a refusal card and verbatim policy copy for an opened change-of-mind return", () => {
+  it("honours a per-agent tool_settings override of the extended window", () => {
     const { db, tenant } = seededTenant();
-    // LINE-5001 is_opened=Yes per the seed data (see explore notes) — a
-    // non-REACTION reason should hit the opened-hygiene refusal.
+    const result = runCheckReturnEligibility(
+      db,
+      tenant,
+      { order_id: "ORD-100001", line_id: "LINE-5001", reason_code: "SAFETY_CONCERN" },
+      { extendedWindowDays: 10 },
+    );
+    if ("verdict" in result) expect(result.verdict).toBe("NOT_ELIGIBLE");
+  });
+
+  it("returns NOT_ELIGIBLE with a refusal card and the policy copy for an opened change-of-mind return", () => {
+    const { db, tenant } = seededTenant();
+    // LINE-5001 is_opened=Yes per the seed data — any reason outside the
+    // override list should hit the opened/not-resellable refusal.
     const result = runCheckReturnEligibility(db, tenant, {
       order_id: "ORD-100001",
       line_id: "LINE-5001",
       reason_code: "SEALED_UNWANTED",
     });
     if ("verdict" in result && result.verdict === "NOT_ELIGIBLE") {
-      expect(result.rule).toBe("OPENED_HYGIENE");
-      expect(result.policy_quote).toContain("This is a hygiene requirement, not a commercial choice.");
+      expect(result.rule).toBe("OPENED_NOT_RESELLABLE");
+      expect(result.policy_quote).toContain("This is a condition requirement, not a commercial choice.");
       expect("card" in result).toBe(true);
     }
+  });
+
+  it("refuses a promotional item outright", () => {
+    const { db, tenant } = seededTenant();
+    const result = runCheckReturnEligibility(db, tenant, { order_id: "ORD-100007", line_id: "LINE-5010", reason_code: "SEALED_UNWANTED" });
+    if ("verdict" in result && result.verdict === "NOT_ELIGIBLE") expect(result.rule).toBe("PROMOTIONAL_ITEM");
   });
 });
 
 describe("search_products", () => {
-  it("returns a product_results card and never drops 'All skin types' items from a specific-skin-type search", () => {
+  it("returns a product_results card and filters on free-form facets rather than a fixed taxonomy", () => {
     const { db, tenant } = seededTenant();
-    const result = runSearchProducts(db, tenant, { in_stock_only: true, limit: 5, suitable_for: "Sensitive" });
+    const result = runSearchProducts(db, tenant, { inStock: true, limit: 5, category: "Electronics" });
     expect(result.ok).toBe(true);
     expect(result.card.kind).toBe("product_results");
+    expect(result.products.length).toBeGreaterThan(0);
+    expect(result.products.every((p) => p.category === "Electronics" && p.in_stock)).toBe(true);
+  });
+
+  it("matches a tag without it being an enum in code", () => {
+    const { db, tenant } = seededTenant();
+    const result = runSearchProducts(db, tenant, { inStock: true, limit: 10, tag: "wireless" });
+    expect(result.products.length).toBeGreaterThan(0);
+    expect(result.products.every((p) => p.tags.includes("wireless"))).toBe(true);
+  });
+
+  it("formats prices in the currency from tool settings", () => {
+    const { db, tenant } = seededTenant();
+    const usd = runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" });
+    const eur = runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" }, { currency: "EUR" });
+    expect(usd.products[0].price.startsWith("$")).toBe(true);
+    expect(eur.products[0].price.startsWith("€")).toBe(true);
   });
 });
 

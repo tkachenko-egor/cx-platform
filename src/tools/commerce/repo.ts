@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
-import type { LoyaltyTier, OpenState, OrderStatus } from "./rules";
+import type { OpenState, OrderStatus } from "./rules";
 
 export type OrderRow = {
   order_id: string;
@@ -14,10 +14,10 @@ export type OrderRow = {
   carrier: string | null;
   tracking_number: string | null;
   shipping_method: string | null;
-  subtotal_eur: number;
-  shipping_eur: number;
-  tax_eur: number;
-  total_eur: number;
+  subtotal_amount: number;
+  shipping_amount: number;
+  tax_amount: number;
+  total_amount: number;
   shipping_address: string | null;
 };
 
@@ -26,9 +26,8 @@ export type CustomerRow = {
   first_name: string;
   last_name: string;
   email: string;
-  loyalty_tier: LoyaltyTier;
+  loyalty_tier: string;
   loyalty_points: number;
-  skin_profile: string | null;
   country: string | null;
 };
 
@@ -39,8 +38,8 @@ export type LineRow = {
   sku: string;
   product_name: string;
   quantity: number;
-  unit_price_eur: number;
-  line_total_eur: number;
+  unit_price: number;
+  line_total: number;
   batch_number: string | null;
   expiry_date: string | null;
   is_opened: OpenState;
@@ -50,34 +49,18 @@ export type ProductRow = {
   product_id: string;
   sku: string;
   name: string;
-  product_line: string | null;
-  form: string | null;
-  key_botanical: string | null;
-  concern: string | null;
-  suitable_for: string | null;
-  price_eur: number;
-  volume_ml: number | null;
-  pao_months: number | null;
+  category: string | null;
+  tags: string | null;
+  price: number;
   stock_qty: number;
-  is_refillable: number;
-  refill_sku: string | null;
-  is_gift_with_purchase: number;
-  shade: string | null;
-  contains_essential_oils: number;
-  vegan: number;
+  is_promotional_item: number;
   rating: number | null;
   short_description: string | null;
   image_url: string | null;
 };
 
-/**
- * Read-only queries over Amarelle's tenant business data
- * (customers/orders/order_lines/products), ported from amarelle-handoff's
- * lib/db/repo.ts and lib/tools/search-products.ts, adapted to the
- * tenant-scoped repository pattern. Tenant data, not platform code — see
- * CLAUDE.md invariant #5.
- */
-export class AmarelleRepo extends TenantScopedRepository {
+/** Read-only queries over the generic commerce tables the built-in toolkit reads. */
+export class CommerceRepo extends TenantScopedRepository {
   constructor(db: Database.Database, tenant: TenantContext) {
     super(db, tenant);
   }
@@ -112,7 +95,7 @@ export class AmarelleRepo extends TenantScopedRepository {
     return this.db.prepare(`SELECT * FROM products WHERE tenant_id = ? AND product_id = ?`).get(this.tenantId, productId) as ProductRow | undefined;
   }
 
-  /** FR-8.5's first real write path — only a `Processing` order can still be cancelled (see cancel-order.ts). */
+  /** FR-8.5's first real write path — see cancel-order.ts for the status gate around it. */
   cancelOrder(orderId: string): void {
     this.db.prepare(`UPDATE orders SET status = 'Cancelled' WHERE tenant_id = ? AND order_id = ?`).run(this.tenantId, orderId);
   }
@@ -125,48 +108,29 @@ export class AmarelleRepo extends TenantScopedRepository {
     return { orders, total: n };
   }
 
-  searchProducts(input: {
-    query?: string;
-    product_line?: string;
-    concern?: string;
-    suitable_for?: string;
-    max_price_eur?: number;
-    vegan_only?: boolean;
-    refillable_only?: boolean;
-    without_essential_oils?: boolean;
-    in_stock_only?: boolean;
-    limit: number;
-  }): ProductRow[] {
+  /** Free-form facets only — no fixed vertical taxonomy, so any tenant's catalogue works unchanged. */
+  searchProducts(input: { query?: string; category?: string; tag?: string; priceMax?: number; inStock?: boolean; limit: number }): ProductRow[] {
     const clauses: string[] = [`tenant_id = ?`];
     const params: unknown[] = [this.tenantId];
 
     if (input.query) {
-      clauses.push(`(lower(name) LIKE ? OR lower(key_botanical) LIKE ? OR lower(short_description) LIKE ?)`);
+      clauses.push(`(lower(name) LIKE ? OR lower(coalesce(tags, '')) LIKE ? OR lower(coalesce(short_description, '')) LIKE ?)`);
       const like = `%${input.query.toLowerCase()}%`;
       params.push(like, like, like);
     }
-    if (input.product_line) {
-      clauses.push(`product_line = ?`);
-      params.push(input.product_line);
+    if (input.category) {
+      clauses.push(`lower(coalesce(category, '')) = lower(?)`);
+      params.push(input.category);
     }
-    if (input.concern) {
-      clauses.push(`concern = ?`);
-      params.push(input.concern);
+    if (input.tag) {
+      clauses.push(`lower(coalesce(tags, '')) LIKE ?`);
+      params.push(`%${input.tag.toLowerCase()}%`);
     }
-    if (input.suitable_for) {
-      // "All skin types" rows must match every specific profile too, or a
-      // naive filter silently drops ~1/4 of the catalogue.
-      clauses.push(`(suitable_for = ? OR suitable_for = 'All skin types')`);
-      params.push(input.suitable_for);
+    if (input.priceMax !== undefined) {
+      clauses.push(`price <= ?`);
+      params.push(input.priceMax);
     }
-    if (input.max_price_eur !== undefined) {
-      clauses.push(`price_eur <= ?`);
-      params.push(input.max_price_eur);
-    }
-    if (input.vegan_only) clauses.push(`vegan = 1`);
-    if (input.refillable_only) clauses.push(`is_refillable = 1`);
-    if (input.without_essential_oils) clauses.push(`contains_essential_oils = 0`);
-    if (input.in_stock_only) clauses.push(`stock_qty > 0`);
+    if (input.inStock) clauses.push(`stock_qty > 0`);
 
     const where = `WHERE ${clauses.join(" AND ")}`;
     return this.db.prepare(`SELECT * FROM products ${where} ORDER BY rating DESC LIMIT ?`).all(...params, input.limit) as ProductRow[];

@@ -1,8 +1,7 @@
 /**
  * Minimal in-memory rate limiting (NFR-4.8): a per-IP cap on /api/chat,
  * plus a hard per-conversation turn cap. In-memory is fine for a
- * single-process Phase 1 deployment. Ported from amarelle-handoff's
- * lib/rate-limit.ts.
+ * single-process Phase 1 deployment.
  */
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS_PER_WINDOW = 20;

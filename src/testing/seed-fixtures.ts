@@ -4,7 +4,7 @@ import { ModelAliasRepository } from "../db/repositories/model-alias-repository"
 import { MODEL_CATALOG } from "../gateway/model-catalog";
 import { AgentDefRepository } from "../db/repositories/agent-def-repository";
 import { ToolDefRepository, type ApprovalPolicy } from "../db/repositories/tool-repository";
-import { seedAmarelleBusinessData } from "../tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../kb/ingest";
 import { allToolSpecs } from "../tools/registry";
 import { buildCorePrompt, buildRouterPrompt } from "../agents/system-prompt";
@@ -54,10 +54,10 @@ const DEFAULT_TARGET: ModelTarget = { provider: "stub", model: "stub-a" };
 export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixturesResult> {
   const { db } = opts;
   const tenants = new TenantRepository(db);
-  const slug = opts.tenantSlug ?? "demo";
-  const tenant = tenants.getBySlug(slug) ?? tenants.create(opts.tenantName ?? "Amarelle Botanique", slug);
+  const slug = opts.tenantSlug ?? "fixture-retail";
+  const tenant = tenants.getBySlug(slug) ?? tenants.create(opts.tenantName ?? "Fixture Retail Co", slug);
 
-  seedAmarelleBusinessData(db, tenant.id);
+  seedCommerceBusinessData(db, tenant.id);
 
   const supportMain = opts.supportMain ?? DEFAULT_TARGET;
   const triageFast = opts.triageFast ?? supportMain;
@@ -85,6 +85,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   for (const spec of allToolSpecs()) {
     toolDefs.upsert({
       key: spec.key,
+      displayName: spec.displayName,
       description: spec.description,
       inputSchema: spec.inputSchema,
       writeFlag: spec.writeFlag,

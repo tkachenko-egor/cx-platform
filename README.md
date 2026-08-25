@@ -1,14 +1,12 @@
 # CX Platform — Phase 1 (six-week cut)
 
 A model-agnostic, multi-tenant customer-experience platform, built per
-[`docs/00-requirements.md`](docs/00-requirements.md). This repo is
-deliberately separate from the [amarelle-handoff](../amarelle-handoff) demo
-bot: that repo is a fictional brand's fixed-business-rules chatbot with its
-own settled invariants; this one is general-purpose platform
-infrastructure. Amarelle Botanique's KB, seed data and tool logic were
-ported in as this platform's **first tenant's data/config** — see
-`CLAUDE.md` invariant #5 for the line between "tenant data" and "platform
-code."
+[`docs/00-requirements.md`](docs/00-requirements.md). Nothing here is
+written for one brand: the built-in commerce toolkit
+(`src/tools/commerce/`) is generic and tuned per agent through
+`agent_defs.tool_settings`, while `knowledge/` and `data/` hold neutral
+sample content a real tenant replaces. See `CLAUDE.md` invariant #5 for the
+line between "tenant data/config" and "platform code."
 
 ## What "Phase 1 (six-week cut)" means
 
@@ -32,9 +30,10 @@ this was built from — ask if you need the original doc.
   citations resolved back to the customer as chips.
 - **Tool registry** (`src/tools/`) — JSON-Schema-backed `tool_defs` +
   code-side handlers, `{ok:false}` on error rather than a throw (FR-8.9),
-  every call logged to `tool_calls` (FR-8.10). Amarelle's three read-only
-  tools (`lookup_order`, `search_products`, `check_return_eligibility`)
-  live under `src/tools/amarelle/`.
+  every call logged to `tool_calls` (FR-8.10). The built-in commerce tools
+  (`lookup_order`, `search_products`, `check_return_eligibility`,
+  `cancel_order`) live under `src/tools/commerce/`, configured per agent
+  via `agent_defs.tool_settings` rather than hardcoded per tenant.
 - **Agent runtime** (`src/agents/`) — the tool-calling loop, a templated
   system prompt (FR-6.2), and deterministic escalation triggers (FR-6.12):
   a severe-symptom keyword scan, an explicit human request, an eligible
@@ -73,7 +72,7 @@ sequence):
   (`src/tools/registry.ts`'s `executeTool` now actually enforces
   `tool_defs.write_flag`/`approval_policy`, which existed in the schema
   since Phase 0 but were unenforced). First real write tool: `cancel_order`
-  (`src/tools/amarelle/cancel-order.ts`). `auto`/`confirm_with_customer`/
+  (`src/tools/commerce/cancel-order.ts`). `auto`/`confirm_with_customer`/
   `require_human_approval` all gate on a conversation+arguments idempotency
   key (`tool_calls.idempotency_key`, `tool_approvals` table) so a retry
   never double-executes. Staff approve/deny parked calls at

@@ -5,47 +5,26 @@ effective: 2026-03-01
 audience: customer
 ---
 
-# Amarelle Botanique — shipping and delivery
+# Shipping and delivery
 
-*Effective 1 March 2026.*
+*Sample policy for the fixture retail catalogue. Replace it with your own before going live.*
+
+## Dispatch times
+
+Orders placed before 2pm on a working day are usually picked and packed the same day. While an order is still being prepared its status reads Processing.
 
 ## Delivery options
 
-| Method | Estimated transit | Cost |
-| --- | --- | --- |
-| Standard | 4–6 working days | 4.95 EUR, free over 60 EUR |
-| Express | 2–3 working days | 9.95 EUR |
-| Pickup point | 3–5 working days | 2.95 EUR, free over 40 EUR |
-
-Transit estimates start when the parcel leaves our warehouse, not when the order is placed. Orders normally leave within one working day.
-
-## Order statuses
-
-- **Processing** — payment taken, not yet picked and packed. Address changes and cancellation are still possible.
-- **Shipped** — the parcel has left our warehouse and tracking is available.
-- **In transit** — the carrier has scanned the parcel and it is moving toward you.
-- **Delayed** — the carrier reported an exception such as weather, customs or a failed delivery. A revised estimate is provided.
-- **Delivered** — the carrier confirmed delivery.
-- **Cancelled** — cancelled before dispatch; payment voided or refunded.
+Standard delivery arrives in four to six working days. Express delivery arrives in two to three working days. Delivery is free on orders above the free-shipping threshold shown at checkout; otherwise a flat shipping fee applies.
 
 ## Tracking
 
-Tracking numbers activate within a few hours of dispatch. If tracking has not moved for more than 5 working days, contact us so we can open a carrier investigation.
+Once an order ships, its status changes to Shipped and a tracking number is added. In transit means the carrier has scanned the parcel and it is on its way. Delayed means the carrier's estimate has passed without a delivery scan.
 
-Parcels marked Delivered that you cannot find are usually with a neighbour, in a safe place or at a pickup point. Check the carrier's proof of delivery first; if still missing after 48 hours we will investigate.
+## Changing an address or cancelling
 
-## Heat and cold in transit
+An address change or a cancellation is only possible while the order is still Processing. Once it has shipped, neither is possible — but the order can be returned after delivery under the returns policy.
 
-Balms, emulsions and lipsticks can soften in summer transit and firm up again on arrival. This is normal and does not affect the formula. If a product arrives melted, separated or leaking, treat it as a defective item and contact us.
+## Missing or late parcels
 
-## Changing a delivery address
-
-Addresses can be changed while an order is Processing. After dispatch we cannot redirect a parcel; contact the carrier directly using your tracking number, or refuse delivery and reorder.
-
-## International delivery
-
-We deliver to 28 countries. Duties and import taxes are calculated at checkout, so nothing is payable on delivery. Some fragrances contain alcohol and cannot travel by air to certain destinations; these are shipped by road and may take 3–4 days longer.
-
-## Sending a return back to us
-
-Return parcels must be handed to the carrier within 14 days of the RMA being issued. Late returns may be refused at inspection.
+If tracking has not updated for several working days, or the parcel is marked delivered but has not arrived, contact us and a colleague will open an investigation with the carrier.

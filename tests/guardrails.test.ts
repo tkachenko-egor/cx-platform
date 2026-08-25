@@ -4,7 +4,7 @@ import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import type { AgentDef } from "../src/db/repositories/agent-def-repository";
 import { KbArticleRepository, KbChunkRepository } from "../src/db/repositories/kb-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -49,8 +49,8 @@ const OK_RESPONSE: ChatResponse = {
 
 async function setup(providerScript: ChatResponse[], guardrails: Record<string, unknown> = {}) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
@@ -65,7 +65,7 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     key: "support-generalist",
     version: 1,
     status: "published",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order", "search_products", "check_return_eligibility"],
     kbScope: { audience: ["customer"] },
@@ -92,6 +92,7 @@ async function setup(providerScript: ChatResponse[], guardrails: Record<string, 
     conversationConfig: {},
     enabledChannels: [],
     businessHours: null,
+    toolSettings: {},
   };
 
   return { db, tenant, gateway, embeddings, agent, provider };
@@ -163,8 +164,8 @@ describe("runAgentTurn — input guardrails", () => {
     // Deliberately skips the default KB fixture corpus setup() normally ingests, so the
     // poisoned chunk is the only candidate and retrieval ranking can't be swamped by it.
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     const provider = new ScriptedProvider([OK_RESPONSE]);
     new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
@@ -175,7 +176,7 @@ describe("runAgentTurn — input guardrails", () => {
       key: "support-generalist",
       version: 1,
       status: "published",
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       toolIds: [],
       kbScope: { audience: ["customer"] },
@@ -202,6 +203,7 @@ describe("runAgentTurn — input guardrails", () => {
       conversationConfig: {},
       enabledChannels: [],
       businessHours: null,
+      toolSettings: {},
     };
 
     const articles = new KbArticleRepository(db, tenant);

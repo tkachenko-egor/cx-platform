@@ -19,7 +19,7 @@ interface ParsedDoc {
   raw: string;
 }
 
-/** Same frontmatter shape as amarelle-handoff's lib/agent/knowledge.ts. Exported for reuse by the admin .md import path (Phase 5 M2). */
+/** Parses the `doc_id`/`title`/`effective`/`audience` frontmatter block. Exported for reuse by the admin .md import path (Phase 5 M2). */
 export function parseFrontMatter(raw: string): { meta: Record<string, string>; body: string } {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
   if (!match) return { meta: {}, body: raw };
@@ -31,7 +31,7 @@ export function parseFrontMatter(raw: string): { meta: Record<string, string>; b
   return { meta, body: match[2].trim() };
 }
 
-/** KB-02: falls back to the body's first Markdown `# heading` when there's no explicit `title:` frontmatter — a filename like "03-warranty-support.md" is a worse title than the article's own `# Nimbus Goods — Warranty & Product Support` and shouldn't win by default. */
+/** KB-02: falls back to the body's first Markdown `# heading` when there's no explicit `title:` frontmatter — a filename like "03-warranty-support.md" is a worse title than the article's own `# Warranty & Product Support` and shouldn't win by default. */
 export function extractH1Title(body: string): string | null {
   const match = body.match(/^#\s+(.+)$/m);
   return match ? match[1].trim() : null;

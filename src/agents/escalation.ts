@@ -3,19 +3,25 @@
  * depend on the model deciding correctly. Tuned toward false positives:
  * a false positive costs one unnecessary handoff, a false negative on the
  * severity scan costs a customer being told to sit tight during a real
- * reaction. Ported from amarelle-handoff's lib/agent/severity.ts.
+ * emergency. The base list below is deliberately domain-neutral — anything
+ * vertical-specific belongs in agent_defs.escalation_config, which is
+ * appended to these, never replaces them.
  */
 const SEVERE_SYMPTOM_MARKERS: string[] = [
   // EN
-  "swelling", "swollen", "puffed", "lips are swelling", "tongue", "throat feels tight",
-  "throat closing", "trouble breathing", "can't breathe", "cant breathe", "difficulty breathing",
-  "blister", "blistering", "spreading", "getting worse fast", "hives all over", "eyes swollen shut",
+  "can't breathe", "cant breathe", "trouble breathing", "difficulty breathing", "throat closing",
+  "throat feels tight", "chest pain", "swelling", "swollen", "allergic reaction", "anaphyla",
+  "unconscious", "passed out", "severe pain", "bleeding", "electric shock", "caught fire",
+  "call an ambulance", "went to hospital", "emergency room", "getting worse fast",
   // UK
-  "набряк", "набрякло", "опухло", "губи", "язик", "горло", "важко дихати", "не можу дихати",
-  "пухирі", "пухирці", "поширюється", "погіршується", "кропив'янка", "кропивянка",
+  "не можу дихати", "важко дихати", "горло стискає", "набряк", "набрякло", "опухло",
+  "біль у грудях", "втратив свідомість", "знепритомнів", "алергічна реакція", "кровотеча",
+  "викличте швидку", "погіршується",
   // FR
-  "gonflement", "gonflé", "gonfle", "lèvres", "levres", "langue", "gorge serrée", "gorge serree",
-  "du mal à respirer", "du mal a respirer", "cloques", "ça s'étend", "ca s'etend", "ça empire", "ca empire", "urticaire",
+  "je ne peux pas respirer", "du mal à respirer", "du mal a respirer", "gorge serrée", "gorge serree",
+  "douleur à la poitrine", "douleur a la poitrine", "gonflement", "gonflé", "gonfle",
+  "réaction allergique", "reaction allergique", "perdu connaissance", "saignement",
+  "appeler une ambulance", "ça empire", "ca empire",
 ];
 
 const HUMAN_REQUEST_MARKERS: string[] = [
@@ -40,10 +46,12 @@ export function scanForHumanRequest(message: string, extraMarkers: string[] = []
   return { hit: false };
 }
 
-/** Any reaction mention at all (not just severe) routes to the SKIN REACTIONS prompt section, per CLAUDE.md invariant #4's spirit — "I'm not sure" is deliberately treated as a hit, not a pass. */
+/** Any mention of a product causing harm at all (not just severe) routes to the PRODUCT SAFETY prompt section — "I'm not sure" is deliberately treated as a hit, not a pass. */
 const REACTION_MENTION_MARKERS: string[] = [
-  "reaction", "rash", "itchy", "itching", "burning", "irritat", "broke out", "breakout",
-  "реакція", "висип", "свербить", "печіння", "réaction", "irritation", "démangeaison", "demangeaison",
+  "reaction", "made me sick", "made me ill", "hurt me", "injured", "injury", "burned me", "burn",
+  "rash", "irritat", "unsafe", "dangerous", "harmed",
+  "реакція", "травма", "опік", "нашкодило", "небезпечно", "подразнення",
+  "réaction", "blessure", "brûlure", "brulure", "irritation", "dangereux",
 ];
 
 export function scanForReactionMention(message: string, extraMarkers: string[] = []): { hit: boolean; matched?: string } {

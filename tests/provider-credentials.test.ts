@@ -12,7 +12,7 @@ beforeAll(() => {
 
 function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   const owner = new UserRepository(db, tenant).create({ email: "owner@demo.test", passwordHash: "x", role: "owner" });
   return { db, tenant, owner };
 }

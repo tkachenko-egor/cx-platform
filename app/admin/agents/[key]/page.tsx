@@ -27,7 +27,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
 
   const availableTools = new ToolDefRepository(db, tenant)
     .list()
-    .map((t) => ({ key: t.key, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
+    .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
   const availableOwners = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email }));

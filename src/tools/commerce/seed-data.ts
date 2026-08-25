@@ -14,21 +14,17 @@ function bool01(v: string): number {
   return v === "Yes" ? 1 : 0;
 }
 
-function num(v: string): number | null {
-  return v === "" || v === undefined ? null : Number(v);
-}
-
 function str(v: string): string | null {
   return v === "" || v === undefined ? null : v;
 }
 
 /**
- * Idempotent load of Amarelle's four CSVs (customers/orders/order_lines/products)
- * into this tenant's business tables. Ported from amarelle-handoff's seed
- * data (returns.csv/tickets.csv intentionally excluded — the tools that
- * read them are deferred past Phase 1).
+ * Idempotent load of the four fixture CSVs
+ * (customers/orders/order_lines/products) into a tenant's commerce tables —
+ * generic sample retail data, the starting point any tenant replaces with
+ * its own.
  */
-export function seedAmarelleBusinessData(db: Database.Database, tenantId: string): void {
+export function seedCommerceBusinessData(db: Database.Database, tenantId: string): void {
   const customers = readCsv<Record<string, string>>("customers.csv");
   const orders = readCsv<Record<string, string>>("orders.csv");
   const orderLines = readCsv<Record<string, string>>("order_lines.csv");
@@ -41,15 +37,15 @@ export function seedAmarelleBusinessData(db: Database.Database, tenantId: string
     db.prepare(`DELETE FROM products WHERE tenant_id = ?`).run(tenantId);
 
     const insertCustomer = db.prepare(
-      `INSERT INTO customers (tenant_id, customer_id, first_name, last_name, email, loyalty_tier, loyalty_points, skin_profile, country)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO customers (tenant_id, customer_id, first_name, last_name, email, loyalty_tier, loyalty_points, country)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const c of customers) {
-      insertCustomer.run(tenantId, c.customer_id, c.first_name, c.last_name, c.email, c.loyalty_tier, Number(c.loyalty_points), str(c.skin_profile), str(c.country));
+      insertCustomer.run(tenantId, c.customer_id, c.first_name, c.last_name, c.email, c.loyalty_tier, Number(c.loyalty_points), str(c.country));
     }
 
     const insertOrder = db.prepare(
-      `INSERT INTO orders (tenant_id, order_id, customer_id, order_date, status, ship_date, delivered_date, eta_date, carrier, tracking_number, shipping_method, subtotal_eur, shipping_eur, tax_eur, total_eur, shipping_address)
+      `INSERT INTO orders (tenant_id, order_id, customer_id, order_date, status, ship_date, delivered_date, eta_date, carrier, tracking_number, shipping_method, subtotal_amount, shipping_amount, tax_amount, total_amount, shipping_address)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const o of orders) {
@@ -65,16 +61,16 @@ export function seedAmarelleBusinessData(db: Database.Database, tenantId: string
         str(o.carrier),
         str(o.tracking_number),
         str(o.shipping_method),
-        Number(o.subtotal_eur),
-        Number(o.shipping_eur),
-        Number(o.tax_eur),
-        Number(o.total_eur),
+        Number(o.subtotal_amount),
+        Number(o.shipping_amount),
+        Number(o.tax_amount),
+        Number(o.total_amount),
         str(o.shipping_address),
       );
     }
 
     const insertLine = db.prepare(
-      `INSERT INTO order_lines (tenant_id, line_id, order_id, product_id, sku, product_name, quantity, unit_price_eur, line_total_eur, batch_number, expiry_date, is_opened)
+      `INSERT INTO order_lines (tenant_id, line_id, order_id, product_id, sku, product_name, quantity, unit_price, line_total, batch_number, expiry_date, is_opened)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const l of orderLines) {
@@ -86,8 +82,8 @@ export function seedAmarelleBusinessData(db: Database.Database, tenantId: string
         l.sku,
         l.product_name,
         Number(l.quantity),
-        Number(l.unit_price_eur),
-        Number(l.line_total_eur),
+        Number(l.unit_price),
+        Number(l.line_total),
         str(l.batch_number),
         str(l.expiry_date),
         l.is_opened,
@@ -95,8 +91,8 @@ export function seedAmarelleBusinessData(db: Database.Database, tenantId: string
     }
 
     const insertProduct = db.prepare(
-      `INSERT INTO products (tenant_id, product_id, sku, name, product_line, form, key_botanical, concern, suitable_for, price_eur, volume_ml, pao_months, stock_qty, is_refillable, refill_sku, is_gift_with_purchase, shade, contains_essential_oils, vegan, rating, short_description, image_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO products (tenant_id, product_id, sku, name, category, tags, price, stock_qty, is_promotional_item, rating, short_description, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const p of products) {
       insertProduct.run(
@@ -104,21 +100,11 @@ export function seedAmarelleBusinessData(db: Database.Database, tenantId: string
         p.product_id,
         p.sku,
         p.name,
-        str(p.product_line),
-        str(p.form),
-        str(p.key_botanical),
-        str(p.concern),
-        str(p.suitable_for),
-        Number(p.price_eur),
-        num(p.volume_ml),
-        num(p.pao_months),
+        str(p.category),
+        str(p.tags),
+        Number(p.price),
         Number(p.stock_qty),
-        bool01(p.is_refillable),
-        str(p.refill_sku),
-        bool01(p.is_gift_with_purchase),
-        str(p.shade),
-        bool01(p.contains_essential_oils),
-        bool01(p.vegan),
+        bool01(p.is_promotional_item),
         p.rating ? Number(p.rating) : null,
         str(p.short_description),
         str(p.image_url),

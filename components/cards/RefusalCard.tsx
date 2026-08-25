@@ -1,4 +1,4 @@
-import type { RefusalCard as RefusalCardData } from "../../src/tools/amarelle/cards";
+import type { RefusalCard as RefusalCardData } from "../../src/tools/cards";
 
 export function RefusalCard({ data }: { data: RefusalCardData }) {
   return (

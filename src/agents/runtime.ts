@@ -68,10 +68,9 @@ const MAX_OUTPUT_TOKENS = 1024;
 const KB_TOP_K = 5;
 
 /**
- * The tool-calling loop: ported in shape from amarelle-handoff's
- * lib/agent/loop.ts (round cap, parallel tool execution, tool_result
- * feedback), rebuilt on the model gateway, tool registry and hybrid
- * retrieval instead of a raw Anthropic client, a hardcoded switch, and
+ * The tool-calling loop: a round cap, tool execution, and tool_result
+ * feedback, built on the model gateway, tool registry and hybrid
+ * retrieval rather than a raw provider client, a hardcoded switch, and
  * full-corpus injection.
  */
 export async function runAgentTurn(
@@ -268,7 +267,7 @@ export async function runAgentTurn(
         }
 
         callbacks.onToolStart?.(call.name);
-        const result = await executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments, { sandbox });
+        const result = await executeTool(deps.db, tenant, conversationId, runId, call.name, call.arguments, { sandbox, toolSettings: agent.toolSettings });
 
         if (isCardBearing(result) && result.card) cards.push(result.card);
         if (isEscalatingResult(result) && result.escalate?.reason) {

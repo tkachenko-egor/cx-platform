@@ -15,7 +15,7 @@ describe("scanForNegativeSentiment", () => {
 
   it("does not hit on mild or neutral messages", () => {
     expect(scanForNegativeSentiment("Where is my order?").hit).toBe(false);
-    expect(scanForNegativeSentiment("I'm not sure this will work for my skin type").hit).toBe(false);
+    expect(scanForNegativeSentiment("I am not sure this will work for my setup").hit).toBe(false);
     expect(scanForNegativeSentiment("Thanks, that helps!").hit).toBe(false);
   });
 

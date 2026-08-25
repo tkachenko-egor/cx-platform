@@ -60,7 +60,12 @@ export interface AgentDef {
   enabledChannels: string[];
   /** Admin UI batch item 1: null inherits the tenant-wide default (src/core/business-hours.ts); set to override it for this agent only. */
   businessHours: BusinessHoursConfig | null;
+  /** Per-tool config keyed by tool key — how the built-in commerce tools stay generic. Each tool owns its own slice and applies its own defaults when a key is absent. */
+  toolSettings: AgentToolSettingsConfig;
 }
+
+/** Mirrors AgentToolSettings in src/tools/registry.ts; kept structural so repositories don't depend on the tool layer. */
+export type AgentToolSettingsConfig = Record<string, Record<string, unknown>>;
 
 export interface AgentNativeToolsConfig {
   webSearch?: boolean;
@@ -162,6 +167,7 @@ interface AgentDefRow {
   conversation_config: string;
   enabled_channels: string;
   business_hours: string | null;
+  tool_settings: string;
 }
 
 function rowToAgentDef(row: AgentDefRow): AgentDef {
@@ -198,6 +204,7 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     conversationConfig: JSON.parse(row.conversation_config) as AgentConversationConfig,
     enabledChannels: JSON.parse(row.enabled_channels) as string[],
     businessHours: row.business_hours ? (JSON.parse(row.business_hours) as BusinessHoursConfig) : null,
+    toolSettings: JSON.parse(row.tool_settings) as AgentToolSettingsConfig,
   };
 }
 
@@ -233,6 +240,7 @@ export interface AgentDefWriteInput {
   conversationConfig?: AgentConversationConfig;
   enabledChannels?: string[];
   businessHours?: BusinessHoursConfig | null;
+  toolSettings?: AgentToolSettingsConfig;
 }
 
 export class AgentDefRepository extends TenantScopedRepository {
@@ -261,13 +269,14 @@ export class AgentDefRepository extends TenantScopedRepository {
     const conversationConfig = input.conversationConfig ?? {};
     const enabledChannels = input.enabledChannels ?? [];
     const businessHours = input.businessHours ?? null;
+    const toolSettings = input.toolSettings ?? {};
     const columns = [
       "id", "tenant_id", "key", "version", "status", "system_prompt", "model_alias",
       "tool_ids", "kb_scope", "handoff_targets", "guardrails", "skills", "semantic_cache_enabled",
       "native_tools", "quick_replies", "display_name", "avatar_url", "internal_description",
       "owner_user_id", "tags", "agent_status", "environment", "change_notes",
       "temperature", "max_output_tokens", "cost_ceiling_usd", "persona", "language_config",
-      "escalation_config", "conversation_config", "enabled_channels", "business_hours", "created_at", "updated_at",
+      "escalation_config", "conversation_config", "enabled_channels", "business_hours", "tool_settings", "created_at", "updated_at",
     ];
     const placeholders = columns.map((c) => (c === "status" ? "'published'" : "?")).join(", ");
     this.db
@@ -304,6 +313,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(conversationConfig),
         JSON.stringify(enabledChannels),
         businessHours ? JSON.stringify(businessHours) : null,
+        JSON.stringify(toolSettings),
         now,
         now,
       );
@@ -340,6 +350,7 @@ export class AgentDefRepository extends TenantScopedRepository {
       conversationConfig,
       enabledChannels,
       businessHours,
+      toolSettings,
     };
   }
 
@@ -373,6 +384,7 @@ export class AgentDefRepository extends TenantScopedRepository {
     const conversationConfig = input.conversationConfig ?? {};
     const enabledChannels = input.enabledChannels ?? [];
     const businessHours = input.businessHours ?? null;
+    const toolSettings = input.toolSettings ?? {};
 
     this.db
       .prepare(
@@ -382,8 +394,8 @@ export class AgentDefRepository extends TenantScopedRepository {
            native_tools, quick_replies, display_name, avatar_url, internal_description,
            owner_user_id, tags, agent_status, environment, change_notes,
            temperature, max_output_tokens, cost_ceiling_usd, persona, language_config,
-           escalation_config, conversation_config, enabled_channels, business_hours, created_at, updated_at
-         ) VALUES (?, ?, ?, 0, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           escalation_config, conversation_config, enabled_channels, business_hours, tool_settings, created_at, updated_at
+         ) VALUES (?, ?, ?, 0, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (tenant_id, key, version) DO UPDATE SET
            system_prompt = excluded.system_prompt, model_alias = excluded.model_alias,
            tool_ids = excluded.tool_ids, kb_scope = excluded.kb_scope, handoff_targets = excluded.handoff_targets,
@@ -395,7 +407,7 @@ export class AgentDefRepository extends TenantScopedRepository {
            max_output_tokens = excluded.max_output_tokens, cost_ceiling_usd = excluded.cost_ceiling_usd,
            persona = excluded.persona, language_config = excluded.language_config, escalation_config = excluded.escalation_config,
            conversation_config = excluded.conversation_config, enabled_channels = excluded.enabled_channels,
-           business_hours = excluded.business_hours, updated_at = excluded.updated_at`,
+           business_hours = excluded.business_hours, tool_settings = excluded.tool_settings, updated_at = excluded.updated_at`,
       )
       .run(
         id,
@@ -428,6 +440,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(conversationConfig),
         JSON.stringify(enabledChannels),
         businessHours ? JSON.stringify(businessHours) : null,
+        JSON.stringify(toolSettings),
         now,
         now,
       );

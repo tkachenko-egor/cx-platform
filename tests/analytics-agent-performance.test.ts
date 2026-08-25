@@ -9,7 +9,7 @@ import { getAgentVolume, getContainmentRate, getEscalationReasonBreakdown, getLa
 
 function setup() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   return { db, tenant };
 }
 

@@ -3,7 +3,7 @@ import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository, type AgentDef } from "../src/db/repositories/agent-def-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -47,8 +47,8 @@ function usage() {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -94,6 +94,7 @@ function routerAgent(handoffTargets: string[]): AgentDef {
     conversationConfig: {},
     enabledChannels: [],
     businessHours: null,
+    toolSettings: {},
   };
 }
 
@@ -104,7 +105,7 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     key: "billing-specialist",
     version: 1,
     status: "published",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order"],
     kbScope: { audience: ["customer"] },
@@ -131,6 +132,7 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
     conversationConfig: {},
     enabledChannels: [],
     businessHours: null,
+    toolSettings: {},
   };
 }
 

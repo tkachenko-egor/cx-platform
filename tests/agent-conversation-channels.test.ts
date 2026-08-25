@@ -13,7 +13,7 @@ import { buildCorePrompt } from "../src/agents/system-prompt";
 import { pluckFields } from "../src/tools/http-tool-executor";
 import { isWithinBusinessHours } from "../src/core/business-hours";
 import { matchesGlob } from "../src/core/url-glob";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 
 beforeAll(() => {
   process.env.DEMO_DATE = "2026-08-21";
@@ -87,8 +87,8 @@ function usage() {
 
 async function baseSetup(script: ChatResponse[], onRequest?: (request: ChatRequest) => void) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: scriptedProvider(script, onRequest) } });
@@ -100,7 +100,7 @@ const OK_RESPONSE: ChatResponse = { content: "Happy to help with that.", toolCal
 describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
   it("keeps a previously-set agent-key tag (setTags) alongside a keyword-matched tag (addTags)", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE]);
-    new AgentDefRepository(db, tenant).publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Amarelle Botanique"), modelAlias: "support-main" });
+    new AgentDefRepository(db, tenant).publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main" });
     new AutoTagRuleRepository(db, tenant).create({ tag: "billing", keywords: ["invoice"] });
 
     const conversations = new ConversationRepository(db, tenant);
@@ -119,7 +119,7 @@ describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
 
   it("addTags itself unions rather than replacing", () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     const conversations = new ConversationRepository(db, tenant);
     const conversation = conversations.create({ channel: "widget", agentKey: DEFAULT_AGENT_KEY });
     conversations.setTags(conversation.id, ["support-generalist"]);
@@ -137,7 +137,7 @@ describe("memory scope 'recent' trims the model's replay context (Phase 9 M2)", 
     });
     new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       conversationConfig: { memoryScope: "recent", recentTurnLimit: 2 },
     });
@@ -157,7 +157,7 @@ describe("HTTP tool fallback message (Phase 9 M1)", () => {
   it("shows the fallback message to the model while keeping the technical detail", async () => {
     const { parseHttpToolConfig, runHttpTool } = await import("../src/tools/http-tool-executor");
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     const config = parseHttpToolConfig({ url: "http://127.0.0.1:1/definitely-not-listening", method: "GET", fallbackMessage: "That lookup is temporarily unavailable." });
 
     const result = await runHttpTool(db, tenant, config, {});

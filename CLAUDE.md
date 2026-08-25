@@ -26,20 +26,23 @@ mode, cost tracking, tracing). Full requirements:
    version of that promise.
 4. **Agent definitions are DB records, not code.** Don't add a
    TypeScript-defined agent config; extend `agent_defs` / `AgentDefRepository`.
-5. **Amarelle Botanique is tenant data/config here, never platform code.**
-   Its KB content, seed data, and tool handlers (return-eligibility rule
-   chain included) were deliberately ported in as the platform's first
-   real tenant — that's fine, and expected of a multi-tenant platform.
-   What's not fine: letting anything Amarelle-specific leak into
-   `src/gateway/`, `src/tenancy/`, `src/kb/`, `src/agents/runtime.ts`, or
-   the tool registry mechanics. Tenant-specific logic lives only under
-   `src/tools/amarelle/` and this tenant's DB rows — those layers must stay
+5. **The built-in commerce tools (`src/tools/commerce/`) are generic,
+   tenant-agnostic reference tools.** Order lookup, product search, return
+   eligibility and order cancellation ship with the platform and must work
+   for any tenant's catalogue unchanged — no vertical taxonomy in a zod/JSON
+   schema, no currency or policy constant baked into a handler. Any
+   tenant- or agent-specific behaviour is expressed through
+   `agent_defs.tool_settings` (per-tool config, keyed by tool key) or
+   `tool_defs.handler_config` (HTTP tools), never hardcoded into
+   `src/tools/commerce/`, `src/gateway/`, `src/tenancy/`, `src/kb/`,
+   `src/agents/runtime.ts`, or the tool registry mechanics. Tenant content
+   lives in DB rows, `knowledge/`, and `data/` — those layers must stay
    usable by a second tenant with zero code changes.
 6. **Dates**: inject the clock via `src/core/clock.ts`'s `today()` —
    never `new Date()` in business/eligibility logic. Tests that depend on
-   date windows (e.g. `tests/tools.test.ts`'s REACTION-window case) must
-   pin `process.env.DEMO_DATE`, or they silently start failing months
-   later exactly like amarelle-handoff's own ORD-100001 case did.
+   date windows (e.g. `tests/tools.test.ts`'s extended-return-window case,
+   and `scripts/eval/run-eval.ts`) must pin `process.env.DEMO_DATE`, or
+   they silently start failing months later once the window lapses.
 7. **Write tools require an approval policy, enforced in
    `src/tools/registry.ts`'s `executeTool`, never bypassed.** A write-flagged
    tool's `tool_defs.approval_policy` (`auto` / `confirm_with_customer` /
@@ -47,7 +50,7 @@ mode, cost tracking, tracing). Full requirements:
    every write executes behind a conversation+arguments idempotency key
    (`tool_calls.idempotency_key`) so a retry can't double-execute. Don't add
    a write tool that runs without going through this gate. `cancel_order`
-   is the first one — see `src/tools/amarelle/cancel-order.ts`.
+   is the first one — see `src/tools/commerce/cancel-order.ts`.
    `check_return_eligibility` resolving `ELIGIBLE` still escalates
    (`escalate: {reason}` on the tool result, a generic convention any tool
    can use) rather than claiming a return was completed — no

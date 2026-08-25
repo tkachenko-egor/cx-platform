@@ -6,7 +6,7 @@ import { AgentDefRepository } from "../src/db/repositories/agent-def-repository"
 import { ConversationRepository } from "../src/db/repositories/conversation-repository";
 import { MessageRepository } from "../src/db/repositories/message-repository";
 import { EventRepository } from "../src/db/repositories/event-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -46,8 +46,8 @@ function usage() {
 
 async function setupWithRouter(script: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -59,7 +59,7 @@ async function setupWithRouter(script: ChatResponse[]) {
   const agents = new AgentDefRepository(db, tenant);
   agents.publish({
     key: "support-generalist",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order"],
     kbScope: { audience: ["customer"] },
@@ -67,7 +67,7 @@ async function setupWithRouter(script: ChatResponse[]) {
   });
   agents.publish({
     key: "billing-specialist",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order"],
     kbScope: { audience: ["customer"] },
@@ -75,7 +75,7 @@ async function setupWithRouter(script: ChatResponse[]) {
   });
   agents.publish({
     key: "technical-specialist",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order"],
     kbScope: { audience: ["customer"] },
@@ -83,7 +83,7 @@ async function setupWithRouter(script: ChatResponse[]) {
   });
   agents.publish({
     key: "router",
-    systemPrompt: buildRouterPrompt("Amarelle Botanique", [
+    systemPrompt: buildRouterPrompt("Fixture Retail Co", [
       { key: "billing-specialist", description: "Billing" },
       { key: "technical-specialist", description: "Technical" },
       { key: "support-generalist", description: "Everything else" },
@@ -173,8 +173,8 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
 
   it("without a published router, behaves exactly like single-agent Phase 1 (backward compatible)", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-    seedAmarelleBusinessData(db, tenant.id);
+    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -183,7 +183,7 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
     const gateway = new ModelGateway({ db, providers: { scripted: provider } });
     new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
-      systemPrompt: buildCorePrompt("Amarelle Botanique"),
+      systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       toolIds: [],
       kbScope: { audience: ["customer"] },

@@ -24,6 +24,9 @@ import { migration022AgentIdentityPersonaLanguage } from "./022-agent-identity-p
 import { migration023EscalationConfigAndPublishApprovals } from "./023-escalation-config-and-publish-approvals";
 import { migration024ConversationChannelsFeedbackTagging } from "./024-conversation-channels-feedback-tagging";
 import { migration025AgentBusinessHoursOverride } from "./025-agent-business-hours-override";
+import { migration026GenericCommerceColumns } from "./026-generic-commerce-columns";
+import { migration027AgentToolSettings } from "./027-agent-tool-settings";
+import { migration028ToolDefDisplayName } from "./028-tool-def-display-name";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -52,4 +55,7 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration023EscalationConfigAndPublishApprovals,
   migration024ConversationChannelsFeedbackTagging,
   migration025AgentBusinessHoursOverride,
+  migration026GenericCommerceColumns,
+  migration027AgentToolSettings,
+  migration028ToolDefDisplayName,
 ];

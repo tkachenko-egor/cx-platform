@@ -10,6 +10,7 @@ type ApprovalPolicy = "auto" | "confirm_with_customer" | "require_human_approval
 
 export interface ToolRow {
   key: string;
+  displayName: string;
   description: string;
   writeFlag: boolean;
   approvalPolicy: ApprovalPolicy;
@@ -25,9 +26,11 @@ function ToolRowItem({ tool, onDelete, busy }: { tool: ToolRow; onDelete?: (key:
         {tool.type === "http" ? <Wrench size={16} className="shrink-0 text-muted" /> : <Code2 size={16} className="shrink-0 text-muted" />}
         <div className="min-w-0">
           <p className="truncate font-medium text-fg">
-            {tool.key} {tool.writeFlag && <span className="text-xs text-muted">· write · {tool.approvalPolicy}</span>}
+            {tool.displayName || tool.key} {tool.writeFlag && <span className="text-xs text-muted">· write · {tool.approvalPolicy}</span>}
           </p>
-          <p className="truncate text-xs text-muted">{tool.description}</p>
+          <p className="truncate text-xs text-muted">
+            <span className="font-mono">{tool.key}</span> · {tool.description}
+          </p>
         </div>
       </div>
       {onDelete && (

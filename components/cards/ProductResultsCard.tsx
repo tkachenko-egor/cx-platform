@@ -1,4 +1,4 @@
-import type { ProductResultCard } from "../../src/tools/amarelle/cards";
+import type { ProductResultCard } from "../../src/tools/cards";
 
 export function ProductResultsCard({ data }: { data: ProductResultCard[] }) {
   if (data.length === 0) {
@@ -9,8 +9,8 @@ export function ProductResultsCard({ data }: { data: ProductResultCard[] }) {
       {data.map((p) => (
         <div key={p.product_id} className="rounded-xl border border-border bg-surface p-2 text-xs shadow-sm">
           <p className="font-medium text-fg">{p.name}</p>
-          {p.key_botanical && <p className="text-muted">{p.key_botanical}</p>}
-          <p className="mt-1 font-medium text-accent">€{p.price_eur}</p>
+          {p.category && <p className="text-muted">{p.category}</p>}
+          <p className="mt-1 font-medium text-accent">{p.price}</p>
           {!p.in_stock && <p className="text-danger">Out of stock</p>}
         </div>
       ))}

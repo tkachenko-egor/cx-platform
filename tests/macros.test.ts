@@ -47,10 +47,10 @@ describe("MacroRepository (Phase 2 M8)", () => {
     const macros = new MacroRepository(db, tenant);
     const macro = macros.create({ name: "Welcome", body: "Hi there!", tags: ["greeting"] });
 
-    macros.update(macro.id, { body: "Hello, welcome to Amarelle Botanique!", tags: ["greeting", "onboarding"] });
+    macros.update(macro.id, { body: "Hello, welcome to Fixture Retail Co!", tags: ["greeting", "onboarding"] });
     const updated = macros.get(macro.id)!;
     expect(updated.name).toBe("Welcome");
-    expect(updated.body).toBe("Hello, welcome to Amarelle Botanique!");
+    expect(updated.body).toBe("Hello, welcome to Fixture Retail Co!");
     expect(updated.tags).toEqual(["greeting", "onboarding"]);
   });
 

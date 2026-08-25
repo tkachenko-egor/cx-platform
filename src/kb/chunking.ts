@@ -4,8 +4,8 @@ export interface RawChunk {
 }
 
 /**
- * FR-7.3: structure-aware chunking. Splits on H2 headings — matches the
- * real shape of Amarelle's KB docs (H1 title + intro, then H2 sections,
+ * FR-7.3: structure-aware chunking. Splits on H2 headings — matching the
+ * usual shape of a policy document (H1 title + intro, then H2 sections,
  * some containing tables) — and never splits a section mid-table, since a
  * section (table included) is the atomic chunk unit.
  */

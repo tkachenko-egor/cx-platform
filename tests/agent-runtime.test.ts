@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
-import { seedAmarelleBusinessData } from "../src/tools/amarelle/seed-data";
+import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
@@ -40,8 +40,8 @@ class ScriptedProvider implements ProviderAdapter {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Amarelle Botanique", "demo");
-  seedAmarelleBusinessData(db, tenant.id);
+  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
@@ -55,7 +55,7 @@ async function setup(providerScript: ChatResponse[]) {
     key: "support-generalist",
     version: 1,
     status: "published",
-    systemPrompt: buildCorePrompt("Amarelle Botanique"),
+    systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
     toolIds: ["lookup_order", "search_products", "check_return_eligibility"],
     kbScope: { audience: ["customer"] },
@@ -82,6 +82,7 @@ async function setup(providerScript: ChatResponse[]) {
     conversationConfig: {},
     enabledChannels: [],
     businessHours: null,
+    toolSettings: {},
   };
 
   return { db, tenant, gateway, embeddings, agent };
@@ -130,7 +131,7 @@ describe("runAgentTurn", () => {
     const script: ChatResponse[] = [
       {
         content: "",
-        toolCalls: [{ id: "call-1", name: "check_return_eligibility", arguments: { order_id: "ORD-100001", line_id: "LINE-5001", reason_code: "REACTION" } }],
+        toolCalls: [{ id: "call-1", name: "check_return_eligibility", arguments: { order_id: "ORD-100001", line_id: "LINE-5001", reason_code: "SAFETY_CONCERN" } }],
         stopReason: "tool_use",
         usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 },
       },

@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type Database from "better-sqlite3";
 import type { TenantContext } from "../../tenancy/context";
-import { AmarelleRepo } from "./repo";
+import { CommerceRepo } from "./repo";
 import { daysSinceDelivery } from "./rules";
-import { formatDayMonth, formatWeekday, money, statusLabel } from "./format";
+import { DEFAULT_CURRENCY, formatDayMonth, formatMoney, formatWeekday, statusLabel } from "./format";
 import { today } from "../../core/clock";
-import type { OrderStatusCard, StepState } from "./cards";
+import type { OrderStatusCard, StepState } from "../cards";
 
 export const lookupOrderInputSchema = z
   .object({
@@ -18,6 +18,7 @@ export type LookupOrderInput = z.infer<typeof lookupOrderInputSchema>;
 
 export const lookupOrderToolDef = {
   key: "lookup_order",
+  displayName: "Look Up Order",
   description:
     "Use when a customer asks about the status, location, delivery date, tracking, contents or address of a specific order. Requires an order number (format ORD-100001) or the email address on the order. If given only an email and several orders match, this returns the list so you can ask which one they mean.",
   inputSchema: {
@@ -28,6 +29,16 @@ export const lookupOrderToolDef = {
     },
   },
 };
+
+/** Per-agent overrides live in agent_defs.tool_settings.lookup_order. */
+export interface LookupOrderSettings {
+  currency: string;
+}
+
+export function resolveLookupOrderSettings(settings?: Record<string, unknown>): LookupOrderSettings {
+  const currency = typeof settings?.currency === "string" && settings.currency.trim() ? settings.currency.trim() : DEFAULT_CURRENCY;
+  return { currency };
+}
 
 const STEP_LABELS = ["Placed", "Packed", "In transit", "Delivered"] as const;
 
@@ -64,7 +75,7 @@ function trackingUrl(carrier: string | null, trackingNumber: string | null): str
   return `https://track.example.com/${encodeURIComponent(carrier)}/${encodeURIComponent(trackingNumber)}`;
 }
 
-function buildOrderResult(repo: AmarelleRepo, orderId: string) {
+function buildOrderResult(repo: CommerceRepo, orderId: string, currency: string) {
   const order = repo.findOrder(orderId);
   if (!order) return { ok: true as const, found: false as const };
 
@@ -75,7 +86,7 @@ function buildOrderResult(repo: AmarelleRepo, orderId: string) {
   const eta = etaLabel(order, todayStr);
   const canMutate = order.status === "Processing";
 
-  const cardItems = lines.map((l) => ({ product_name: l.product_name, quantity: l.quantity, line_total_eur: money(l.line_total_eur), product_url: `/products/${l.product_id}` }));
+  const cardItems = lines.map((l) => ({ product_name: l.product_name, quantity: l.quantity, line_total: formatMoney(l.line_total, currency), product_url: `/products/${l.product_id}` }));
 
   const actions: OrderStatusCard["actions"] = [];
   if (canMutate) {
@@ -96,6 +107,7 @@ function buildOrderResult(repo: AmarelleRepo, orderId: string) {
     tracking_number: order.tracking_number,
     tracking_url: trackingUrl(order.carrier, order.tracking_number),
     shipping_address: order.shipping_address,
+    currency,
     items: cardItems,
     actions,
   };
@@ -119,10 +131,11 @@ function buildOrderResult(repo: AmarelleRepo, orderId: string) {
       tracking_url: trackingUrl(order.carrier, order.tracking_number),
       shipping_method: order.shipping_method,
       shipping_address: order.shipping_address,
-      subtotal_eur: money(order.subtotal_eur),
-      shipping_eur: money(order.shipping_eur),
-      tax_eur: money(order.tax_eur),
-      total_eur: money(order.total_eur),
+      currency,
+      subtotal: formatMoney(order.subtotal_amount, currency),
+      shipping: formatMoney(order.shipping_amount, currency),
+      tax: formatMoney(order.tax_amount, currency),
+      total: formatMoney(order.total_amount, currency),
       can_cancel: canMutate,
       can_change_address: canMutate,
     },
@@ -130,7 +143,6 @@ function buildOrderResult(repo: AmarelleRepo, orderId: string) {
       customer_id: customer.customer_id,
       first_name: customer.first_name,
       loyalty_tier: customer.loyalty_tier,
-      skin_profile: customer.skin_profile,
       country: customer.country,
     },
     lines: lines.map((l) => {
@@ -141,36 +153,36 @@ function buildOrderResult(repo: AmarelleRepo, orderId: string) {
         product_name: l.product_name,
         sku: l.sku,
         quantity: l.quantity,
-        unit_price_eur: money(l.unit_price_eur),
-        line_total_eur: money(l.line_total_eur),
+        unit_price: formatMoney(l.unit_price, currency),
+        line_total: formatMoney(l.line_total, currency),
         batch_number: l.batch_number,
         expiry_date: l.expiry_date,
         is_opened: l.is_opened,
-        is_gift_with_purchase: Boolean(product?.is_gift_with_purchase),
+        is_promotional_item: Boolean(product?.is_promotional_item),
         stock_qty: product?.stock_qty ?? 0,
-        contains_essential_oils: Boolean(product?.contains_essential_oils),
       };
     }),
     card: { kind: "order_status" as const, data: card },
   };
 }
 
-export function runLookupOrder(db: Database.Database, tenant: TenantContext, input: LookupOrderInput) {
-  const repo = new AmarelleRepo(db, tenant);
-  if (input.order_id) return buildOrderResult(repo, input.order_id);
+export function runLookupOrder(db: Database.Database, tenant: TenantContext, input: LookupOrderInput, settings?: Record<string, unknown>) {
+  const { currency } = resolveLookupOrderSettings(settings);
+  const repo = new CommerceRepo(db, tenant);
+  if (input.order_id) return buildOrderResult(repo, input.order_id, currency);
 
   const customer = repo.findCustomerByEmail(input.email!);
   if (!customer) return { ok: true as const, found: false as const };
 
   const { orders, total } = repo.findOrdersByCustomer(customer.customer_id, 5);
   if (orders.length === 0) return { ok: true as const, found: false as const };
-  if (orders.length === 1 && total === 1) return buildOrderResult(repo, orders[0].order_id);
+  if (orders.length === 1 && total === 1) return buildOrderResult(repo, orders[0].order_id, currency);
 
   return {
     ok: true as const,
     found: true as const,
     multiple: true as const,
     total_matches: total,
-    orders: orders.map((o) => ({ order_id: o.order_id, order_date: o.order_date, status: o.status, total_eur: money(o.total_eur) })),
+    orders: orders.map((o) => ({ order_id: o.order_id, order_date: o.order_date, status: o.status, total: formatMoney(o.total_amount, currency) })),
   };
 }
