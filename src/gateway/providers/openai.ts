@@ -87,11 +87,15 @@ export class OpenAiProvider implements ProviderAdapter {
       buffer = parts.pop() ?? "";
 
       for (const part of parts) {
-        const line = part.trim();
-        if (!line.startsWith("data:")) continue;
+        // Each SSE block from the Responses API is an `event: <type>` line
+        // followed by a `data: <json>` line, not a bare `data:` line like
+        // Chat Completions streaming — pull the data line out of the block
+        // instead of requiring the whole block to start with "data:".
+        const dataLine = part.split("\n").find((l) => l.trim().startsWith("data:"));
+        if (!dataLine) continue;
         let event: Record<string, unknown>;
         try {
-          event = JSON.parse(line.slice(5).trim());
+          event = JSON.parse(dataLine.trim().slice(5).trim());
         } catch {
           continue;
         }
@@ -99,6 +103,13 @@ export class OpenAiProvider implements ProviderAdapter {
           onDelta(event.delta);
         } else if (event.type === "response.completed") {
           final = (event.response ?? undefined) as ResponsesApiResponse | undefined;
+        } else if (event.type === "response.failed" || event.type === "response.incomplete") {
+          const response = event.response as { error?: { message?: string }; incomplete_details?: { reason?: string } } | undefined;
+          const detail = response?.error?.message ?? response?.incomplete_details?.reason ?? JSON.stringify(event);
+          throw new GatewayError("ProviderUnavailable", `OpenAI stream failed: ${detail}`);
+        } else if (event.type === "error") {
+          const err = event.error as { message?: string } | undefined;
+          throw new GatewayError("ProviderUnavailable", `OpenAI stream error: ${err?.message ?? event.message ?? JSON.stringify(event)}`);
         }
       }
     }

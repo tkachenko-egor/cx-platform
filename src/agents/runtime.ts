@@ -354,8 +354,10 @@ export async function runAgentTurn(
 /**
  * Phase 6 M3: translates an agent's admin-configured native_tools into the
  * generic NativeToolConfig shape the gateway carries through to whichever
- * provider adapter reads it (only OpenAiProvider currently does — this is
- * harmless to compute for an Anthropic-backed agent, it just never applies).
+ * provider adapter reads it. OpenAiProvider handles all three types;
+ * AnthropicProvider only has a Claude-hosted equivalent for "web_search" and
+ * silently drops "file_search"/"mcp" — harmless to compute unconditionally
+ * either way, since each adapter decides what it actually supports.
  */
 function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: AgentDef): NativeToolConfig[] {
   const config = agent.nativeTools;

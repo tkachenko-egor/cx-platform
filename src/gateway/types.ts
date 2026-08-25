@@ -24,8 +24,10 @@ export interface ToolDefinition {
  * Phase 6 M3: provider-hosted tools that execute server-side on the
  * provider's own infrastructure, as opposed to ToolDefinition entries
  * (which we execute ourselves via src/tools/registry.ts). Generic/vendor-
- * neutral shape — only OpenAiProvider currently reads this; other adapters
- * ignore it, so it's safe to populate unconditionally from agent config.
+ * neutral shape — OpenAiProvider handles all three variants, AnthropicProvider
+ * only has a hosted equivalent for "web_search" (dropping the rest), and any
+ * other adapter ignores this entirely — safe to populate unconditionally
+ * from agent config either way.
  */
 export type NativeToolConfig =
   | { type: "web_search" }

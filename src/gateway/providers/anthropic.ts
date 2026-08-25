@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { GatewayError, type ChatRequest, type ChatResponse, type ChatUsage, type ProviderAdapter, type ToolCallRequest } from "../types";
+import { GatewayError, type ChatRequest, type ChatResponse, type ChatUsage, type NativeToolConfig, type ProviderAdapter, type ToolCallRequest } from "../types";
 
 /**
  * Illustrative per-million-token USD rates (input / output / cached-input).
@@ -66,19 +66,42 @@ export class AnthropicProvider implements ProviderAdapter {
       .join("\n\n");
     const messages = this.toAnthropicMessages(request.messages.filter((m) => m.role !== "system"));
 
+    const customTools = (request.tools ?? []).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      input_schema: tool.parameters as any,
+    }));
+    const nativeTools = (request.nativeTools ?? [])
+      .map((nt) => this.toAnthropicNativeTool(nt))
+      .filter((t) => t !== undefined);
+    const tools = [...customTools, ...nativeTools];
+
     return {
       system: system || undefined,
       messages,
       max_tokens: request.maxOutputTokens ?? 1024,
       temperature: request.temperature,
       stop_sequences: request.stopSequences,
-      tools: request.tools?.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        input_schema: tool.parameters as any,
-      })),
+      tools: tools.length > 0 ? tools : undefined,
     };
+  }
+
+  /**
+   * Mirrors OpenAiProvider.toResponsesTool — same generic NativeToolConfig, translated to
+   * Claude's own hosted tool shape. Only "web_search" has a Claude Messages-API equivalent
+   * (the `web_search_20250305` server tool); "file_search" and "mcp" have no direct match here
+   * (file retrieval for Claude agents goes through the platform's own KB pipeline via
+   * kbScope/src/kb/, not a provider-hosted tool) so those are silently dropped.
+   */
+  private toAnthropicNativeTool(nt: NativeToolConfig): { type: "web_search_20250305"; name: "web_search" } | undefined {
+    switch (nt.type) {
+      case "web_search":
+        return { type: "web_search_20250305", name: "web_search" };
+      case "file_search":
+      case "mcp":
+        return undefined;
+    }
   }
 
   /**
