@@ -278,6 +278,10 @@ export function AgentEditor({
   const [collectionIds, setCollectionIds] = useState<Set<string>>(new Set(Array.isArray(initial.kbScope.collectionIds) ? (initial.kbScope.collectionIds as string[]) : []));
   const [skills, setSkills] = useState(initial.skills.join(", "));
   const [guardrailsJson, setGuardrailsJson] = useState(JSON.stringify(initial.guardrails, null, 2));
+  /** Phase 3 M4 spike: "describe in plain language" input above the structured guardrail cards. */
+  const [guardrailText, setGuardrailText] = useState("");
+  const [interpretBusy, setInterpretBusy] = useState(false);
+  const [interpretError, setInterpretError] = useState<string | null>(null);
   const [nativeTools, setNativeTools] = useState<AgentNativeToolsConfig>(initial.nativeTools ?? {});
   const [quickReplies, setQuickReplies] = useState<string[]>(initial.quickReplies ?? []);
   const [newQuickReply, setNewQuickReply] = useState("");
@@ -423,6 +427,27 @@ export function AgentEditor({
   const updateGuardrailOutput = (patch: Partial<NonNullable<AgentGuardrailConfig["output"]>>) => {
     const g = parseGuardrails();
     setGuardrailsJson(JSON.stringify({ ...g, output: { ...g.output, ...patch } }, null, 2));
+  };
+
+  /** Phase 3 M4 spike: compiles guardrailText into the structured config via one gateway call, then merges it into guardrailsJson — the toggles/chip-lists below stay the source of truth and the only place to see exactly what got set. */
+  const applyGuardrailText = async () => {
+    setInterpretError(null);
+    setInterpretBusy(true);
+    try {
+      const res = await fetch("/api/admin/agents/guardrails-interpret", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: guardrailText, modelAlias, current: parseGuardrails() }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not read that description");
+      setGuardrailsJson(JSON.stringify(body.merged, null, 2));
+      setGuardrailText("");
+    } catch (err) {
+      setInterpretError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setInterpretBusy(false);
+    }
   };
 
   const toggleTool = (toolKey: string) => {
@@ -1465,6 +1490,29 @@ export function AgentEditor({
 
           {tab === "safety" && (
             <div className="space-y-5">
+              <Card className="p-6">
+                <SectionHeading
+                  icon={Shield}
+                  title="Describe in plain language"
+                  subtitle="Compiles into the Input/Output settings below — nothing is applied until you click Apply, and every field stays editable by hand afterward."
+                />
+                <div className="mt-4">
+                  <textarea
+                    value={guardrailText}
+                    onChange={(e) => setGuardrailText(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. Never discuss competitor pricing. Block legal-advice topics. Always disclose this is an AI at the start of the chat."
+                    className={textareaClass}
+                  />
+                  <div className="mt-2 flex items-center gap-3">
+                    <Button type="button" variant="secondary" disabled={interpretBusy || !guardrailText.trim() || !modelAlias} onClick={applyGuardrailText}>
+                      {interpretBusy ? "Reading…" : "Apply"}
+                    </Button>
+                    {interpretError && <p className="text-xs text-danger">{interpretError}</p>}
+                  </div>
+                </div>
+              </Card>
+
               <Card className="p-6">
                 <SectionHeading icon={Shield} title="Input" subtitle="Checked before the model is called." />
                 <div className="mt-4 space-y-4">
