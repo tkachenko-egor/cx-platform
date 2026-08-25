@@ -115,14 +115,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
       <p className="mt-1 text-sm text-muted">Creates the first published version (v1), starting in draft status and the sandbox environment. KB scope and handoff targets can be set up afterward from the agent&apos;s page.</p>
 
       <div className="mt-4">
-        <Tabs
-          active="/admin/agents/new"
-          items={[
-            { href: "/admin/agents/new", label: "Builder" },
-            { href: "#", label: "Analytics", disabled: true },
-            { href: "#", label: "Widget", disabled: true },
-          ]}
-        />
+        <Tabs active="/admin/agents/new" items={[{ href: "/admin/agents/new", label: "Builder" }]} />
       </div>
 
       <NewAgentPresets existingAgents={existingAgents} templates={Object.entries(TEMPLATES).map(([id, t]) => ({ id, label: t.label }))} cloneFrom={cloneFrom} template={template} />
@@ -135,6 +128,7 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
         availableModels={availableModels}
         availableCollections={availableCollections}
         availableOwners={availableOwners}
+        existingAgentKeys={existingAgents}
         tenantBusinessHours={tenant.businessHours}
         tenantTimezone={tenant.timezone}
       />

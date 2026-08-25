@@ -7,9 +7,11 @@ import { Field } from "../ui/Input";
 /**
  * Phase 7 M1: "clone from existing" and "start from template" — for a BPO,
  * agent #2 for a new client is mostly agent #1, so this is meant to save the
- * re-typing rather than be a full wizard. Both selects just navigate to a
+ * re-typing rather than be a full wizard. One select navigates to a
  * different `?cloneFrom=`/`?template=` on this same page; app/admin/agents/new/page.tsx
- * does the actual prefill server-side.
+ * does the actual prefill server-side. Template and clone are mutually exclusive,
+ * so this is one control with two optgroups rather than two selects a user has
+ * to realize are linked.
  */
 export function NewAgentPresets({
   existingAgents,
@@ -24,43 +26,44 @@ export function NewAgentPresets({
 }) {
   const router = useRouter();
 
+  const value = cloneFrom ? `clone:${cloneFrom}` : template ? `template:${template}` : "";
+
+  const onChange = (raw: string) => {
+    if (!raw) return router.push("/admin/agents/new");
+    const [kind, id] = raw.split(":");
+    router.push(kind === "clone" ? `/admin/agents/new?cloneFrom=${id}` : `/admin/agents/new?template=${id}`);
+  };
+
   return (
     <Card className="mb-5 p-6">
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Start from template" htmlFor="new-agent-template">
-          <select
-            id="new-agent-template"
-            value={cloneFrom ? "" : (template ?? "")}
-            onChange={(e) => router.push(e.target.value ? `/admin/agents/new?template=${e.target.value}` : "/admin/agents/new")}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
-          >
-            <option value="">Blank</option>
+      <Field label="Start from" htmlFor="new-agent-start-from">
+        <select
+          id="new-agent-start-from"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+        >
+          <option value="">Blank</option>
+          <optgroup label="Template">
             {templates
               .filter((t) => t.id !== "blank")
               .map((t) => (
-                <option key={t.id} value={t.id}>
+                <option key={t.id} value={`template:${t.id}`}>
                   {t.label}
                 </option>
               ))}
-          </select>
-        </Field>
-        <Field label="Or clone an existing agent" htmlFor="new-agent-clone">
-          <select
-            id="new-agent-clone"
-            value={cloneFrom ?? ""}
-            onChange={(e) => router.push(e.target.value ? `/admin/agents/new?cloneFrom=${e.target.value}` : "/admin/agents/new")}
-            className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
-            disabled={existingAgents.length === 0}
-          >
-            <option value="">{existingAgents.length === 0 ? "No agents yet" : "None"}</option>
-            {existingAgents.map((key) => (
-              <option key={key} value={key}>
-                {key}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+          </optgroup>
+          {existingAgents.length > 0 && (
+            <optgroup label="Clone an existing agent">
+              {existingAgents.map((key) => (
+                <option key={key} value={`clone:${key}`}>
+                  {key}
+                </option>
+              ))}
+            </optgroup>
+          )}
+        </select>
+      </Field>
       {cloneFrom && <p className="mt-2 text-xs text-muted">Prompt, model, tools, persona, and language settings copied from &quot;{cloneFrom}&quot; — nothing there is affected by this.</p>}
     </Card>
   );

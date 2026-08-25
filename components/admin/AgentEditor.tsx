@@ -193,19 +193,20 @@ export interface KbCollectionOption {
 
 const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-type SectionTab = "identity" | "prompt" | "persona" | "language" | "conversation" | "knowledge" | "tools" | "escalation" | "guardrails" | "behavior";
+/**
+ * Phase 3: collapsed from the original 10 flat, equal-weight tabs (identity/prompt/persona/
+ * language/conversation/knowledge/tools/escalation/guardrails/behavior) into 5 clusters grouped
+ * by the question an admin is actually asking, not by which config object a value lives on —
+ * "essentials" is the only one with anything required at submit (prompt + model).
+ */
+type SectionTab = "essentials" | "voice" | "tools" | "safety" | "deploy";
 
 const SECTION_TABS: { key: SectionTab; label: string; icon: typeof Bot }[] = [
-  { key: "identity", label: "Identity", icon: UserCircle },
-  { key: "prompt", label: "Prompt & model", icon: MessageSquare },
-  { key: "persona", label: "Persona", icon: Smile },
-  { key: "language", label: "Language", icon: Languages },
-  { key: "conversation", label: "Conversation", icon: Waypoints },
-  { key: "knowledge", label: "Knowledge", icon: BookOpen },
-  { key: "tools", label: "Tools", icon: Wrench },
-  { key: "escalation", label: "Escalation", icon: AlertTriangle },
-  { key: "guardrails", label: "Guardrails", icon: Shield },
-  { key: "behavior", label: "Behavior", icon: Sparkles },
+  { key: "essentials", label: "Essentials", icon: Bot },
+  { key: "voice", label: "Voice & conversation", icon: Smile },
+  { key: "tools", label: "Tools & skills", icon: Wrench },
+  { key: "safety", label: "Safety & escalation", icon: Shield },
+  { key: "deploy", label: "Deploy", icon: Globe },
 ];
 
 const TONE_PRESETS = ["Neutral", "Formal", "Friendly", "Playful", "Custom"];
@@ -234,6 +235,7 @@ export function AgentEditor({
   availableModels,
   availableCollections,
   availableOwners = [],
+  existingAgentKeys = [],
   versions,
   mode = "edit",
   tenantBusinessHours,
@@ -246,6 +248,8 @@ export function AgentEditor({
   availableCollections: KbCollectionOption[];
   /** Phase 7 M1: for the Identity tab's owner picker. */
   availableOwners?: OwnerOption[];
+  /** create mode only: existing agent keys, for inline "already taken" validation instead of only finding out on submit. */
+  existingAgentKeys?: string[];
   /** Phase 6 M4: every published version of this agent, newest first — powers the Prompt card's version dropdown. Omitted in create mode. */
   versions?: AgentEditorInitial[];
   mode?: "create" | "edit";
@@ -257,6 +261,15 @@ export function AgentEditor({
 }) {
   const router = useRouter();
   const [key, setKey] = useState(initial.key);
+  const [keyTouched, setKeyTouched] = useState(false);
+  const keyError =
+    mode === "create" && keyTouched && key
+      ? !KEY_PATTERN.test(key)
+        ? "Must start with a letter, and contain only lowercase letters, numbers, and hyphens"
+        : existingAgentKeys.includes(key)
+          ? "An agent with this key already exists"
+          : null
+      : null;
   const [viewingVersion, setViewingVersion] = useState(initial.version);
   const [systemPrompt, setSystemPrompt] = useState(initial.systemPrompt);
   const [modelAlias, setModelAlias] = useState(initial.modelAlias || availableModels[0]?.alias || "");
@@ -277,8 +290,10 @@ export function AgentEditor({
   const [newKbOpen, setNewKbOpen] = useState(false);
   const [forkingTool, setForkingTool] = useState<ToolOption | null>(null);
   const [testModalOpen, setTestModalOpen] = useState(false);
+  /** Phase 2 M2: the live test rail is persistent (not a modal) at lg+, where there's room for it — collapsible in case someone wants the full width back. */
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [managingCollection, setManagingCollection] = useState<KbCollectionOption | null>(null);
-  const [tab, setTab] = useState<SectionTab>("prompt");
+  const [tab, setTab] = useState<SectionTab>("essentials");
 
   // Phase 7 M1: identity & lifecycle
   const [displayName, setDisplayName] = useState(initial.displayName);
@@ -482,6 +497,10 @@ export function AgentEditor({
       setError("Key must start with a letter and contain only lowercase letters, numbers, and hyphens");
       return;
     }
+    if (mode === "create" && existingAgentKeys.includes(key)) {
+      setError("An agent with this key already exists");
+      return;
+    }
     if (!modelAlias) {
       setError("Choose a model");
       return;
@@ -679,14 +698,23 @@ export function AgentEditor({
           <SectionHeading icon={Bot} title="Key" />
           <div className="mt-4">
             <Field label="Key" htmlFor="agent-key">
-              <Input id="agent-key" value={key} onChange={(e) => setKey(e.target.value.trim().toLowerCase())} placeholder="e.g. billing-specialist" className="w-72 font-mono text-xs" />
+              <Input
+                id="agent-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value.trim().toLowerCase())}
+                onBlur={() => setKeyTouched(true)}
+                placeholder="e.g. billing-specialist"
+                className={`w-72 font-mono text-xs ${keyError ? "border-danger focus:border-danger" : ""}`}
+              />
             </Field>
-            <p className="mt-1.5 text-xs text-muted">Lowercase letters, numbers, and hyphens. This is how tools, the router, and handoffs refer to this agent — it can&apos;t be changed later.</p>
+            <p className={`mt-1.5 text-xs ${keyError ? "text-danger" : "text-muted"}`}>
+              {keyError ?? "Lowercase letters, numbers, and hyphens. This is how tools, the router, and handoffs refer to this agent — it can't be changed later."}
+            </p>
           </div>
         </Card>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6">
+      <div className={`grid grid-cols-1 items-start gap-6 ${previewOpen ? "lg:grid-cols-[minmax(0,1fr)_380px]" : ""}`}>
         <div className="min-w-0 space-y-5">
           <div className="flex gap-1 overflow-x-auto border-b border-border">
             {SECTION_TABS.map(({ key: tabKey, label, icon: Icon }) => (
@@ -704,7 +732,7 @@ export function AgentEditor({
             ))}
           </div>
 
-          {tab === "prompt" && (
+          {tab === "essentials" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <div className="flex items-start justify-between gap-4">
@@ -772,10 +800,10 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "identity" && (
+          {tab === "essentials" && (
             <div className="space-y-5">
               <Card className="p-6">
-                <SectionHeading icon={UserCircle} title="Identity" subtitle="How this agent is described and organized in the admin — never shown to the model." />
+                <SectionHeading icon={UserCircle} title="Details" subtitle="How this agent is described and organized in the admin — never shown to the model." />
                 <div className="mt-4 grid grid-cols-2 gap-4">
                   <Field label="Display name" htmlFor="agent-display-name">
                     <Input id="agent-display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Billing Specialist" />
@@ -816,7 +844,11 @@ export function AgentEditor({
                   </Field>
                 </div>
               </Card>
+            </div>
+          )}
 
+          {tab === "deploy" && (
+            <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Sparkles} title="Lifecycle" subtitle="Status is set by Save/Publish/Pause below, not chosen directly." />
                 <div className="mt-4 grid grid-cols-2 gap-4">
@@ -911,7 +943,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "persona" && (
+          {tab === "voice" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Smile} title="Tone & voice" />
@@ -1078,7 +1110,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "language" && (
+          {tab === "voice" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Languages} title="Language" />
@@ -1154,7 +1186,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "conversation" && (
+          {tab === "voice" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Waypoints} title="Scope" subtitle="Prompt-level guidance, not a hard gate — the model can still stray." />
@@ -1250,7 +1282,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "knowledge" && (
+          {tab === "essentials" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <div className="flex items-center justify-between gap-4">
@@ -1371,7 +1403,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "escalation" && (
+          {tab === "safety" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={AlertTriangle} title="Trigger keywords" subtitle="Appended to this agent's built-in scanner lists — never replaces them." />
@@ -1431,7 +1463,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "guardrails" && (
+          {tab === "safety" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Shield} title="Input" subtitle="Checked before the model is called." />
@@ -1507,7 +1539,7 @@ export function AgentEditor({
             </div>
           )}
 
-          {tab === "behavior" && (
+          {tab === "voice" && (
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={MessageSquare} title="Quick replies" subtitle="Canned reply chips shown at the start of a conversation." />
@@ -1541,14 +1573,17 @@ export function AgentEditor({
                   </div>
                 </div>
               </Card>
+            </div>
+          )}
 
+          {tab === "tools" && (
+            <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={Sparkles} title="Skills" />
                 <div className="mt-4">
                   <Field label="Skills (comma-separated)" htmlFor="agent-skills">
                     <Input id="agent-skills" value={skills} onChange={(e) => setSkills(e.target.value)} />
                   </Field>
-                  <p className="mt-1.5 text-xs text-muted">Guardrails moved to their own tab.</p>
                 </div>
               </Card>
             </div>
@@ -1581,12 +1616,32 @@ export function AgentEditor({
             </Button>
           </div>
         </div>
+
+        {previewOpen && (
+          <div className="hidden lg:sticky lg:top-6 lg:block">
+            <Card className="flex h-[calc(100vh-3rem)] max-h-[820px] flex-col overflow-hidden">
+              <AgentPreviewChat draft={previewDraft} onClose={() => setPreviewOpen(false)} />
+            </Card>
+          </div>
+        )}
       </div>
+
+      {/* lg+: the rail above is persistent — this only reappears once it's been collapsed. Below lg there's no room for it, so the FAB + modal is the only path. */}
+      {!previewOpen && (
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
+          className="fixed bottom-6 right-6 z-40 hidden items-center gap-2 rounded-full border border-border bg-surface px-4 py-3 text-sm font-medium text-fg shadow-lg hover:bg-bg lg:flex"
+        >
+          <Sparkles size={16} />
+          Show live test
+        </button>
+      )}
 
       <button
         type="button"
         onClick={() => setTestModalOpen(true)}
-        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-medium text-accent-fg shadow-lg hover:opacity-90"
+        className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-accent px-4 py-3 text-sm font-medium text-accent-fg shadow-lg hover:opacity-90 lg:hidden"
       >
         <Sparkles size={16} />
         Test agent
