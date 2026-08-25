@@ -5,6 +5,7 @@ import { ConversationRepository } from "../../../../src/db/repositories/conversa
 import { MessageRepository } from "../../../../src/db/repositories/message-repository";
 import { EventRepository } from "../../../../src/db/repositories/event-repository";
 import { getSessionUser } from "../../../../src/auth/session";
+import { loginRedirectPath } from "../../../../src/auth/login-redirect";
 import { ReplayTimeline, type ReplayItem } from "../../../../components/desk/ReplayTimeline";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +33,7 @@ export default async function ReplayPage({ params }: PageProps<"/desk/[conversat
   const { db, tenant } = await getPlatformContext();
 
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
 
   const conversation = new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) notFound();

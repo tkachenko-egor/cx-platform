@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { getPlatformContext } from "../../src/platform/context";
 import { getSessionUser } from "../../src/auth/session";
+import { loginRedirectPath } from "../../src/auth/login-redirect";
 import { roleAtLeast } from "../../src/auth/permissions";
 import { AdminSidebar } from "../../components/admin/AdminSidebar";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
   // Phase 8 M3: loosened from "admin" so a supervisor can reach
   // app/admin/agents/** (edit/save agent drafts). Every other admin page
   // still gates itself to admin+ individually via requireAdminPage

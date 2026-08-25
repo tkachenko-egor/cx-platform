@@ -32,3 +32,8 @@ export function findCatalogEntry(provider: string, model: string): ModelCatalogE
 export function displayNameForAlias(provider: string, model: string): string {
   return findCatalogEntry(provider, model)?.displayName ?? model;
 }
+
+/** The zero-network dev/test fixture (src/gateway/providers/stub.ts) — never a real model, but nothing else in the resolved alias marks it as such, so callers must check the provider explicitly before showing a model name as if it were live. */
+export function isStubProvider(provider: string): boolean {
+  return provider === "stub";
+}

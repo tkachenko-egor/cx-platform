@@ -51,7 +51,13 @@ export async function hybridSearch(db: Database.Database, tenant: TenantContext,
 
   const articlesById = new Map(articleRepo.list().map((a) => [a.id, a]));
 
-  const useCollections = Boolean(kbScope.collectionIds && kbScope.collectionIds.length > 0);
+  // KB-01: `collectionIds` present-but-empty means the admin deliberately
+  // deselected every KB — that must retrieve nothing, not fall back to the
+  // legacy audience filter (which has no notion of "no access" and would
+  // otherwise hand back every article, tenant-wide, tagged for the audience).
+  // Only a genuinely *absent* collectionIds field (agents published before
+  // Phase 5 M1, DB default '{}') takes the legacy path.
+  const useCollections = Array.isArray(kbScope.collectionIds);
   const allowedCollectionIds = new Set(kbScope.collectionIds ?? []);
   const allowedAudiences = new Set(kbScope.audience ?? ["customer"]);
 

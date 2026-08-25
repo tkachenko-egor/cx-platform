@@ -4,7 +4,7 @@ import { KbArticleRepository, KbChunkRepository } from "../../../../../../src/db
 import { KbCollectionRepository } from "../../../../../../src/db/repositories/kb-collection-repository";
 import { AuditLogRepository } from "../../../../../../src/db/repositories/audit-log-repository";
 import { requireRole, AuthError } from "../../../../../../src/auth/require-role";
-import { chunkAndEmbedArticle, parseFrontMatter } from "../../../../../../src/kb/ingest";
+import { chunkAndEmbedArticle, extractH1Title, parseFrontMatter } from "../../../../../../src/kb/ingest";
 import { extractPdfText } from "../../../../../../src/kb/pdf-extract";
 
 export const runtime = "nodejs";
@@ -64,7 +64,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/admin/kb-collec
     const raw = await file.text();
     const { meta, body } = parseFrontMatter(raw);
     docId = meta.doc_id ?? slugify(baseName);
-    title = meta.title ?? baseName;
+    title = meta.title ?? extractH1Title(body) ?? baseName;
     audience = meta.audience ?? "customer";
     effective = meta.effective ?? null;
     bodyText = body;

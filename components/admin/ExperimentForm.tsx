@@ -41,12 +41,21 @@ export function ExperimentForm({ agentVersions, experiments }: { agentVersions: 
       setError("Pick both variant versions");
       return;
     }
+    // DA-06: a comma-decimal locale renders/accepts "0,5" in a native
+    // <input type="number">, but the DOM value stays comma-separated on some
+    // browsers (Firefox) — Number("0,5") is NaN, and that would silently
+    // set an unusable traffic split rather than the 50% the admin typed.
+    const normalizedSplit = Number(trafficSplit.replace(",", "."));
+    if (!Number.isFinite(normalizedSplit) || normalizedSplit < 0 || normalizedSplit > 1) {
+      setError("Traffic to B must be a number between 0 and 1");
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/admin/experiments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentKey, variantAVersion, variantBVersion, trafficSplit: Number(trafficSplit) }),
+        body: JSON.stringify({ agentKey, variantAVersion, variantBVersion, trafficSplit: normalizedSplit }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Could not create experiment");
       router.refresh();

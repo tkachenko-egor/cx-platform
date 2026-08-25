@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getPlatformContext } from "../../../src/platform/context";
 import { getCoverageGaps } from "../../../src/analytics/coverage";
 import { getSessionUser } from "../../../src/auth/session";
+import { loginRedirectPath } from "../../../src/auth/login-redirect";
 import { Card } from "../../../components/ui/Card";
 import { Tabs } from "../../../components/ui/Tabs";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function CoverageGapsPage() {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
 
   const gaps = getCoverageGaps(db, tenant);
 

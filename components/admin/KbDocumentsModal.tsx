@@ -16,6 +16,9 @@ interface ArticleRow {
 }
 
 const modalFieldClass = "w-full rounded-lg border border-border bg-bg px-3 py-2 font-mono text-xs text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
+// KB-05: same suggestions as KbArticlesManagement.tsx's audience field — this modal is the other
+// place an article's audience gets set (from the agent builder), and had no hint of valid values at all.
+const AUDIENCE_SUGGESTIONS = ["customer", "advisor", "internal"];
 
 /**
  * Phase 6: search + add + import, reachable straight from the agent builder's Knowledge card
@@ -156,7 +159,12 @@ export function KbDocumentsModal({ collectionId, collectionName, onClose }: { co
               <Input id="kbm-title" value={title} onChange={(e) => setTitle(e.target.value)} />
             </Field>
             <Field label="Audience" htmlFor="kbm-audience">
-              <Input id="kbm-audience" value={audience} onChange={(e) => setAudience(e.target.value)} />
+              <Input id="kbm-audience" value={audience} onChange={(e) => setAudience(e.target.value)} list="kbm-audiences" />
+              <datalist id="kbm-audiences">
+                {AUDIENCE_SUGGESTIONS.map((a) => (
+                  <option key={a} value={a} />
+                ))}
+              </datalist>
             </Field>
             <Field label="Body (markdown)" htmlFor="kbm-body">
               <textarea id="kbm-body" value={body} onChange={(e) => setBody(e.target.value)} rows={6} className={modalFieldClass} />

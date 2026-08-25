@@ -48,6 +48,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
   const [credentialId, setCredentialId] = useState("");
   const [authStyle, setAuthStyle] = useState<AuthStyle>("none");
   const [authParamName, setAuthParamName] = useState("");
+  const [timeoutMs, setTimeoutMs] = useState("10000");
   const [writeFlag, setWriteFlag] = useState(false);
   const [approvalPolicy, setApprovalPolicy] = useState<ApprovalPolicy>("auto");
   const [outputFields, setOutputFields] = useState<OutputFieldRow[]>([]);
@@ -57,6 +58,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
 
   const [sampleArgsJson, setSampleArgsJson] = useState(DEFAULT_SAMPLE_ARGS);
   const [testResult, setTestResult] = useState<string | null>(null);
+  const [testWarning, setTestWarning] = useState<string[] | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -69,6 +71,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
     authParamName: authParamName || null,
     outputFields: outputFields.filter((f) => f.path.trim()).map((f) => ({ path: f.path.trim(), as: f.as.trim() || undefined })),
     fallbackMessage: fallbackMessage.trim() || null,
+    timeoutMs: timeoutMs.trim() ? Number(timeoutMs) : undefined,
   });
 
   const addOutputField = () => setOutputFields((prev) => [...prev, { path: "", as: "" }]);
@@ -78,6 +81,7 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
   const runTest = async () => {
     setTestError(null);
     setTestResult(null);
+    setTestWarning(null);
     let sampleArgs: Record<string, unknown>;
     try {
       sampleArgs = sampleArgsJson.trim() ? JSON.parse(sampleArgsJson) : {};
@@ -96,6 +100,11 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Test failed");
       setTestResult(JSON.stringify(body.result, null, 2));
+      // NC-01: an output field mapping that didn't resolve against the raw
+      // response leaves `data` empty (or missing that key) with `ok: true` —
+      // easy to miss. Surface it loudly instead of a silent green result.
+      const unresolved = body.result?.unresolvedOutputFields;
+      if (Array.isArray(unresolved) && unresolved.length > 0) setTestWarning(unresolved);
     } catch (err) {
       setTestError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -143,9 +152,17 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
         <Field label="Key" htmlFor="tool-key">
           <Input id="tool-key" value={key} onChange={(e) => setKey(e.target.value)} placeholder="e.g. check_shipping_status" className="font-mono text-xs" />
         </Field>
-        <Field label="Description (shown to the model)" htmlFor="tool-description">
-          <Input id="tool-description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Description (shown to the model — this is the model's entire instruction for when to call it)" htmlFor="tool-description">
+            <textarea
+              id="tool-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
+            />
+          </Field>
+        </div>
         <div className="sm:col-span-2">
           <Field label="URL" htmlFor="tool-url">
             <Input id="tool-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://api.example.com/status" />
@@ -165,6 +182,9 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
             <option value="body">JSON body</option>
             <option value="query">Query string</option>
           </select>
+        </Field>
+        <Field label="Timeout (ms, max 30000)" htmlFor="tool-timeout">
+          <Input id="tool-timeout" type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} placeholder="10000" />
         </Field>
         <Field label="Credential" htmlFor="tool-credential">
           <select id="tool-credential" value={credentialId} onChange={(e) => setCredentialId(e.target.value)} className={selectClass}>
@@ -228,11 +248,14 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
               + Add field
             </button>
           </div>
-          <p className="mt-1 text-xs text-muted">Blank means the model sees the full response verbatim. Add fields to send only a plucked/renamed subset instead.</p>
+          <p className="mt-1 text-xs text-muted">
+            Blank means the model sees the full response verbatim. Add fields to send only a plucked/renamed subset instead — paths resolve against the raw response body itself (e.g. <code className="font-mono">customer.email</code>, not{" "}
+            <code className="font-mono">data.customer.email</code>).
+          </p>
           <div className="mt-2 space-y-2">
             {outputFields.map((f, i) => (
               <div key={i} className="flex items-center gap-2">
-                <Input value={f.path} onChange={(e) => updateOutputField(i, { path: e.target.value })} placeholder="e.g. data.customer.email" className="font-mono text-xs" />
+                <Input value={f.path} onChange={(e) => updateOutputField(i, { path: e.target.value })} placeholder="e.g. customer.email" className="font-mono text-xs" />
                 <span className="text-xs text-muted">as</span>
                 <Input value={f.as} onChange={(e) => updateOutputField(i, { as: e.target.value })} placeholder="(same name)" className="font-mono text-xs" />
                 <button type="button" onClick={() => removeOutputField(i)} className="shrink-0 text-xs text-danger hover:underline">
@@ -264,6 +287,12 @@ export function ToolCreateForm({ toolCredentials }: { toolCredentials: ToolCrede
           </Button>
           {testError && <p className="text-xs text-danger">{testError}</p>}
         </div>
+        {testWarning && (
+          <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs text-danger">
+            {testWarning.length === 1 ? `Mapping "${testWarning[0]}" didn't match anything in the response` : `${testWarning.length} mappings didn't match anything in the response: ${testWarning.join(", ")}`} — check the
+            path against the raw response below (paths resolve against the response body itself, not <code className="font-mono">data.…</code>).
+          </p>
+        )}
         {testResult && <pre className="mt-3 max-h-64 overflow-auto rounded-lg border border-border bg-bg p-3 text-xs text-fg">{testResult}</pre>}
       </div>
 

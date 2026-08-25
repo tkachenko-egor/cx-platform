@@ -136,8 +136,16 @@ export async function processInboundTurn(
     // the tenant has published a router. No router published -> the
     // pinned agent (support-generalist by default) runs unchanged, same as
     // every earlier Phase 1b milestone.
+    //
+    // A conversation created with an explicit, non-default agentKey (e.g. a
+    // widget pinned to a specific agent via widget_configs.agent_key, see
+    // ensureConversation below) must not be silently rerouted by the router
+    // on turn 1 just because a router happens to be published for the
+    // tenant — that would answer with whatever the router's own model/agent
+    // decides instead of the agent the customer actually embedded.
+    const isExplicitlyPinned = (conversation.currentAgentId ?? DEFAULT_AGENT_KEY) !== DEFAULT_AGENT_KEY;
     if (agentPath.length === 0) {
-      const routerAgent = agentDefs.getLatestPublished(ROUTER_AGENT_KEY);
+      const routerAgent = isExplicitlyPinned ? undefined : agentDefs.getLatestPublished(ROUTER_AGENT_KEY);
       if (routerAgent) {
         const routerRun = runs.start({ conversationId: input.conversationId, agentKey: routerAgent.key, agentVersion: routerAgent.version, trigger: "router" });
         const routed = await runRouterTurn(deps, tenant, routerRun.id, routerAgent, input.text);
@@ -164,6 +172,14 @@ export async function processInboundTurn(
           sentiment: scanForNegativeSentiment(input.text).hit ? "negative" : "neutral",
         };
         persistHandoff(ROUTER_AGENT_KEY, target.key, routingPackage);
+      } else if (isExplicitlyPinned) {
+        // Record the path/tags the same way the router branch does, so runs
+        // and analytics attribute to the pinned agent instead of leaving
+        // tags empty and every run mis-bucketed under whatever agent handled
+        // it next — matches the router branch's bookkeeping above.
+        agentPath = appendToPath(agentPath, currentAgentKey);
+        conversations.setTags(input.conversationId, [currentAgentKey]);
+        conversations.updateMetadata(input.conversationId, { agentPath });
       }
     }
 

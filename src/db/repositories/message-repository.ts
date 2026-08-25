@@ -113,6 +113,18 @@ export class MessageRepository extends TenantScopedRepository {
     return rows.map(rowToMessage);
   }
 
+  /** DA-01: last public message per conversation, for the desk list's message preview — not paginated/indexed for scale, the desk queue is expected to be tens of conversations, not thousands. */
+  latestByConversationIds(conversationIds: string[]): Map<string, CanonicalMessage> {
+    if (conversationIds.length === 0) return new Map();
+    const placeholders = conversationIds.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT * FROM messages WHERE tenant_id = ? AND conversation_id IN (${placeholders}) AND visibility = 'public' ORDER BY sequence ASC`)
+      .all(this.tenantId, ...conversationIds) as MessageRow[];
+    const latest = new Map<string, CanonicalMessage>();
+    for (const row of rows) latest.set(row.conversation_id, rowToMessage(row));
+    return latest;
+  }
+
   private nextSequence(conversationId: string): number {
     const row = this.db
       .prepare(`SELECT MAX(sequence) as maxSeq FROM messages WHERE tenant_id = ? AND conversation_id = ?`)

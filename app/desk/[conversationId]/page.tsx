@@ -11,6 +11,7 @@ import { ToolApprovalRepository } from "../../../src/db/repositories/tool-approv
 import { DeskComposer } from "../../../components/desk/DeskComposer";
 import { ApprovalsPanel } from "../../../components/desk/ApprovalsPanel";
 import { getSessionUser } from "../../../src/auth/session";
+import { loginRedirectPath } from "../../../src/auth/login-redirect";
 import { Card } from "../../../components/ui/Card";
 import { Badge } from "../../../components/ui/Badge";
 
@@ -21,7 +22,7 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
   const { db, tenant } = await getPlatformContext();
 
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
 
   const conversation = new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) notFound();

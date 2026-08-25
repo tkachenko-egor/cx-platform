@@ -16,6 +16,8 @@ export interface KbArticleRow {
   body: string;
   /** body === "" is the only signal we have — an admin-saved/imported article always has a non-empty body (form/import both require it). */
   isFileSourced: boolean;
+  /** KB-04: chunks actually indexed for this article — 0 means "not retrievable yet," not just "short article." */
+  chunkCount: number;
 }
 
 const AUDIENCE_SUGGESTIONS = ["customer", "advisor", "internal"];
@@ -207,7 +209,14 @@ export function KbArticlesManagement({ collectionId, articles }: { collectionId:
                       {row.title} <span className="text-xs text-muted">· {row.audience}</span>
                       {row.isFileSourced && <span className="text-xs text-muted"> · from file</span>}
                     </p>
-                    <p className="truncate font-mono text-xs text-muted">[{row.docId}]</p>
+                    <p className="truncate font-mono text-xs text-muted">
+                      [{row.docId}] ·{" "}
+                      {row.chunkCount > 0 ? (
+                        `${row.chunkCount} chunk${row.chunkCount === 1 ? "" : "s"} indexed`
+                      ) : (
+                        <span className="text-danger">not indexed — won&apos;t be retrieved</span>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">

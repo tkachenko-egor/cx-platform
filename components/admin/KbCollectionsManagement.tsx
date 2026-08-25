@@ -53,11 +53,14 @@ export function KbCollectionsManagement({ collections }: { collections: KbCollec
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, description }),
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Could not create Knowledge Base");
+      const responseBody = await res.json();
+      if (!res.ok) throw new Error(responseBody.error ?? "Could not create Knowledge Base");
       setName("");
       setDescription("");
       setCreating(false);
-      router.refresh();
+      // KB-06: land straight in the new (empty) KB instead of back on the grid —
+      // "add an article" is exactly what happens next, every time.
+      router.push(`/admin/kb/${responseBody.collection.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

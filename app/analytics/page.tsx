@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { TrendingUp, Timer, MessageSquare, AlertTriangle, DollarSign, Smile } from "lucide-react";
 import { getPlatformContext } from "../../src/platform/context";
 import { getSessionUser } from "../../src/auth/session";
+import { loginRedirectPath } from "../../src/auth/login-redirect";
 import { roleAtLeast } from "../../src/auth/permissions";
 import { AgentDefRepository } from "../../src/db/repositories/agent-def-repository";
 import { MessageFeedbackRepository } from "../../src/db/repositories/message-feedback-repository";
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ agent?: string }> }) {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
 
   const { agent: agentKey } = await searchParams;
   const options = agentKey ? { agentKey } : {};

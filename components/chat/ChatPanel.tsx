@@ -8,7 +8,11 @@ import { MessageContent } from "./MessageContent";
 import { MessageBubble } from "./MessageBubble";
 import { CardRenderer } from "../cards/CardRenderer";
 
-const SUGGESTIONS = ["Where's my order?", "I'd like to return something", "Help me choose a product", "My skin reacted to a product", "How long does shipping take?"];
+// RD-04: vertical-neutral fallback only — this component is shared by every
+// tenant, so it must never hardcode one brand's product category (previously
+// leaked a skincare-specific chip onto agents with no configured quick
+// replies, i.e. every brand-new agent before Voice & conversation is touched).
+const SUGGESTIONS = ["Where's my order?", "I'd like to return something", "Talk to a human", "What are your business hours?"];
 
 const PHASE_BANNER: Record<string, string> = {
   awaiting_human: "A colleague has been notified and will pick this up shortly.",

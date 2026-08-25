@@ -1,13 +1,33 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "../../components/ui/Card";
 import { Button } from "../../components/ui/Button";
 import { Field, Input } from "../../components/ui/Input";
 
+// DA-05: only ever redirect somewhere inside this app — a `next` value from
+// the URL is untrusted input, and "//evil.com" or "https://evil.com" both
+// parse as a valid relative-looking href a browser will happily follow.
+function safeNextPath(raw: string | null): string {
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/desk";
+  return raw;
+}
+
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+// useSearchParams needs a Suspense boundary above it (Next.js requirement
+// for a client page that reads the URL) — split out so LoginPage can provide
+// one without changing anything else about this page's shape.
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +51,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/desk");
+    router.push(safeNextPath(searchParams.get("next")));
     router.refresh();
   }
 

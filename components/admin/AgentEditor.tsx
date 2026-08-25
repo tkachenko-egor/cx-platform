@@ -193,6 +193,25 @@ export interface KbCollectionOption {
 
 const KEY_PATTERN = /^[a-z][a-z0-9-]*$/;
 
+/** Derives a valid `key` from a human-entered name — e.g. "Billing Specialist!" -> "billing-specialist". Always matches KEY_PATTERN, or is "" if the name has no latin/digit characters to work with. */
+function slugify(input: string): string {
+  const slug = input
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!slug) return "";
+  return /^[a-z]/.test(slug) ? slug : `agent-${slug}`;
+}
+
+function makeUniqueSlug(base: string, taken: string[]): string {
+  if (!base || !taken.includes(base)) return base;
+  let i = 2;
+  while (taken.includes(`${base}-${i}`)) i++;
+  return `${base}-${i}`;
+}
+
 /**
  * Phase 3: collapsed from the original 10 flat, equal-weight tabs (identity/prompt/persona/
  * language/conversation/knowledge/tools/escalation/guardrails/behavior) into 5 clusters grouped
@@ -261,7 +280,9 @@ export function AgentEditor({
 }) {
   const router = useRouter();
   const [key, setKey] = useState(initial.key);
+  /** True once the admin has manually edited the key field — stops it from being overwritten by the name-derived slug. */
   const [keyTouched, setKeyTouched] = useState(false);
+  const [showKeyField, setShowKeyField] = useState(false);
   const keyError =
     mode === "create" && keyTouched && key
       ? !KEY_PATTERN.test(key)
@@ -301,6 +322,11 @@ export function AgentEditor({
 
   // Phase 7 M1: identity & lifecycle
   const [displayName, setDisplayName] = useState(initial.displayName);
+  /** Name is the primary identifier in create mode; key is derived from it (slugified, de-duped against existingAgentKeys) unless the admin opens the key field and edits it directly. */
+  const handleNameChange = (value: string) => {
+    setDisplayName(value);
+    if (mode === "create" && !keyTouched) setKey(makeUniqueSlug(slugify(value), existingAgentKeys));
+  };
   const [avatarUrl, setAvatarUrl] = useState(initial.avatarUrl ?? "");
   const [internalDescription, setInternalDescription] = useState(initial.internalDescription);
   const [ownerUserId, setOwnerUserId] = useState(initial.ownerUserId ?? "");
@@ -388,6 +414,80 @@ export function AgentEditor({
     conversationConfig,
     recentTurnLimit,
   ]);
+
+  // "Save draft" locks after a successful save and unlocks again only once the form actually
+  // changes, so re-clicking it when nothing's new can't fire a no-op save. draftSnapshot is a
+  // stringified fingerprint of every field the draft/publish payloads send; lastSavedSnapshot is
+  // whatever fingerprint was last written to the server (draft-saved or published).
+  const draftSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        systemPrompt,
+        modelAlias,
+        toolIds: [...toolIds],
+        guardrailsJson,
+        skills,
+        collectionIds: [...collectionIds],
+        nativeTools,
+        quickReplies,
+        displayName,
+        avatarUrl,
+        internalDescription,
+        ownerUserId,
+        tags,
+        agentStatus,
+        environment,
+        temperature,
+        maxOutputTokens,
+        costCeilingUsd,
+        persona,
+        languageConfig,
+        escalationConfig,
+        confidenceThreshold,
+        nFailedAttempts,
+        turnCountCap,
+        conversationConfig,
+        recentTurnLimit,
+        enabledChannels: [...enabledChannels],
+        useCustomBusinessHours,
+        businessHoursEnabled,
+        businessHoursDays,
+      }),
+    [
+      systemPrompt,
+      modelAlias,
+      toolIds,
+      guardrailsJson,
+      skills,
+      collectionIds,
+      nativeTools,
+      quickReplies,
+      displayName,
+      avatarUrl,
+      internalDescription,
+      ownerUserId,
+      tags,
+      agentStatus,
+      environment,
+      temperature,
+      maxOutputTokens,
+      costCeilingUsd,
+      persona,
+      languageConfig,
+      escalationConfig,
+      confidenceThreshold,
+      nFailedAttempts,
+      turnCountCap,
+      conversationConfig,
+      recentTurnLimit,
+      enabledChannels,
+      useCustomBusinessHours,
+      businessHoursEnabled,
+      businessHoursDays,
+    ],
+  );
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(draftSnapshot);
+  const isDraftDirty = draftSnapshot !== lastSavedSnapshot;
 
   // Older tenants can have leftover role-named aliases (e.g. "support-main") pointing at the
   // same provider+model a catalog-named alias also covers — collapse those duplicate-looking
@@ -518,11 +618,21 @@ export function AgentEditor({
   const publish = async () => {
     setError(null);
     setPendingApprovalMessage(null);
+    if (mode === "create" && !displayName.trim()) {
+      setError("Name is required");
+      return;
+    }
     if (mode === "create" && !KEY_PATTERN.test(key)) {
-      setError("Key must start with a letter and contain only lowercase letters, numbers, and hyphens");
+      setShowKeyField(true);
+      setError(
+        showKeyField
+          ? "Key must start with a letter and contain only lowercase letters, numbers, and hyphens"
+          : "Couldn't derive a valid key from this name — set one manually below",
+      );
       return;
     }
     if (mode === "create" && existingAgentKeys.includes(key)) {
+      setShowKeyField(true);
       setError("An agent with this key already exists");
       return;
     }
@@ -596,6 +706,16 @@ export function AgentEditor({
         // next page load starts clean from the newly-published version, not
         // a now-stale unsaved draft. Best-effort: nothing here depends on it.
         fetch(`/api/admin/agents/draft?key=${encodeURIComponent(initial.key)}`, { method: "DELETE" }).catch(() => {});
+        setLastSavedSnapshot(draftSnapshot);
+        // AB-01: router.refresh() re-fetches the server component and gives
+        // this already-mounted client component a new `initial` prop, but
+        // `agentStatus` only reads `initial.agentStatus` inside its useState
+        // *initializer* — that never re-runs on a prop change, only on
+        // remount. Left alone, the Lifecycle badge kept reading "draft"
+        // after a successful publish, which reads as "publish failed" and
+        // invites republishing. Set it directly instead of waiting on a
+        // refresh that can't reach it.
+        setAgentStatus("active");
         router.refresh();
       }
     } catch (err) {
@@ -660,6 +780,7 @@ export function AgentEditor({
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Could not save");
+      setLastSavedSnapshot(draftSnapshot);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -720,21 +841,40 @@ export function AgentEditor({
     <div className="mt-6">
       {mode === "create" && (
         <Card className="mb-5 p-6">
-          <SectionHeading icon={Bot} title="Key" />
+          <SectionHeading icon={Bot} title="Name" />
           <div className="mt-4">
-            <Field label="Key" htmlFor="agent-key">
-              <Input
-                id="agent-key"
-                value={key}
-                onChange={(e) => setKey(e.target.value.trim().toLowerCase())}
-                onBlur={() => setKeyTouched(true)}
-                placeholder="e.g. billing-specialist"
-                className={`w-72 font-mono text-xs ${keyError ? "border-danger focus:border-danger" : ""}`}
-              />
+            <Field label="Agent name" htmlFor="agent-name">
+              <Input id="agent-name" value={displayName} onChange={(e) => handleNameChange(e.target.value)} placeholder="e.g. Billing Specialist" className="w-72" />
             </Field>
-            <p className={`mt-1.5 text-xs ${keyError ? "text-danger" : "text-muted"}`}>
-              {keyError ?? "Lowercase letters, numbers, and hyphens. This is how tools, the router, and handoffs refer to this agent — it can't be changed later."}
-            </p>
+
+            {showKeyField ? (
+              <div className="mt-3">
+                <Field label="Key" htmlFor="agent-key">
+                  <Input
+                    id="agent-key"
+                    value={key}
+                    onChange={(e) => {
+                      setKey(e.target.value.trim().toLowerCase());
+                      setKeyTouched(true);
+                    }}
+                    placeholder="e.g. billing-specialist"
+                    className={`w-72 font-mono text-xs ${keyError ? "border-danger focus:border-danger" : ""}`}
+                  />
+                </Field>
+                <p className={`mt-1.5 text-xs ${keyError ? "text-danger" : "text-muted"}`}>
+                  {keyError ?? "Lowercase letters, numbers, and hyphens. This is how tools, the router, and handoffs refer to this agent — it can't be changed later."}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs text-muted">
+                Key: <span className="font-mono text-fg">{key || "—"}</span>
+                {" · "}
+                <button type="button" onClick={() => setShowKeyField(true)} className="text-accent hover:underline">
+                  edit
+                </button>
+                {" — this is how tools, the router, and handoffs refer to this agent; it can't be changed later."}
+              </p>
+            )}
           </div>
         </Card>
       )}
@@ -829,10 +969,12 @@ export function AgentEditor({
             <div className="space-y-5">
               <Card className="p-6">
                 <SectionHeading icon={UserCircle} title="Details" subtitle="How this agent is described and organized in the admin — never shown to the model." />
-                <div className="mt-4 grid grid-cols-2 gap-4">
-                  <Field label="Display name" htmlFor="agent-display-name">
-                    <Input id="agent-display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Billing Specialist" />
-                  </Field>
+                <div className={`mt-4 grid gap-4 ${mode === "create" ? "grid-cols-1" : "grid-cols-2"}`}>
+                  {mode === "edit" && (
+                    <Field label="Name" htmlFor="agent-display-name">
+                      <Input id="agent-display-name" value={displayName} onChange={(e) => handleNameChange(e.target.value)} placeholder="e.g. Billing Specialist" />
+                    </Field>
+                  )}
                   <Field label="Avatar URL" htmlFor="agent-avatar-url">
                     <Input id="agent-avatar-url" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://…" />
                   </Field>
@@ -905,7 +1047,13 @@ export function AgentEditor({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEnvironment("production")}
+                        onClick={() => {
+                          // AB-07: the one control on this page with customer-facing
+                          // consequences (arms write tools for real, stops simulating)
+                          // was a single unconfirmed click, sitting right next to Sandbox.
+                          if (environment === "sandbox" && !confirm("Switch this agent to Production? Write tools will stop simulating and start actually running once you Save/Publish.")) return;
+                          setEnvironment("production");
+                        }}
                         className={`rounded-lg border px-3 py-2 text-sm font-medium ${environment === "production" ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
                       >
                         Production
@@ -1331,6 +1479,21 @@ export function AgentEditor({
                 {isLegacyKbScope && collectionIds.size === 0 && (
                   <p className="mt-2 text-xs text-warning">This agent currently uses legacy audience-based KB scoping. Selecting a Knowledge Base and republishing switches it over.</p>
                 )}
+
+                {(selectedProvider === "openai" || selectedProvider === "anthropic") && (
+                  <div className="mt-4 flex items-start justify-between gap-4 border-t border-border pt-4">
+                    <div className="flex items-start gap-2.5">
+                      <Globe size={16} className="mt-0.5 shrink-0 text-muted" />
+                      <div>
+                        <p className="text-sm text-fg">Web Search</p>
+                        <p className="text-xs text-muted">
+                          Also search the web for real-time information — hosted by {selectedProvider === "openai" ? "OpenAI" : "Claude"}, no separate handler needed.
+                        </p>
+                      </div>
+                    </div>
+                    <Toggle checked={Boolean(nativeTools.webSearch)} onChange={(next) => setNativeTools((prev) => ({ ...prev, webSearch: next }))} />
+                  </div>
+                )}
               </Card>
             </div>
           )}
@@ -1341,17 +1504,6 @@ export function AgentEditor({
                 <Card className="p-6">
                   <SectionHeading icon={Plug} title="Native Tools" subtitle="Hosted by OpenAI — no separate handler needed." />
                   <div className="mt-4 space-y-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-2.5">
-                        <Globe size={16} className="mt-0.5 shrink-0 text-muted" />
-                        <div>
-                          <p className="text-sm text-fg">Web Search</p>
-                          <p className="text-xs text-muted">Search the web for real-time information.</p>
-                        </div>
-                      </div>
-                      <Toggle checked={Boolean(nativeTools.webSearch)} onChange={(next) => setNativeTools((prev) => ({ ...prev, webSearch: next }))} />
-                    </div>
-
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-2.5">
                         <FileSearch size={16} className="mt-0.5 shrink-0 text-muted" />
@@ -1655,8 +1807,13 @@ export function AgentEditor({
 
           <div className="flex items-center gap-3">
             {mode === "edit" && (
-              <Button variant="secondary" disabled={busy} onClick={saveDraft}>
-                {busy ? "Saving…" : "Save draft"}
+              <Button
+                variant="secondary"
+                disabled={busy || !isDraftDirty}
+                onClick={saveDraft}
+                title={!busy && !isDraftDirty ? "No changes since the last save" : undefined}
+              >
+                {busy ? "Saving…" : isDraftDirty ? "Save draft" : "Saved"}
               </Button>
             )}
             <Button disabled={busy} onClick={publish}>

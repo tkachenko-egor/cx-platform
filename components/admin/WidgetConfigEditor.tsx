@@ -36,6 +36,7 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
   const [newUrlPattern, setNewUrlPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const snippet = publicKey ? `<script src="${origin}/widget.js" data-widget-key="${publicKey}" data-position="${position}"></script>` : null;
@@ -133,6 +134,33 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
         </div>
       </section>
 
+      {/* WE-03: sits right after Appearance (not after the full-width Deploy
+          section below) so the live preview is visible in the same viewport
+          as the controls that drive it, instead of requiring a scroll past
+          an unrelated card to see what you just changed. */}
+      <section className="rounded-xl border border-border bg-surface p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-fg">Preview</h2>
+          {publicKey && (
+            <a href={`/embed/${publicKey}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-accent hover:underline">
+              Open live preview ↗
+            </a>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-muted">Updates instantly as you edit — save to publish these changes to the live widget.</p>
+        <div className="mt-3">
+          <WidgetMockPreview
+            title={title}
+            greetingText={greetingText}
+            logoUrl={logoUrl}
+            primaryColor={primaryColor}
+            userBubbleColor={userBubbleColor}
+            botBubbleColor={botBubbleColor}
+            fontFamily={fontFamily}
+          />
+        </div>
+      </section>
+
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-sm font-medium text-fg">Audience targeting</h2>
         <p className="mt-1 text-xs text-muted">Which pages this widget mounts on, by URL path (e.g. <code>/support/*</code>). Empty means every page the embed snippet is pasted on.</p>
@@ -177,33 +205,26 @@ export function WidgetConfigEditor({ agentKey, initial }: { agentKey: string; in
 
         {snippet && (
           <div className="mt-4">
-            <span className="text-xs text-muted">Paste this on any page — it works cross-origin</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted">Paste this on any page — it works cross-origin</span>
+              {/* WE-01: this string is the one thing the whole product exists to hand over —
+                  a partial drag-select past the edge of a scrolling box was the only way to
+                  copy it before, and produced a silently broken snippet. */}
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(snippet);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="rounded border border-border px-2 py-0.5 text-[11px] font-medium text-fg hover:bg-bg"
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
             <pre className="mt-1 overflow-x-auto rounded-lg border border-border bg-bg px-3 py-2 text-[11px] text-fg">{snippet}</pre>
           </div>
         )}
-      </section>
-
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-fg">Preview</h2>
-          {publicKey && (
-            <a href={`/embed/${publicKey}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-accent hover:underline">
-              Open live preview ↗
-            </a>
-          )}
-        </div>
-        <p className="mt-1 text-xs text-muted">Updates instantly as you edit — save to publish these changes to the live widget.</p>
-        <div className="mt-3">
-          <WidgetMockPreview
-            title={title}
-            greetingText={greetingText}
-            logoUrl={logoUrl}
-            primaryColor={primaryColor}
-            userBubbleColor={userBubbleColor}
-            botBubbleColor={botBubbleColor}
-            fontFamily={fontFamily}
-          />
-        </div>
       </section>
     </div>
   );

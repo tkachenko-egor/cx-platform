@@ -29,21 +29,28 @@ export interface HttpToolConfig {
   fallbackMessage: string | null;
 }
 
+function resolvePath(data: unknown, path: string): unknown {
+  let value: unknown = data;
+  for (const segment of path.split(".")) {
+    if (value === null || typeof value !== "object") return undefined;
+    value = (value as Record<string, unknown>)[segment];
+  }
+  return value;
+}
+
 /** Dot-path extraction/rename — no external dependency, mirrors this file's existing "small, self-contained, no new lib" style (see json-schema-lite.ts). Missing paths are silently omitted, not errors — a flaky upstream field shouldn't break the whole result. */
 export function pluckFields(data: unknown, mapping: OutputFieldMapping[]): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const { path, as } of mapping) {
-    let value: unknown = data;
-    for (const segment of path.split(".")) {
-      if (value === null || typeof value !== "object") {
-        value = undefined;
-        break;
-      }
-      value = (value as Record<string, unknown>)[segment];
-    }
+    const value = resolvePath(data, path);
     if (value !== undefined) result[as?.trim() || path] = value;
   }
   return result;
+}
+
+/** NC-01: which configured mappings resolved to nothing against the raw response — pluckFields itself stays silent (right call for a live agent turn, see above), but the tool-test endpoint uses this to warn loudly instead of handing back an unexplained `data: {}`. */
+export function unresolvedOutputFields(data: unknown, mapping: OutputFieldMapping[]): string[] {
+  return mapping.filter(({ path }) => resolvePath(data, path) === undefined).map(({ path }) => path);
 }
 
 /** Validates + defaults a tool_defs.handler_config JSON blob into an HttpToolConfig. Called both when building a runtime ToolSpec and server-side on tool creation — never trusts client JSON as-is. */
@@ -132,7 +139,8 @@ export async function runHttpTool(db: Database.Database, tenant: TenantContext, 
       return config.fallbackMessage ? { ok: false, error: config.fallbackMessage, detail, status: response.status, data } : { ok: false, error: detail, status: response.status, data };
     }
     const mappedData = config.outputFields.length > 0 ? pluckFields(data, config.outputFields) : data;
-    return { ok: true, status: response.status, data: mappedData };
+    const unresolved = config.outputFields.length > 0 ? unresolvedOutputFields(data, config.outputFields) : [];
+    return { ok: true, status: response.status, data: mappedData, ...(unresolved.length > 0 ? { unresolvedOutputFields: unresolved } : {}) };
   } catch (err) {
     const timedOut = err instanceof Error && err.name === "AbortError";
     const detail = timedOut ? `HTTP tool timed out after ${config.timeoutMs}ms` : err instanceof Error ? err.message : String(err);

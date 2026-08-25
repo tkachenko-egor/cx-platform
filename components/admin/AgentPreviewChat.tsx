@@ -82,9 +82,16 @@ export function AgentPreviewChat({ draft, onClose }: { draft: PreviewDraft; onCl
   const conversationIdRef = useRef<string | null>(null);
   const historyRef = useRef<GatewayMessage[]>([]);
   const draftRef = useRef(draft);
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     draftRef.current = draft;
   }, [draft]);
+
+  // AB-04: without this, a reply past the fold just sits there — you had to
+  // scroll manually after every turn, in the surface you use most.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, toolLabel]);
 
   const reset = () => {
     conversationIdRef.current = null;
@@ -169,9 +176,12 @@ export function AgentPreviewChat({ draft, onClose }: { draft: PreviewDraft; onCl
               setNote(dropped ? `${dropped} write tool${dropped === 1 ? "" : "s"} skipped in preview — test writes in a real conversation instead.` : null);
               break;
             }
-            case "error":
-              updateAssistant({ streaming: false, error: (event.message as string) ?? "Something went wrong." });
+            case "error": {
+              const base = (event.message as string) ?? "Something went wrong.";
+              const detail = event.detail as string | undefined;
+              updateAssistant({ streaming: false, error: detail ? `${base} (${detail})` : base });
               break;
+            }
           }
         }
       }
@@ -206,7 +216,7 @@ export function AgentPreviewChat({ draft, onClose }: { draft: PreviewDraft; onCl
         )}
       </div>
 
-      <div aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} aria-live="polite" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {messages.length === 0 && (
           <p className="text-sm text-muted">
             Send a message to try your draft — model, prompt, knowledge, and tools are all live from the form. Nothing here is saved until you publish, and write tools never actually run.

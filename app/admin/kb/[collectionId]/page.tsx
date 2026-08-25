@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getPlatformContext } from "../../../../src/platform/context";
 import { requireAdminPage } from "../../../../src/auth/require-admin-page";
-import { KbArticleRepository } from "../../../../src/db/repositories/kb-repository";
+import { KbArticleRepository, KbChunkRepository } from "../../../../src/db/repositories/kb-repository";
 import { KbCollectionRepository } from "../../../../src/db/repositories/kb-collection-repository";
 import { KbArticlesManagement } from "../../../../components/admin/KbArticlesManagement";
 
@@ -18,9 +18,17 @@ export default async function KbCollectionPage(props: PageProps<"/admin/kb/[coll
   const collection = new KbCollectionRepository(db, tenant).getById(collectionId);
   if (!collection) notFound();
 
-  const articles = new KbArticleRepository(db, tenant)
-    .list({ collectionId })
-    .map((a) => ({ docId: a.docId, title: a.title, audience: a.audience, effective: a.effective, body: a.body, isFileSourced: a.body === "" }));
+  const articleRows = new KbArticleRepository(db, tenant).list({ collectionId });
+  const chunkCounts = new KbChunkRepository(db, tenant).countByArticleIds(articleRows.map((a) => a.id));
+  const articles = articleRows.map((a) => ({
+    docId: a.docId,
+    title: a.title,
+    audience: a.audience,
+    effective: a.effective,
+    body: a.body,
+    isFileSourced: a.body === "",
+    chunkCount: chunkCounts.get(a.id) ?? 0,
+  }));
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">

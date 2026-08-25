@@ -177,6 +177,16 @@ export class KbChunkRepository extends TenantScopedRepository {
     return rows.map(rowToChunk);
   }
 
+  /** KB-04: the admin article list had no way to tell "is this article actually retrievable yet?" short of guessing questions at the test pane — surfaces the chunk count computed at import/save time instead. */
+  countByArticleIds(articleIds: string[]): Map<string, number> {
+    if (articleIds.length === 0) return new Map();
+    const placeholders = articleIds.map(() => "?").join(",");
+    const rows = this.db
+      .prepare(`SELECT article_id, COUNT(*) as count FROM kb_chunks WHERE tenant_id = ? AND article_id IN (${placeholders}) GROUP BY article_id`)
+      .all(this.tenantId, ...articleIds) as { article_id: string; count: number }[];
+    return new Map(rows.map((r) => [r.article_id, r.count]));
+  }
+
   getByIds(ids: string[]): KbChunk[] {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => "?").join(",");

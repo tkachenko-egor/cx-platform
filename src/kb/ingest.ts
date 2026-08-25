@@ -31,6 +31,12 @@ export function parseFrontMatter(raw: string): { meta: Record<string, string>; b
   return { meta, body: match[2].trim() };
 }
 
+/** KB-02: falls back to the body's first Markdown `# heading` when there's no explicit `title:` frontmatter — a filename like "03-warranty-support.md" is a worse title than the article's own `# Nimbus Goods — Warranty & Product Support` and shouldn't win by default. */
+export function extractH1Title(body: string): string | null {
+  const match = body.match(/^#\s+(.+)$/m);
+  return match ? match[1].trim() : null;
+}
+
 export function loadKnowledgeDocs(dir: string = KNOWLEDGE_DIR): ParsedDoc[] {
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
   return files.map((file) => {

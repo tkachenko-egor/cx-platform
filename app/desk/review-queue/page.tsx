@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getPlatformContext } from "../../../src/platform/context";
 import { ReviewQueueRepository } from "../../../src/db/repositories/review-queue-repository";
 import { getSessionUser } from "../../../src/auth/session";
+import { loginRedirectPath } from "../../../src/auth/login-redirect";
 import { SignOutButton } from "../../../components/desk/SignOutButton";
 import { ReviewQueueList } from "../../../components/desk/ReviewQueueList";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function ReviewQueuePage() {
   const { db, tenant } = await getPlatformContext();
   const user = await getSessionUser(db, tenant);
-  if (!user) redirect("/login");
+  if (!user) redirect(await loginRedirectPath());
 
   const items = new ReviewQueueRepository(db, tenant).listPending().map((item) => ({
     id: item.id,
