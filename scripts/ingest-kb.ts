@@ -5,7 +5,15 @@ import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { OpenAiEmbeddingProvider } from "../src/gateway/embeddings/openai";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 
-/** FR-7.2: re-run this after editing knowledge/*.md — only changed articles get re-embedded. */
+/**
+ * FR-7.2: re-run this after editing knowledge/*.md — only changed articles
+ * get re-embedded.
+ *
+ * A5: this CLI only ingests Markdown from knowledge/. PDF-sourced articles
+ * are imported through the admin KB editor, which runs src/kb/pdf-extract.ts
+ * — setting DOCLING_URL there changes their extracted text and chunk
+ * boundaries, so re-import those articles after enabling the sidecar.
+ */
 async function main() {
   const db = getDb();
   const tenant = new TenantRepository(db).getBySlug("demo");

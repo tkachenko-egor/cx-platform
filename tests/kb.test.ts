@@ -1,12 +1,14 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { KbRetrievalLogRepository } from "../src/db/repositories/kb-retrieval-log-repository";
 import { chunkMarkdown } from "../src/kb/chunking";
+import { extractPdfText } from "../src/kb/pdf-extract";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { hybridSearch } from "../src/kb/retrieval";
 import type { RerankProvider } from "../src/gateway/rerank/types";
@@ -42,6 +44,7 @@ class ScriptedProvider implements ProviderAdapter {
 }
 
 const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "knowledge");
+const FIXTURE_PDF = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "returns-policy.pdf");
 
 describe("chunkMarkdown", () => {
   it("splits on H2 headings and keeps a table intact within one chunk", () => {
@@ -49,10 +52,80 @@ describe("chunkMarkdown", () => {
     const chunks = chunkMarkdown(body);
     expect(chunks).toHaveLength(3);
     expect(chunks[0].heading).toBeNull();
+    expect(chunks[0].headingLevel).toBeNull();
     expect(chunks[0].text).toContain("intro line");
     expect(chunks[1].heading).toBe("Section A");
+    expect(chunks[1].headingLevel).toBe(2);
     expect(chunks[2].heading).toBe("Section B");
     expect(chunks[2].text).toContain("| x | y |");
+  });
+
+  it("A5: flags a chunk that contains a Markdown table and never splits the table from its heading", () => {
+    const body = ["## Fees", "Here are the fees.", "", "| State | Fee |", "| -- | -- |", "| Unopened | None |", "| Opened | 15% |"].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].heading).toBe("Fees");
+    expect(chunks[0].containsTable).toBe(true);
+    expect(chunks[0].text).toContain("| Unopened | None |");
+    expect(chunks[0].text).toContain("| Opened | 15% |");
+  });
+
+  it("A5: splits on deeper (H3+) section headings from a layout-aware extractor", () => {
+    const body = ["## Returns", "Overview.", "", "### Unopened items", "Refunded in full.", "", "### Opened items", "Store credit only."].join("\n");
+    const chunks = chunkMarkdown(body);
+    expect(chunks.map((c) => c.heading)).toEqual(["Returns", "Unopened items", "Opened items"]);
+    expect(chunks.map((c) => c.headingLevel)).toEqual([2, 3, 3]);
+  });
+});
+
+describe("extractPdfText", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.DOCLING_URL;
+  });
+
+  it("falls back to pdf-parse text-layer extraction when no Docling sidecar is configured", async () => {
+    const text = await extractPdfText(fs.readFileSync(FIXTURE_PDF));
+    expect(text).toContain("Returns and Refunds");
+    expect(text).toContain("30 days");
+    expect(text).toContain("Restocking fee");
+  });
+
+  it("A5: uses Docling's layout-aware Markdown when DOCLING_URL is set, and the chunker then sees real headings and tables", async () => {
+    const doclingMarkdown = [
+      "# Returns and Refunds",
+      "",
+      "## Standard return window",
+      "You may return items within 30 days of delivery.",
+      "",
+      "## Fees by item state",
+      "",
+      "| State | Window | Restocking fee |",
+      "| --- | --- | --- |",
+      "| Unopened | 30 days | None |",
+      "| Opened | 14 days | 15 percent |",
+    ].join("\n");
+    process.env.DOCLING_URL = "http://docling.local/convert";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ document: { md_content: doclingMarkdown } }) }),
+    );
+
+    const text = await extractPdfText(fs.readFileSync(FIXTURE_PDF));
+    expect(text).toBe(doclingMarkdown);
+
+    const chunks = chunkMarkdown(text);
+    expect(chunks.map((c) => c.heading)).toEqual([null, "Standard return window", "Fees by item state"]);
+    const feesChunk = chunks.find((c) => c.heading === "Fees by item state")!;
+    expect(feesChunk.containsTable).toBe(true);
+    expect(feesChunk.text).toContain("| Unopened | 30 days | None |");
+  });
+
+  it("A5: falls back to pdf-parse (not a throw) when the Docling sidecar is unreachable", async () => {
+    process.env.DOCLING_URL = "http://docling.local/convert";
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    const text = await extractPdfText(fs.readFileSync(FIXTURE_PDF));
+    expect(text).toContain("Returns and Refunds");
   });
 });
 
