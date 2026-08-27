@@ -155,6 +155,45 @@
     ]
   },
   {
+    "id": "retrieves-returns-policy-for-a-returns-question",
+    "description": "A returns-policy question must retrieve the returns-and-refunds article (A3: retrieval context recall/precision).",
+    "tags": ["retrieval"],
+    "turns": [
+      {
+        "userText": "What is your return and refund policy for an unopened item?",
+        "scriptedResponse": { "content": "Unopened items can be returned within 30 days of delivery for a refund to the original payment method.", "toolCalls": [] },
+        "expectedEscalate": false,
+        "expectedRetrievedDocs": ["returns-and-refunds"]
+      }
+    ]
+  },
+  {
+    "id": "retrieves-shipping-doc-for-a-delivery-question",
+    "description": "A delivery-time question must retrieve the shipping-and-delivery article (A3: retrieval context recall/precision).",
+    "tags": ["retrieval"],
+    "turns": [
+      {
+        "userText": "How long does shipping and delivery usually take after dispatch?",
+        "scriptedResponse": { "content": "Orders placed before 2pm on a working day are usually dispatched the same day.", "toolCalls": [] },
+        "expectedEscalate": false,
+        "expectedRetrievedDocs": ["shipping-and-delivery"]
+      }
+    ]
+  },
+  {
+    "id": "retrieves-both-policies-for-a-mixed-question",
+    "description": "A question that touches both refunds and delivery must retrieve both articles — the case that regresses first when a retrieval signal is weakened (A3).",
+    "tags": ["retrieval"],
+    "turns": [
+      {
+        "userText": "If my delivery arrives late can I still get a refund on the shipping fee within the return window?",
+        "scriptedResponse": { "content": "A late delivery on its own does not change the return window, but you can ask us about a shipping-fee refund.", "toolCalls": [] },
+        "expectedEscalate": false,
+        "expectedRetrievedDocs": ["returns-and-refunds", "shipping-and-delivery"]
+      }
+    ]
+  },
+  {
     "id": "generalist-answers-directly-without-handoff",
     "description": "A question support-generalist can already handle (orders/shipping/returns) should get an ordinary reply with no handoff at all — routing isn't forced just because handoff targets exist.",
     "tags": ["routing"],

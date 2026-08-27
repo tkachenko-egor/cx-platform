@@ -9,7 +9,18 @@ import { ConversationRepository } from "../../src/db/repositories/conversation-r
 import { RunRepository } from "../../src/db/repositories/run-repository";
 import { ToolCallRepository } from "../../src/db/repositories/tool-repository";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../../src/gateway/types";
-import { evaluateTurn, summarize, checkThresholds, type GoldenCase, type ScriptedChatResponse, type CaseResult, type TurnOutcome } from "./scoring";
+import {
+  evaluateTurn,
+  summarize,
+  checkThresholds,
+  contextRecall,
+  contextPrecision,
+  type GoldenCase,
+  type ScriptedChatResponse,
+  type CaseResult,
+  type TurnOutcome,
+  type TurnRetrievalScore,
+} from "./scoring";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -75,6 +86,7 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
   const toolCalls = new ToolCallRepository(db, tenant);
 
   const turnFailures: CaseResult["failures"] = [];
+  const retrieval: TurnRetrievalScore[] = [];
 
   for (let i = 0; i < golden.turns.length; i++) {
     const turn = golden.turns[i];
@@ -98,9 +110,21 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
 
     const failures = evaluateTurn(turn, outcome);
     if (failures.length > 0) turnFailures.push({ turnIndex: i, failures });
+
+    // A3: outcome.citableDocs is the deduped set of docs retrieved this turn
+    // (runtime.ts builds it straight off `retrieved`). faithfulness stays
+    // null until a judge model + retrieved-chunk-text plumbing are wired —
+    // both out of A3's file scope — so it is reported as skipped, not failed.
+    if (turn.expectedRetrievedDocs && turn.expectedRetrievedDocs.length > 0) {
+      retrieval.push({
+        contextRecall: contextRecall(turn.expectedRetrievedDocs, outcome.citableDocs),
+        contextPrecision: contextPrecision(turn.expectedRetrievedDocs, outcome.citableDocs),
+        faithfulness: null,
+      });
+    }
   }
 
-  return { id: golden.id, tags: golden.tags, passed: turnFailures.length === 0, failures: turnFailures };
+  return { id: golden.id, tags: golden.tags, passed: turnFailures.length === 0, failures: turnFailures, retrieval };
 }
 
 const THRESHOLD_DESCRIPTIONS: Record<string, string> = {
@@ -108,6 +132,9 @@ const THRESHOLD_DESCRIPTIONS: Record<string, string> = {
   tools: "tool-selection accuracy",
   escalation: "refusal/escalation appropriateness",
   guardrails: "guardrail correctness",
+  contextRecall: "retrieval context recall",
+  contextPrecision: "retrieval context precision",
+  faithfulness: "answer faithfulness",
 };
 
 async function main() {
@@ -138,6 +165,15 @@ async function main() {
   for (const [tag, m] of Object.entries(summary.byTag)) {
     console.log(`  ${THRESHOLD_DESCRIPTIONS[tag] ?? tag}: ${m.passed}/${m.total} (${(m.rate * 100).toFixed(0)}%)`);
   }
+
+  // A3: retrieval metrics — a null value means "not measured" (no annotated
+  // turns, or no judge model for faithfulness) and is skipped by the gate.
+  const { retrieval } = summary;
+  const fmtMetric = (value: number | null, skipHint: string) => (value === null ? `skipped (${skipHint})` : `${(value * 100).toFixed(0)}%`);
+  console.log(`\nRetrieval (${retrieval.turnsScored} turn(s) scored):`);
+  console.log(`  context recall: ${fmtMetric(retrieval.contextRecall, "no turns carried expectedRetrievedDocs")}`);
+  console.log(`  context precision: ${fmtMetric(retrieval.contextPrecision, "no turns carried expectedRetrievedDocs")}`);
+  console.log(`  answer faithfulness: ${fmtMetric(retrieval.faithfulness, "no judge model configured")}`);
 
   const gate = checkThresholds(summary, thresholds);
   if (!gate.ok) {

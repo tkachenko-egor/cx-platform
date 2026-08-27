@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateTurn, summarize, checkThresholds, type CaseResult, type TurnOutcome } from "../scripts/eval/scoring";
+import { evaluateTurn, summarize, checkThresholds, contextRecall, contextPrecision, type CaseResult, type TurnOutcome } from "../scripts/eval/scoring";
 
 function outcome(overrides: Partial<TurnOutcome> = {}): TurnOutcome {
   return { assistantText: "", toolCallsMade: [], escalate: false, escalationReasons: [], guardrailBlocked: false, citableDocs: [], ...overrides };
@@ -106,6 +106,50 @@ describe("checkThresholds (FR-12.4 regression gate)", () => {
   it("treats a metric with zero matching cases as vacuously fine rather than a gate failure", () => {
     const summary = summarize([{ id: "a", tags: ["routing"], passed: true, failures: [] }]);
     const gate = checkThresholds(summary, { guardrails: 0.9 });
+    expect(gate.ok).toBe(true);
+  });
+});
+
+describe("A3: retrieval metrics", () => {
+  it("contextRecall is the fraction of expected docs that were retrieved", () => {
+    expect(contextRecall(["a", "b"], ["a", "b", "c"])).toBe(1);
+    expect(contextRecall(["a", "b"], ["a", "x"])).toBe(0.5);
+    expect(contextRecall([], ["a"])).toBe(1);
+  });
+
+  it("contextPrecision is the fraction of retrieved docs that were expected", () => {
+    expect(contextPrecision(["a"], ["a"])).toBe(1);
+    expect(contextPrecision(["a"], ["a", "b"])).toBe(0.5);
+    expect(contextPrecision(["a"], [])).toBe(0);
+  });
+
+  it("summarize averages per-turn retrieval scores and reports null when nothing was measured", () => {
+    const withRetrieval = summarize([
+      { id: "a", tags: ["retrieval"], passed: true, failures: [], retrieval: [{ contextRecall: 1, contextPrecision: 0.5, faithfulness: null }] },
+      { id: "b", tags: ["retrieval"], passed: true, failures: [], retrieval: [{ contextRecall: 0.5, contextPrecision: 0.5, faithfulness: null }] },
+    ]);
+    expect(withRetrieval.retrieval.contextRecall).toBe(0.75);
+    expect(withRetrieval.retrieval.contextPrecision).toBe(0.5);
+    expect(withRetrieval.retrieval.faithfulness).toBeNull();
+    expect(withRetrieval.retrieval.turnsScored).toBe(2);
+
+    const noRetrieval = summarize([{ id: "a", tags: ["routing"], passed: true, failures: [] }]);
+    expect(noRetrieval.retrieval.contextRecall).toBeNull();
+    expect(noRetrieval.retrieval.turnsScored).toBe(0);
+  });
+
+  it("checkThresholds fails the gate on a retrieval-metric miss, exactly like a tag miss", () => {
+    const summary = summarize([
+      { id: "a", tags: ["retrieval"], passed: true, failures: [], retrieval: [{ contextRecall: 0.6, contextPrecision: 0.9, faithfulness: null }] },
+    ]);
+    const gate = checkThresholds(summary, { contextRecall: 0.9, contextPrecision: 0.3 });
+    expect(gate.ok).toBe(false);
+    expect(gate.misses).toEqual([{ metric: "contextRecall", actual: 0.6, threshold: 0.9 }]);
+  });
+
+  it("skips a retrieval metric that was not measured (null) instead of failing it", () => {
+    const summary = summarize([{ id: "a", tags: ["routing"], passed: true, failures: [] }]);
+    const gate = checkThresholds(summary, { contextRecall: 0.9, faithfulness: 0.8 });
     expect(gate.ok).toBe(true);
   });
 });
