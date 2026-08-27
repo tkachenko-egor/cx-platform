@@ -8,15 +8,15 @@ describe("resolveTenantSlugFromHost", () => {
     expect(resolveTenantSlugFromHost("acme.example.com")).toBe("acme");
   });
 
-  it("falls back to DEFAULT_TENANT_SLUG/demo for a bare host with no subdomain label", () => {
-    expect(resolveTenantSlugFromHost("localhost:3000")).toBe("demo");
-    expect(resolveTenantSlugFromHost("localhost")).toBe("demo");
+  it("falls back to DEFAULT_TENANT_SLUG/fixture-retail for a bare host with no subdomain label", () => {
+    expect(resolveTenantSlugFromHost("localhost:3000")).toBe("fixture-retail");
+    expect(resolveTenantSlugFromHost("localhost")).toBe("fixture-retail");
   });
 
-  it("falls back to demo for an empty/missing host", () => {
-    expect(resolveTenantSlugFromHost(null)).toBe("demo");
-    expect(resolveTenantSlugFromHost(undefined)).toBe("demo");
-    expect(resolveTenantSlugFromHost("")).toBe("demo");
+  it("falls back to fixture-retail for an empty/missing host", () => {
+    expect(resolveTenantSlugFromHost(null)).toBe("fixture-retail");
+    expect(resolveTenantSlugFromHost(undefined)).toBe("fixture-retail");
+    expect(resolveTenantSlugFromHost("")).toBe("fixture-retail");
   });
 
   it("is case-insensitive", () => {

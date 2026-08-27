@@ -9,7 +9,7 @@ import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/types";
-import { buildCorePrompt, buildRouterPrompt } from "../src/agents/system-prompt";
+import { buildCorePrompt } from "../src/agents/system-prompt";
 import { ensureConversation, processInboundTurn, DEFAULT_AGENT_KEY } from "../src/channel/turn";
 
 beforeAll(() => {
@@ -54,7 +54,6 @@ async function baseSetup(script: ChatResponse[]) {
 
   const provider = new ScriptedProvider(script);
   new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
-  new ModelAliasRepository(db, tenant).upsert({ alias: "triage-fast", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
   return { db, tenant, gateway, embeddings, provider };
@@ -87,23 +86,19 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
     expect(second.assistantText).toBe("Happy to help with that.");
   });
 
-  it("escalates instead of routing to a paused specialist", async () => {
-    const { db, tenant, gateway, embeddings } = await baseSetup([{ content: "", toolCalls: [{ id: "r1", name: "route_to_agent", arguments: { target: "billing-specialist" } }], stopReason: "tool_use", usage: usage() }]);
+  it("escalates instead of handing off to a paused specialist", async () => {
+    const { db, tenant, gateway, embeddings } = await baseSetup([
+      { content: "", toolCalls: [{ id: "h1", name: "handoff_to_agent", arguments: { target: "billing-specialist", reason: "Billing", summary: "Billing question" } }], stopReason: "tool_use", usage: usage() },
+    ]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" });
+    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active", handoffTargets: ["billing-specialist"] });
     agentDefs.publish({ key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" });
-    agentDefs.publish({
-      key: "router",
-      systemPrompt: buildRouterPrompt("Fixture Retail Co", [{ key: "billing-specialist", description: "Billing" }]),
-      modelAlias: "triage-fast",
-      handoffTargets: ["billing-specialist"],
-    });
 
     const conversation = ensureConversation({ db }, tenant, undefined, "widget");
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "billing question" });
 
     expect(result.state).toBe("awaiting_human");
-    expect(result.escalationReasons).toContain("router_low_confidence");
+    expect(result.escalationReasons).toContain("target_agent_unavailable");
   });
 });
 

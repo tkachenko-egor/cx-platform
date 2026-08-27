@@ -66,7 +66,7 @@ export class ConversationRepository extends TenantScopedRepository {
       .run(state, new Date().toISOString(), this.tenantId, id);
   }
 
-  /** Shallow-merges `patch` into the existing metadata JSON (e.g. router/handoff's agentPath). */
+  /** Shallow-merges `patch` into the existing metadata JSON (e.g. the handoff mechanism's agentPath). */
   updateMetadata(id: string, patch: Record<string, unknown>): void {
     const current = this.get(id);
     if (!current) return;

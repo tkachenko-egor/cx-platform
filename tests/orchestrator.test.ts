@@ -11,7 +11,7 @@ import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/types";
-import { buildCorePrompt, buildRouterPrompt } from "../src/agents/system-prompt";
+import { buildCorePrompt } from "../src/agents/system-prompt";
 import { ensureConversation, processInboundTurn } from "../src/channel/turn";
 
 beforeAll(() => {
@@ -44,7 +44,8 @@ function usage() {
   return { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 };
 }
 
-async function setupWithRouter(script: ChatResponse[]) {
+/** No separate router agent: support-generalist is every conversation's entry point and routes via its own handoffTargets + handoff_to_agent tool, same mechanism a mid-conversation handoff uses. */
+async function setup(script: ChatResponse[]) {
   const db = createDb(":memory:");
   const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
@@ -52,7 +53,6 @@ async function setupWithRouter(script: ChatResponse[]) {
   await ingestKnowledgeBase(db, tenant, embeddings);
 
   const provider = new ScriptedProvider(script);
-  new ModelAliasRepository(db, tenant).upsert({ alias: "triage-fast", provider: "scripted", model: "scripted-1" });
   new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
@@ -81,28 +81,21 @@ async function setupWithRouter(script: ChatResponse[]) {
     kbScope: { audience: ["customer"] },
     handoffTargets: ["billing-specialist", "support-generalist"],
   });
-  agents.publish({
-    key: "router",
-    systemPrompt: buildRouterPrompt("Fixture Retail Co", [
-      { key: "billing-specialist", description: "Billing" },
-      { key: "technical-specialist", description: "Technical" },
-      { key: "support-generalist", description: "Everything else" },
-    ]),
-    modelAlias: "triage-fast",
-    toolIds: [],
-    kbScope: {},
-    handoffTargets: ["billing-specialist", "technical-specialist", "support-generalist"],
-  });
 
   return { db, tenant, gateway, embeddings, provider };
 }
 
-const ROUTE_TO_BILLING: ChatResponse = { content: "", toolCalls: [{ id: "r1", name: "route_to_agent", arguments: { target: "billing-specialist" } }], stopReason: "tool_use", usage: usage() };
+const HANDOFF_TO_BILLING: ChatResponse = {
+  content: "",
+  toolCalls: [{ id: "h0", name: "handoff_to_agent", arguments: { target: "billing-specialist", reason: "Billing question", summary: "Customer says they were charged twice" } }],
+  stopReason: "tool_use",
+  usage: usage(),
+};
 
-describe("orchestrator: router -> specialist -> handback via processInboundTurn", () => {
+describe("orchestrator: entry agent -> specialist -> handback via processInboundTurn (bot-level routing, no separate router agent)", () => {
   it("routes a fresh conversation to the right specialist and persists the handoff", async () => {
-    const { db, tenant, gateway, embeddings } = await setupWithRouter([
-      ROUTE_TO_BILLING,
+    const { db, tenant, gateway, embeddings } = await setup([
+      HANDOFF_TO_BILLING,
       { content: "I can see the double charge — let me fix that.", toolCalls: [], stopReason: "end_turn", usage: usage() },
     ]);
     const conversation = ensureConversation({ db }, tenant, undefined, "widget");
@@ -114,19 +107,19 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
 
     const updated = new ConversationRepository(db, tenant).get(conversation.id);
     expect(updated?.currentAgentId).toBe("billing-specialist");
-    expect(updated?.metadata.agentPath).toEqual(["router", "billing-specialist"]);
+    expect(updated?.metadata.agentPath).toEqual(["support-generalist", "billing-specialist"]);
 
     const events = new EventRepository(db, tenant).listByConversation(conversation.id);
     const handoffEvent = events.find((e) => e.type === "handoff");
-    expect(handoffEvent?.payload).toMatchObject({ from: "router", to: "billing-specialist" });
+    expect(handoffEvent?.payload).toMatchObject({ from: "support-generalist", to: "billing-specialist" });
 
     const messages = new MessageRepository(db, tenant).listByConversation(conversation.id, { includeInternal: true });
     expect(messages.some((m) => m.role === "handoff")).toBe(true);
   });
 
   it("hops again when the specialist itself requests a handoff mid-turn, and the receiving agent gets the structured package", async () => {
-    const { db, tenant, gateway, embeddings } = await setupWithRouter([
-      ROUTE_TO_BILLING,
+    const { db, tenant, gateway, embeddings } = await setup([
+      HANDOFF_TO_BILLING,
       {
         content: "",
         toolCalls: [
@@ -149,7 +142,7 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
 
     const updated = new ConversationRepository(db, tenant).get(conversation.id);
     expect(updated?.currentAgentId).toBe("technical-specialist");
-    expect(updated?.metadata.agentPath).toEqual(["router", "billing-specialist", "technical-specialist"]);
+    expect(updated?.metadata.agentPath).toEqual(["support-generalist", "billing-specialist", "technical-specialist"]);
 
     const events = new EventRepository(db, tenant).listByConversation(conversation.id);
     const handoffEvents = events.filter((e) => e.type === "handoff");
@@ -158,8 +151,8 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
   });
 
   it("escalates to a human instead of ping-ponging when a specialist hands back to one already visited (A->B->C->B)", async () => {
-    const { db, tenant, gateway, embeddings } = await setupWithRouter([
-      ROUTE_TO_BILLING,
+    const { db, tenant, gateway, embeddings } = await setup([
+      HANDOFF_TO_BILLING,
       { content: "", toolCalls: [{ id: "h1", name: "handoff_to_agent", arguments: { target: "technical-specialist", reason: "r1", summary: "s1" } }], stopReason: "tool_use", usage: usage() },
       { content: "", toolCalls: [{ id: "h2", name: "handoff_to_agent", arguments: { target: "billing-specialist", reason: "r2", summary: "s2" } }], stopReason: "tool_use", usage: usage() },
     ]);
@@ -171,7 +164,7 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
     expect(result.escalationReasons).toContain("handoff_cycle_detected");
   });
 
-  it("without a published router, behaves exactly like single-agent Phase 1 (backward compatible)", async () => {
+  it("a plain single agent with no handoff targets just answers directly, no handoff overhead", async () => {
     const db = createDb(":memory:");
     const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     seedCommerceBusinessData(db, tenant.id);
@@ -194,6 +187,6 @@ describe("orchestrator: router -> specialist -> handback via processInboundTurn"
 
     expect(result.assistantText).toBe("Happy to help.");
     expect(new ConversationRepository(db, tenant).get(conversation.id)?.currentAgentId).toBe("support-generalist");
-    expect(provider.calls).toBe(1); // no router call was ever made
+    expect(provider.calls).toBe(1); // one model call total — no separate routing turn
   });
 });

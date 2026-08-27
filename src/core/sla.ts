@@ -20,8 +20,8 @@ export function computeDueAt(policy: SlaPolicy | undefined, fromTimestamp: strin
 /**
  * Starts (or restarts) the SLA clock for a conversation entering
  * awaiting_human. A tenant with no matching policy just gets sla_due_at
- * left null — same "unconfigured feature is a no-op" convention as the
- * router (src/channel/turn.ts's ROUTER_AGENT_KEY lookup).
+ * left null — same "unconfigured feature is a no-op" convention as an
+ * agent with no handoffTargets configured (src/channel/turn.ts).
  */
 export function startSlaClock(
   conversations: ConversationRepository,

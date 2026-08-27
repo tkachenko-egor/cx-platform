@@ -250,6 +250,8 @@ CREATE TABLE IF NOT EXISTS kb_retrieval_log (
   query_text TEXT NOT NULL,
   best_score REAL NOT NULL,
   retrieved_doc_ids TEXT NOT NULL DEFAULT '[]',
+  -- A1: 1 when the cross-encoder rerank stage reordered this retrieval (agent opted in via kb_scope.rerank), 0 otherwise.
+  reranked INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 

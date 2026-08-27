@@ -126,40 +126,43 @@
   },
   {
     "id": "routes-billing-question-to-billing-specialist",
-    "description": "A billing question should route to billing-specialist when the router correctly classifies it (FR-6.6).",
+    "description": "A billing question should be handed off from support-generalist (the entry agent) to billing-specialist via its own handoff_to_agent tool — bot-level routing, no separate router agent.",
     "tags": ["routing"],
     "turns": [
       {
         "userText": "Why was I charged twice for the same order?",
-        "scriptedRouterResponse": { "content": "", "toolCalls": [{ "name": "route_to_agent", "arguments": { "target": "billing-specialist" } }], "stopReason": "tool_use" },
-        "scriptedResponse": { "content": "Let me look into that double charge for you.", "toolCalls": [] },
+        "scriptedResponse": [
+          { "content": "", "toolCalls": [{ "name": "handoff_to_agent", "arguments": { "target": "billing-specialist", "reason": "billing question", "summary": "Customer says they were charged twice for the same order." } }], "stopReason": "tool_use" },
+          { "content": "Let me look into that double charge for you.", "toolCalls": [] }
+        ],
         "expectedRoute": "billing-specialist"
       }
     ]
   },
   {
     "id": "routes-technical-question-to-technical-specialist",
-    "description": "A technical/defect question should route to technical-specialist (FR-6.6).",
+    "description": "A technical/defect question should be handed off from support-generalist to technical-specialist via its own handoff_to_agent tool.",
     "tags": ["routing"],
     "turns": [
       {
         "userText": "The charging port on my headphones is broken and won't work",
-        "scriptedRouterResponse": { "content": "", "toolCalls": [{ "name": "route_to_agent", "arguments": { "target": "technical-specialist" } }], "stopReason": "tool_use" },
-        "scriptedResponse": { "content": "Sorry about the broken charging port — let's get that sorted.", "toolCalls": [] },
+        "scriptedResponse": [
+          { "content": "", "toolCalls": [{ "name": "handoff_to_agent", "arguments": { "target": "technical-specialist", "reason": "product defect", "summary": "Customer's headphones charging port is broken." } }], "stopReason": "tool_use" },
+          { "content": "Sorry about the broken charging port — let's get that sorted.", "toolCalls": [] }
+        ],
         "expectedRoute": "technical-specialist"
       }
     ]
   },
   {
-    "id": "router-falls-back-gracefully-on-free-text-answer",
-    "description": "If the model answers the router prompt in free text instead of calling route_to_agent, the system must fall back to a configured target rather than failing the turn (FR-6.6).",
+    "id": "generalist-answers-directly-without-handoff",
+    "description": "A question support-generalist can already handle (orders/shipping/returns) should get an ordinary reply with no handoff at all — routing isn't forced just because handoff targets exist.",
     "tags": ["routing"],
     "turns": [
       {
-        "userText": "Something ambiguous",
-        "scriptedRouterResponse": { "content": "I think this is a billing question.", "toolCalls": [] },
-        "scriptedResponse": { "content": "Happy to help with billing.", "toolCalls": [] },
-        "expectedRoute": "billing-specialist"
+        "userText": "Where's my order?",
+        "scriptedResponse": { "content": "Happy to check on that — could you share your order number or the email on the order?", "toolCalls": [] },
+        "expectedRoute": "support-generalist"
       }
     ]
   }

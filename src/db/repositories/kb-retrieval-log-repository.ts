@@ -11,6 +11,8 @@ export interface KbRetrievalLogEntry {
   queryText: string;
   bestScore: number;
   retrievedDocIds: string[];
+  /** A1: whether the cross-encoder rerank stage reordered this retrieval. */
+  reranked: boolean;
   createdAt: string;
 }
 
@@ -22,6 +24,7 @@ interface KbRetrievalLogRow {
   query_text: string;
   best_score: number;
   retrieved_doc_ids: string;
+  reranked: number;
   created_at: string;
 }
 
@@ -34,6 +37,7 @@ function rowToEntry(row: KbRetrievalLogRow): KbRetrievalLogEntry {
     queryText: row.query_text,
     bestScore: row.best_score,
     retrievedDocIds: JSON.parse(row.retrieved_doc_ids) as string[],
+    reranked: row.reranked === 1,
     createdAt: row.created_at,
   };
 }
@@ -44,13 +48,13 @@ export class KbRetrievalLogRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(input: { conversationId: string; runId: string; queryText: string; bestScore: number; retrievedDocIds: string[] }): void {
+  record(input: { conversationId: string; runId: string; queryText: string; bestScore: number; retrievedDocIds: string[]; reranked?: boolean }): void {
     this.db
       .prepare(
-        `INSERT INTO kb_retrieval_log (id, tenant_id, conversation_id, run_id, query_text, best_score, retrieved_doc_ids, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO kb_retrieval_log (id, tenant_id, conversation_id, run_id, query_text, best_score, retrieved_doc_ids, reranked, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(randomUUID(), this.tenantId, input.conversationId, input.runId, input.queryText, input.bestScore, JSON.stringify(input.retrievedDocIds), new Date().toISOString());
+      .run(randomUUID(), this.tenantId, input.conversationId, input.runId, input.queryText, input.bestScore, JSON.stringify(input.retrievedDocIds), input.reranked ? 1 : 0, new Date().toISOString());
   }
 
   /** Excludes 'test_harness' conversations (agent-builder live-preview turns) — coverage gaps should reflect real traffic, not draft testing. */

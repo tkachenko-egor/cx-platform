@@ -13,7 +13,9 @@ export async function GET() {
   const found = await getPlatformAdminSessionUser(db);
   if (!found) return Response.json({ error: "Authentication required" }, { status: 401 });
 
-  return Response.json({ tenants: new TenantRepository(db).list() });
+  // The reserved "platform" tenant holds the platform owner account itself — infrastructure, not a company to manage.
+  const tenants = new TenantRepository(db).list().filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
+  return Response.json({ tenants });
 }
 
 export async function POST(req: Request) {

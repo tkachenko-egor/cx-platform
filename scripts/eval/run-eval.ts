@@ -55,19 +55,11 @@ function toFullResponse(r: ScriptedChatResponse): ChatResponse {
 async function runCase(golden: GoldenCase): Promise<CaseResult> {
   const script: ChatResponse[] = [];
   for (const turn of golden.turns) {
-    if (turn.scriptedRouterResponse) script.push(toFullResponse(turn.scriptedRouterResponse));
     if (turn.scriptedResponse) {
       const responses = Array.isArray(turn.scriptedResponse) ? turn.scriptedResponse : [turn.scriptedResponse];
       for (const r of responses) script.push(toFullResponse(r));
     }
   }
-
-  // Only cases that actually script a router response need the router (and
-  // its specialists) published — seedFixtures always publishes one when
-  // asked, and processInboundTurn always routes through it on turn 1 if it
-  // exists, so an unscripted router call would silently eat the first
-  // response meant for the specialist and desync the rest of the script.
-  const needsRouter = golden.turns.some((t) => t.scriptedRouterResponse !== undefined);
 
   const db = createDb(":memory:");
   const provider = new ScriptedProvider(script);
@@ -75,8 +67,6 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
     db,
     providers: { scripted: provider, stub: new StubProvider() },
     supportMain: { provider: "scripted", model: "scripted-1" },
-    triageFast: { provider: "scripted", model: "scripted-1" },
-    skipRouterAndSpecialists: !needsRouter,
   });
 
   const conversation = ensureConversation({ db }, tenant, undefined, "widget");

@@ -10,8 +10,7 @@ export const runtime = "nodejs";
 /**
  * Phase 3 M4 spike: "describe guardrails in plain language" — compiles free
  * text into the existing structured AgentGuardrailConfig via one forced
- * tool call (src/guardrails/interpret.ts), the same pattern src/agents/
- * router.ts uses for route_to_agent. Doesn't persist anything itself: the
+ * tool call (src/guardrails/interpret.ts). Doesn't persist anything itself: the
  * editor merges the returned config into its own guardrailsJson state, so
  * Save/Publish stays the only thing that writes to agent_defs. No
  * conversation/run rows created — llm_calls.run_id has no FK (unlike

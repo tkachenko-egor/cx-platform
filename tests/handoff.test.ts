@@ -2,14 +2,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
-import { AgentDefRepository, type AgentDef } from "../src/db/repositories/agent-def-repository";
+import type { AgentDef } from "../src/db/repositories/agent-def-repository";
 import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/types";
 import { runAgentTurn } from "../src/agents/runtime";
-import { runRouterTurn } from "../src/agents/router";
 import { detectCycle, appendToPath } from "../src/agents/loop-prevention";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 
@@ -53,49 +52,10 @@ async function setup(providerScript: ChatResponse[]) {
   await ingestKnowledgeBase(db, tenant, embeddings);
 
   const provider = new ScriptedProvider(providerScript);
-  new ModelAliasRepository(db, tenant).upsert({ alias: "triage-fast", provider: "scripted", model: "scripted-1" });
   new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
   return { db, tenant, gateway, embeddings, provider };
-}
-
-function routerAgent(handoffTargets: string[]): AgentDef {
-  return {
-    id: "router-1",
-    tenantId: "demo",
-    key: "router",
-    version: 1,
-    status: "published",
-    systemPrompt: "You are a router. Always call route_to_agent.",
-    modelAlias: "triage-fast",
-    toolIds: [],
-    kbScope: { audience: ["customer"] },
-    handoffTargets,
-    guardrails: {},
-    skills: [],
-    semanticCacheEnabled: false,
-    nativeTools: {},
-    quickReplies: [],
-    displayName: "",
-    avatarUrl: null,
-    internalDescription: "",
-    ownerUserId: null,
-    tags: [],
-    agentStatus: "active",
-    environment: "production",
-    changeNotes: "",
-    temperature: null,
-    maxOutputTokens: null,
-    costCeilingUsd: null,
-    persona: {},
-    languageConfig: {},
-    escalationConfig: {},
-    conversationConfig: {},
-    enabledChannels: [],
-    businessHours: null,
-    toolSettings: {},
-  };
 }
 
 function specialistAgent(handoffTargets: string[]): AgentDef {
@@ -136,75 +96,14 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
   };
 }
 
-describe("runRouterTurn (FR-6.6: constrained enum, never free text)", () => {
-  it("routes to the target the model names via the forced tool", async () => {
-    const { db, tenant, gateway, embeddings } = await setup([
-      { content: "", toolCalls: [{ id: "c1", name: "route_to_agent", arguments: { target: "technical-specialist" } }], stopReason: "tool_use", usage: usage() },
-    ]);
-
-    const result = await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent(["billing-specialist", "technical-specialist"]), "My app keeps crashing");
-
-    expect(result).toEqual({ target: "technical-specialist", confidence: "high" });
-  });
-
-  it("falls back to the first configured target when the model answers in free text instead of calling the tool", async () => {
-    const { db, tenant, gateway, embeddings } = await setup([{ content: "I think this is a billing question.", toolCalls: [], stopReason: "end_turn", usage: usage() }]);
-
-    const result = await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent(["billing-specialist", "technical-specialist"]), "Why was I charged twice?");
-
-    expect(result).toEqual({ target: "billing-specialist", confidence: "low" });
-  });
-
-  it("falls back when the model names a target outside the router's own enum", async () => {
-    const { db, tenant, gateway, embeddings } = await setup([
-      { content: "", toolCalls: [{ id: "c1", name: "route_to_agent", arguments: { target: "made-up-specialist" } }], stopReason: "tool_use", usage: usage() },
-    ]);
-
-    const result = await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent(["billing-specialist", "technical-specialist"]), "Something");
-
-    expect(result).toEqual({ target: "billing-specialist", confidence: "low" });
-  });
-
-  it("returns low confidence with an empty target when the router is misconfigured with no targets", async () => {
-    const { db, tenant, gateway, embeddings } = await setup([]);
-    const result = await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent([]), "Anything");
-    expect(result).toEqual({ target: "", confidence: "low" });
-  });
-
-  it("enriches the route_to_agent tool description with each target's skill tags (Phase 2 M3c)", async () => {
-    const { db, tenant, gateway, embeddings, provider } = await setup([
-      { content: "", toolCalls: [{ id: "c1", name: "route_to_agent", arguments: { target: "technical-specialist" } }], stopReason: "tool_use", usage: usage() },
-    ]);
-    new AgentDefRepository(db, tenant).publish({
-      key: "technical-specialist",
-      systemPrompt: "You handle technical issues.",
-      modelAlias: "support-main",
-      skills: ["app-crashes", "login-issues"],
-    });
-    new AgentDefRepository(db, tenant).publish({
-      key: "billing-specialist",
-      systemPrompt: "You handle billing.",
-      modelAlias: "support-main",
-      skills: ["refunds", "invoices"],
-    });
-
-    await runRouterTurn({ db, gateway, embeddings }, tenant, "run-1", routerAgent(["billing-specialist", "technical-specialist"]), "My app keeps crashing");
-
-    const lastRequest = provider.lastRequest;
-    const toolDescription = (lastRequest?.tools?.[0]?.parameters as { properties?: { target?: { description?: string } } })?.properties?.target?.description ?? "";
-    expect(toolDescription).toContain("app-crashes");
-    expect(toolDescription).toContain("refunds");
-  });
-});
-
 describe("loop prevention (FR-6.8)", () => {
   it("detects an immediate A->B->A cycle", () => {
-    const path = appendToPath(appendToPath(["router"], "billing-specialist"), "router");
+    const path = appendToPath(appendToPath(["support-generalist"], "billing-specialist"), "support-generalist");
     expect(detectCycle(path, "billing-specialist")).toBe(true);
   });
 
   it("does not flag genuinely fresh ground", () => {
-    const path = ["router", "billing-specialist"];
+    const path = ["support-generalist", "billing-specialist"];
     expect(detectCycle(path, "technical-specialist")).toBe(false);
   });
 
@@ -214,7 +113,7 @@ describe("loop prevention (FR-6.8)", () => {
   });
 });
 
-describe("runAgentTurn — specialist mid-turn handoff (FR-6.7)", () => {
+describe("runAgentTurn — specialist mid-turn handoff (FR-6.7), bot-level: every agent can hand off, no separate router agent", () => {
   it("captures a structured HandoffPackage instead of continuing the tool loop", async () => {
     const { db, tenant, gateway, embeddings } = await setup([
       {
@@ -237,7 +136,7 @@ describe("runAgentTurn — specialist mid-turn handoff (FR-6.7)", () => {
       },
     ]);
 
-    const result = await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", specialistAgent(["technical-specialist", "router"]), [], "My app crashes on login, also where's my order ORD-100001?");
+    const result = await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", specialistAgent(["technical-specialist"]), [], "My app crashes on login, also where's my order ORD-100001?");
 
     expect(result.handoffRequested).toBeDefined();
     expect(result.handoffRequested?.target).toBe("technical-specialist");

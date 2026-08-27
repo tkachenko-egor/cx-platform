@@ -7,7 +7,7 @@ import { ToolDefRepository, type ApprovalPolicy } from "../db/repositories/tool-
 import { seedCommerceBusinessData } from "../tools/commerce/seed-data";
 import { ingestKnowledgeBase } from "../kb/ingest";
 import { allToolSpecs } from "../tools/registry";
-import { buildCorePrompt, buildRouterPrompt } from "../agents/system-prompt";
+import { buildCorePrompt } from "../agents/system-prompt";
 import { ModelGateway } from "../gateway/gateway";
 import type { ProviderAdapter } from "../gateway/types";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
@@ -26,13 +26,11 @@ export interface SeedFixturesOptions {
   providers: Record<string, ProviderAdapter>;
   /** What the support-generalist/billing/technical agents' model alias resolves to. Defaults to a zero-network stub. The alias itself is named after this target's model id (Phase 6 M2). */
   supportMain?: ModelTarget;
-  /** What the router's model alias (NFR-1.2) resolves to. Defaults to the same target as supportMain. */
-  triageFast?: ModelTarget;
   embeddings?: EmbeddingProvider;
   /** Overrides tool_defs.approval_policy per tool key; unlisted tools default to 'auto'. */
   approvalPolicyOverrides?: Record<string, ApprovalPolicy>;
-  /** Skip publishing the router/billing/technical agents — just support-generalist, matching the pre-M5/M6 single-agent shape. */
-  skipRouterAndSpecialists?: boolean;
+  /** Skip publishing the billing/technical specialist agents — just support-generalist, matching the pre-M5/M6 single-agent shape. */
+  skipSpecialists?: boolean;
 }
 
 export interface SeedFixturesResult {
@@ -60,19 +58,15 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   seedCommerceBusinessData(db, tenant.id);
 
   const supportMain = opts.supportMain ?? DEFAULT_TARGET;
-  const triageFast = opts.triageFast ?? supportMain;
 
   const modelAliases = new ModelAliasRepository(db, tenant);
   // Phase 6 M2: alias name = the target model id itself (not a fixed
-  // "support-main"/"triage-fast" role name), so the admin UI shows a real
-  // model name instead of an opaque role string. opts.supportMain/
-  // triageFast keep working exactly as before — a test injecting a
-  // "scripted" provider still gets an alias pointed at it, just named
-  // after whatever model id it passed.
+  // "support-main" role name), so the admin UI shows a real model name
+  // instead of an opaque role string. opts.supportMain keeps working
+  // exactly as before — a test injecting a "scripted" provider still gets
+  // an alias pointed at it, just named after whatever model id it passed.
   const supportMainAlias = supportMain.model;
-  const triageFastAlias = triageFast.model;
   modelAliases.upsert({ alias: supportMainAlias, provider: supportMain.provider, model: supportMain.model, fallbackChain: [DEFAULT_TARGET] });
-  modelAliases.upsert({ alias: triageFastAlias, provider: triageFast.provider, model: triageFast.model, fallbackChain: [DEFAULT_TARGET] });
 
   // Every catalog model gets its own alias too, so a freshly seeded
   // tenant's Agent Editor has every known model to pick from without an
@@ -103,10 +97,13 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
     toolIds: ["lookup_order", "search_products", "check_return_eligibility", "cancel_order"],
     modelAlias: supportMainAlias,
     kbScope: { audience: ["customer"] },
-    handoffTargets: opts.skipRouterAndSpecialists ? [] : ["billing-specialist", "technical-specialist"],
+    // Bot-level routing: support-generalist is every new conversation's
+    // entry point, and hands off to a specialist itself (via its own
+    // handoff_to_agent tool) instead of a separate tenant-level router.
+    handoffTargets: opts.skipSpecialists ? [] : ["billing-specialist", "technical-specialist"],
   });
 
-  if (!opts.skipRouterAndSpecialists) {
+  if (!opts.skipSpecialists) {
     agents.publish({
       key: "billing-specialist",
       systemPrompt: `# SPECIALTY\nYou handle billing, payments, charges and refund-status questions. Hand off anything outside that scope to the right specialist rather than guessing.\n\n${buildCorePrompt(tenant.name)}`,
@@ -122,18 +119,6 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
       modelAlias: supportMainAlias,
       kbScope: { audience: ["customer"] },
       handoffTargets: ["billing-specialist", "support-generalist"],
-    });
-    agents.publish({
-      key: "router",
-      systemPrompt: buildRouterPrompt(tenant.name, [
-        { key: "billing-specialist", description: "Payments, charges, refund status, invoices" },
-        { key: "technical-specialist", description: "Product defects, app/website issues, technical troubleshooting" },
-        { key: "support-generalist", description: "Orders, shipping, returns, product questions, and anything else" },
-      ]),
-      toolIds: [],
-      modelAlias: triageFastAlias,
-      kbScope: {},
-      handoffTargets: ["billing-specialist", "technical-specialist", "support-generalist"],
     });
   }
 

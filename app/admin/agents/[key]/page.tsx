@@ -31,6 +31,17 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
   const availableModels = new ModelAliasRepository(db, tenant).list().map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
   const availableOwners = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email }));
+
+  // Bot-level routing: every other published agent, so the "Hands off to"
+  // card can offer them as handoff targets (see components/admin/AgentEditor.tsx).
+  const latestByKey = new Map<string, ReturnType<typeof agentDefs.listAllPublished>[number]>();
+  for (const def of agentDefs.listAllPublished()) {
+    const current = latestByKey.get(def.key);
+    if (!current || def.version > current.version) latestByKey.set(def.key, def);
+  }
+  const availableHandoffTargets = [...latestByKey.values()]
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((a) => ({ key: a.key, displayName: a.displayName, handoffTargets: a.handoffTargets }));
   const versions = agentDefs.listVersions(key).map((v) => ({
     key: v.key,
     version: v.version,
@@ -39,6 +50,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     toolIds: v.toolIds,
     guardrails: v.guardrails,
     skills: v.skills,
+    handoffTargets: v.handoffTargets,
     kbScope: v.kbScope,
     nativeTools: v.nativeTools,
     quickReplies: v.quickReplies,
@@ -85,6 +97,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
           toolIds: formSource.toolIds,
           guardrails: formSource.guardrails,
           skills: formSource.skills,
+          handoffTargets: agentDef.handoffTargets,
           kbScope: formSource.kbScope,
           nativeTools: formSource.nativeTools,
           quickReplies: formSource.quickReplies,
@@ -109,6 +122,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
         availableModels={availableModels}
         availableCollections={availableCollections}
         availableOwners={availableOwners}
+        availableHandoffTargets={availableHandoffTargets}
         versions={versions}
         tenantBusinessHours={tenant.businessHours}
         tenantTimezone={tenant.timezone}

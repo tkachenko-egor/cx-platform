@@ -23,7 +23,7 @@ export interface AgentDef {
   kbScope: Record<string, unknown>;
   handoffTargets: string[];
   guardrails: Record<string, unknown>;
-  /** Phase 2 M3c: capability tags surfaced to the router so it can pick a specialist on more than the raw key. */
+  /** Phase 2 M3c: capability tags shown in the admin UI so an agent's specialty reads as more than its raw key. */
   skills: string[];
   /** Phase 2 M3b: opt-in per-agent semantic response cache (default off — see src/kb/semantic-cache.ts). */
   semanticCacheEnabled: boolean;
@@ -475,19 +475,13 @@ export class AgentDefRepository extends TenantScopedRepository {
     return row ? rowToAgentDef(row) : undefined;
   }
 
-  /** Phase 2 M3c: the router's own skill-tag enrichment reads each handoff target's latest published def this way. */
-  listByKeys(keys: string[]): AgentDef[] {
-    return keys.map((key) => this.getLatestPublished(key)).filter((def): def is AgentDef => Boolean(def));
-  }
-
   /**
    * Phase 2 M6a: the "which version does this conversation start on" call —
-   * used at the moment an agent is newly assigned to a conversation
-   * (router's target, a mid-turn handoff's next agent, or the
-   * no-router default agent), never for re-fetching an already-pinned
-   * version. No active experiment -> getLatestPublished, unchanged
-   * (zero behavior change for tenants without one, same precedent as the
-   * router itself). With an experiment: hash(conversationId + agentKey)
+   * used at the moment an agent is newly assigned to a conversation (a
+   * mid-turn handoff's next agent, or the entry conversation's default/pinned
+   * agent), never for re-fetching an already-pinned version. No active
+   * experiment -> getLatestPublished, unchanged (zero behavior change for
+   * tenants without one). With an experiment: hash(conversationId + agentKey)
    * against trafficSplit picks A or B, deterministically and stably.
    */
   getForTraffic(key: string, conversationId: string): AgentDef | undefined {

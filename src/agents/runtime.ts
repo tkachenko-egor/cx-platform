@@ -7,6 +7,7 @@ import { KbCollectionRepository } from "../db/repositories/kb-collection-reposit
 import type { TenantContext } from "../tenancy/context";
 import { today } from "../core/clock";
 import { hybridSearch, type KbScope, type RetrievedChunk } from "../kb/retrieval";
+import { getRerankProvider } from "../gateway/rerank";
 import { lookupCache, writeCache } from "../kb/semantic-cache";
 import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock, scopeBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
@@ -34,7 +35,6 @@ export type EscalationReason =
   | "approval_requested"
   | "guardrail_blocked"
   | "handoff_cycle_detected"
-  | "router_low_confidence"
   | "negative_sentiment"
   | "cost_ceiling_exceeded"
   | "target_agent_unavailable"
@@ -173,7 +173,16 @@ export async function runAgentTurn(
     else callbacks.onTextDelta?.(finalText);
   } else {
     const kbScope = (agent.kbScope as KbScope | undefined) ?? { audience: ["customer"] };
-    retrieved = await hybridSearch(deps.db, tenant, kbScope, userText, KB_TOP_K, deps.embeddings);
+    // A1: rerank is opt-in per agent (kbScope.rerank) and needs a configured
+    // sidecar (RERANKER_URL) — absent either, hybridSearch keeps today's
+    // rank-only fusion. rerankRan reflects whether it actually reordered.
+    let rerankRan = false;
+    retrieved = await hybridSearch(deps.db, tenant, kbScope, userText, KB_TOP_K, deps.embeddings, {
+      reranker: kbScope.rerank?.enabled ? getRerankProvider() : undefined,
+      onRerankRan: (ran) => {
+        rerankRan = ran;
+      },
+    });
 
     // Coverage-gap reporting (Phase 2 M3a): logged regardless of whether
     // this turn goes on to escalate — a low-confidence retrieval the model
@@ -192,6 +201,7 @@ export async function runAgentTurn(
       queryText: userText,
       bestScore,
       retrievedDocIds: retrieved.map((r) => r.article.docId),
+      reranked: rerankRan,
     });
 
     // FR-7.13: retrieved content is untrusted — a poisoned KB article is a

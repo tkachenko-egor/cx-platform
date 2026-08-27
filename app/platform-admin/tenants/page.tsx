@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getDb } from "../../../src/db/client";
 import { getPlatformAdminSessionUser } from "../../../src/auth/platform-admin-lookup";
 import { TenantRepository } from "../../../src/db/repositories/tenant-repository";
+import { RESERVED_SUBDOMAINS } from "../../../src/platform/reserved-subdomains";
 import { SignOutButton } from "../../../components/desk/SignOutButton";
 import { TenantManagement } from "../../../components/admin/TenantManagement";
 
@@ -13,7 +14,9 @@ export default async function PlatformAdminTenantsPage() {
   const found = await getPlatformAdminSessionUser(db);
   if (!found) redirect("/login");
 
-  const tenants = new TenantRepository(db).list();
+  // The reserved "platform" tenant holds the platform owner account itself
+  // (see scripts/seed.ts) — it's infrastructure, not a company to manage.
+  const tenants = new TenantRepository(db).list().filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

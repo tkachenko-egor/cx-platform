@@ -11,10 +11,8 @@ import { startSlaClock } from "../core/sla";
 import { ReviewQueueRepository } from "../db/repositories/review-queue-repository";
 import type { RuntimeDeps, AgentTurnCallbacks, EscalationReason } from "../agents/runtime";
 import { runAgentTurn } from "../agents/runtime";
-import { runRouterTurn } from "../agents/router";
 import { detectCycle, appendToPath } from "../agents/loop-prevention";
 import type { HandoffPackage } from "../agents/handoff";
-import { scanForNegativeSentiment } from "../agents/escalation";
 import { getOrCreateSession } from "../agents/sessions-store";
 import { withConversationLock } from "../agents/conversation-lock";
 import { conversationTurnCapExceeded } from "./rate-limit";
@@ -24,8 +22,6 @@ import { now } from "../core/clock";
 import type { Conversation, ConversationChannel, ConversationState } from "../core/types";
 
 export const DEFAULT_AGENT_KEY = "support-generalist";
-/** FR-6.6: if a tenant publishes an agent_defs row with this key, new conversations route through it first. Tenants without one keep the single-agent Phase-1 behavior unchanged. */
-export const ROUTER_AGENT_KEY = "router";
 /** FR-6.8: a small per-request cap on specialist-to-specialist handoffs — hitting it escalates rather than looping the customer's message indefinitely. */
 const MAX_HOPS_PER_REQUEST = 2;
 
@@ -132,55 +128,18 @@ export async function processInboundTurn(
     let currentAgentVersion = (conversation.metadata.agentVersion as number | undefined) ?? 1;
     let handoffContext: HandoffPackage | undefined;
 
-    // FR-6.6: route exactly once, on the conversation's first-ever turn, if
-    // the tenant has published a router. No router published -> the
-    // pinned agent (support-generalist by default) runs unchanged, same as
-    // every earlier Phase 1b milestone.
-    //
-    // A conversation created with an explicit, non-default agentKey (e.g. a
-    // widget pinned to a specific agent via widget_configs.agent_key, see
-    // ensureConversation below) must not be silently rerouted by the router
-    // on turn 1 just because a router happens to be published for the
-    // tenant — that would answer with whatever the router's own model/agent
-    // decides instead of the agent the customer actually embedded.
-    const isExplicitlyPinned = (conversation.currentAgentId ?? DEFAULT_AGENT_KEY) !== DEFAULT_AGENT_KEY;
+    // Routing is bot-level, not tenant-level: a conversation always starts
+    // on the pinned agent (support-generalist by default, or a widget's
+    // explicit widget_configs.agent_key) and that agent decides for itself
+    // — via its own handoffTargets + handoff_to_agent tool, same mechanism
+    // as any mid-conversation handoff below — whether to hand off before
+    // ever replying. No separate router agent/turn exists.
     if (agentPath.length === 0) {
-      const routerAgent = isExplicitlyPinned ? undefined : agentDefs.getLatestPublished(ROUTER_AGENT_KEY);
-      if (routerAgent) {
-        const routerRun = runs.start({ conversationId: input.conversationId, agentKey: routerAgent.key, agentVersion: routerAgent.version, trigger: "router" });
-        const routed = await runRouterTurn(deps, tenant, routerRun.id, routerAgent, input.text);
-        runs.complete(routerRun.id, "completed");
-
-        const target = routed.target ? agentDefs.getForTraffic(routed.target, input.conversationId) : undefined;
-        // Phase 7 M1: a draft/paused/archived target is never a valid new-routing
-        // destination — only an in-flight conversation is allowed to keep running
-        // an agent whose status has since changed (see the hops loop below).
-        if (!target || target.agentStatus !== "active") return escalateAndReturn("router_low_confidence");
-
-        agentPath = appendToPath(appendToPath(agentPath, ROUTER_AGENT_KEY), target.key);
-        currentAgentKey = target.key;
-        currentAgentVersion = target.version;
-        conversations.setCurrentAgentKey(input.conversationId, currentAgentKey);
-        conversations.setTags(input.conversationId, [currentAgentKey]);
-        conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
-
-        const routingPackage: HandoffPackage = {
-          reason: "initial routing",
-          summary: input.text,
-          extractedEntities: {},
-          instructionsForReceivingAgent: "",
-          sentiment: scanForNegativeSentiment(input.text).hit ? "negative" : "neutral",
-        };
-        persistHandoff(ROUTER_AGENT_KEY, target.key, routingPackage);
-      } else if (isExplicitlyPinned) {
-        // Record the path/tags the same way the router branch does, so runs
-        // and analytics attribute to the pinned agent instead of leaving
-        // tags empty and every run mis-bucketed under whatever agent handled
-        // it next — matches the router branch's bookkeeping above.
-        agentPath = appendToPath(agentPath, currentAgentKey);
-        conversations.setTags(input.conversationId, [currentAgentKey]);
-        conversations.updateMetadata(input.conversationId, { agentPath });
-      }
+      agentPath = appendToPath(agentPath, currentAgentKey);
+      // addTags (merge), not setTags (replace) — this must coexist with the
+      // auto-tag scan above regardless of which one ran first in the turn.
+      conversations.addTags(input.conversationId, [currentAgentKey]);
+      conversations.updateMetadata(input.conversationId, { agentPath });
     }
 
     session.turnCount++;

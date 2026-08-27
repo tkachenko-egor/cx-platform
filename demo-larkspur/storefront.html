@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larkspur &amp; Loam — Plants, Grown Well</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1b2a20; --ink-2:#4a5c50; --ink-3:#7d8c81;
+    --line:#dfe6dd; --paper:#fbfaf6; --paper-2:#f2f0e8;
+    --leaf:#2f6b46; --leaf-deep:#1d4a2e; --leaf-pale:#e7efe7;
+    --bloom:#c2643f; --sun:#e8c25a;
+    --max:1140px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Karla,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;font-size:16.5px;line-height:1.6}
+  a{color:inherit;text-decoration:none}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 26px}
+  h1,h2,h3,h4{font-family:Fraunces,Georgia,serif;font-weight:600;letter-spacing:-.015em;margin:0}
+
+  .ann{background:var(--leaf-deep);color:#eaf2ea;font-size:13.5px;text-align:center;padding:10px 16px;letter-spacing:.01em}
+  .ann b{color:var(--sun);font-weight:600}
+
+  header{position:sticky;top:0;z-index:20;background:rgba(251,250,246,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;gap:34px;height:72px}
+  .logo{font-family:Fraunces,serif;font-weight:700;font-size:21px;letter-spacing:-.02em;display:flex;align-items:center;gap:9px}
+  .logo .leaf{width:28px;height:28px;border-radius:50% 8% 50% 8%;background:linear-gradient(140deg,var(--leaf),#5da072);display:inline-block;transform:rotate(-12deg)}
+  .nav nav{display:flex;gap:26px;font-size:15px;color:var(--ink-2);font-weight:500}
+  .nav nav a:hover{color:var(--leaf)}
+  .nav .sp{flex:1}
+  .nav .acts{display:flex;gap:12px;align-items:center;font-size:14.5px;color:var(--ink-2)}
+  .basket{border:1px solid var(--line);border-radius:999px;padding:7px 16px;font-weight:500;background:#fff}
+
+  .hero{background:linear-gradient(170deg,var(--leaf-pale) 0%,var(--paper) 68%);border-bottom:1px solid var(--line)}
+  .hero-in{display:grid;grid-template-columns:1.08fr .92fr;gap:52px;align-items:center;padding:78px 0 82px}
+  .eyebrow{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--leaf-deep);background:#fff;border:1px solid #cfe0d2;padding:6px 13px;border-radius:999px;margin-bottom:22px}
+  h1{font-size:clamp(40px,5.6vw,62px);line-height:1.03;margin-bottom:20px;text-wrap:balance}
+  h1 em{font-style:italic;color:var(--leaf)}
+  .hero p{font-size:18px;line-height:1.62;color:var(--ink-2);margin:0 0 30px;max-width:46ch}
+  .btns{display:flex;gap:12px;flex-wrap:wrap}
+  .btn{display:inline-block;padding:13px 26px;border-radius:8px;font-weight:600;font-size:15.5px;cursor:pointer;border:1px solid transparent;font-family:Karla,sans-serif}
+  .btn-p{background:var(--leaf);color:#fff}
+  .btn-p:hover{background:var(--leaf-deep)}
+  .btn-s{background:#fff;border-color:var(--line);color:var(--ink)}
+  .btn-s:hover{border-color:var(--leaf)}
+
+  .zonecard{background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px;box-shadow:0 22px 50px -34px rgba(27,42,32,.4)}
+  .zonecard h3{font-size:17.5px;margin-bottom:4px}
+  .zonecard .sub{font-size:13.5px;color:var(--ink-3);margin:0 0 20px}
+  .ztable{width:100%;border-collapse:collapse;font-size:14px}
+  .ztable th{text-align:left;font-weight:600;color:var(--ink-3);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;padding:0 0 9px;border-bottom:1px solid var(--line)}
+  .ztable td{padding:10px 0;border-bottom:1px solid var(--paper-2)}
+  .ztable tr:last-child td{border-bottom:0}
+  .ztable td:first-child{font-weight:600}
+  .ztable td:last-child{text-align:right;color:var(--ink-2)}
+
+  section{padding:78px 0}
+  .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:34px}
+  h2{font-size:clamp(28px,3.4vw,36px);line-height:1.12}
+  .sec-head p{margin:8px 0 0;color:var(--ink-3);font-size:15.5px;max-width:52ch}
+  .link{color:var(--leaf);font-weight:600;font-size:15px;white-space:nowrap;border-bottom:1px solid #b9d3c2;padding-bottom:1px}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;transition:.18s}
+  .card:hover{box-shadow:0 16px 34px -24px rgba(27,42,32,.45);transform:translateY(-2px)}
+  .thumb{height:158px;display:grid;place-items:center;font-size:46px;background:var(--leaf-pale)}
+  .card-b{padding:17px 18px 19px}
+  .cat{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);font-weight:700}
+  .card h4{margin:7px 0 4px;font-size:17px;line-height:1.28;font-family:Fraunces,serif}
+  .card .latin{font-size:12.5px;font-style:italic;color:var(--ink-3);margin-bottom:11px}
+  .price{display:flex;align-items:baseline;gap:8px}
+  .price b{font-size:17px;font-family:Fraunces,serif}
+  .zonetag{margin-top:9px;font-size:12px;color:var(--ink-2);background:var(--paper-2);display:inline-block;padding:3px 9px;border-radius:5px}
+
+  .promise{background:var(--leaf-deep);color:#e9f1e9}
+  .pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:32px}
+  .p-item .ic{font-size:24px;margin-bottom:12px}
+  .p-item h4{margin:0 0 7px;font-size:17px;color:#fff;font-family:Fraunces,serif}
+  .p-item p{margin:0;font-size:14px;line-height:1.6;color:#bcd2c1}
+
+  .faq{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 34px}
+  details{border:1px solid var(--line);border-radius:12px;padding:17px 19px;background:#fff}
+  details[open]{border-color:#c3d9c9;background:#fdfefd}
+  summary{cursor:pointer;font-weight:600;font-size:15.5px;list-style:none;font-family:Karla,sans-serif}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"+";float:right;color:var(--ink-3);font-weight:400}
+  details[open] summary::after{content:"\2013"}
+  details p{margin:12px 0 0;font-size:14.5px;line-height:1.65;color:var(--ink-2)}
+
+  .nudge{margin-top:40px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--bloom);border-radius:4px 16px 16px 4px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:28px;flex-wrap:wrap}
+  .nudge h3{margin:0 0 7px;font-size:21px;font-family:Fraunces,serif}
+  .nudge p{margin:0;color:var(--ink-2);font-size:15px;max-width:58ch;line-height:1.6}
+
+  footer{border-top:1px solid var(--line);padding:48px 0 64px;font-size:14px;color:var(--ink-3);background:var(--paper-2)}
+  .fgrid{display:grid;grid-template-columns:1.5fr repeat(3,1fr);gap:34px;margin-bottom:34px}
+  footer h5{margin:0 0 13px;font-size:12.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2);font-family:Karla,sans-serif;font-weight:700}
+  footer ul{margin:0;padding:0;list-style:none;line-height:2}
+  .demo-note{border-top:1px solid var(--line);padding-top:22px;font-size:12.5px;line-height:1.65}
+
+  @media (max-width:980px){
+    .hero-in{grid-template-columns:1fr;gap:40px;padding:54px 0}
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .pgrid{grid-template-columns:repeat(2,1fr)}
+    .faq{grid-template-columns:1fr}
+    .fgrid{grid-template-columns:1fr 1fr}
+    .nav nav{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="ann">Spring windows for zones 7–8 open <b>March 25</b> · free shipping over $85 · 30-day live plant guarantee</div>
+
+<header>
+  <div class="wrap nav">
+    <div class="logo"><span class="leaf"></span> Larkspur &amp; Loam</div>
+    <nav>
+      <a href="#shop">Plants</a>
+      <a href="#shop">Seeds &amp; Bulbs</a>
+      <a href="#shop">Tools</a>
+      <a href="#promise">Our Promise</a>
+      <a href="#faq">Help</a>
+    </nav>
+    <div class="sp"></div>
+    <div class="acts">
+      <span>Sign in</span>
+      <span class="basket">Basket · 0</span>
+    </div>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-in">
+    <div>
+      <span class="eyebrow">Asheville, North Carolina · since 2011</span>
+      <h1>We ship when it's <em>safe to plant</em>,<br>not when you click buy.</h1>
+      <p>Every order leaves our greenhouses inside your zone's planting window, with a heat pack or a cool pack chosen from the forecast at your door. If it arrives dead, we replace it — and you never ship a dead plant back.</p>
+      <div class="btns">
+        <a class="btn btn-p" href="#shop">Shop what's shipping now</a>
+        <a class="btn btn-s" href="#promise">Read the guarantee</a>
+      </div>
+    </div>
+    <div class="zonecard">
+      <h3>When your zone opens</h3>
+      <p class="sub">Windows are calculated from your USDA hardiness zone, not your order date.</p>
+      <table class="ztable">
+        <thead><tr><th>Zone</th><th>Spring opens</th><th>Fall closes</th></tr></thead>
+        <tbody>
+          <tr><td>3–4</td><td>May 15</td><td>Sep 10</td></tr>
+          <tr><td>5–6</td><td>Apr 20</td><td>Oct 5</td></tr>
+          <tr><td>7–8</td><td>Mar 25</td><td>Oct 30</td></tr>
+          <tr><td>9–11</td><td colspan="2" style="text-align:right">Year-round, except heat holds</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<section id="shop">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2>Shipping this window</h2>
+        <p>A short list of what's leaving the greenhouse right now. The full catalog runs to about nine hundred lines.</p>
+      </div>
+      <a class="link" href="#">See the whole catalog →</a>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="thumb">🌿</div>
+        <div class="card-b">
+          <div class="cat">Shrub</div>
+          <h4>Oakleaf Hydrangea</h4>
+          <div class="latin">Hydrangea quercifolia</div>
+          <div class="price"><b>$42.00</b></div>
+          <div class="zonetag">Zones 5–9 · part sun</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🍃</div>
+        <div class="card-b">
+          <div class="cat">Perennial</div>
+          <h4>Blue False Indigo</h4>
+          <div class="latin">Baptisia australis</div>
+          <div class="price"><b>$28.50</b></div>
+          <div class="zonetag">Zones 3–9 · full sun</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🌾</div>
+        <div class="card-b">
+          <div class="cat">Grass</div>
+          <h4>Little Bluestem</h4>
+          <div class="latin">Schizachyrium scoparium</div>
+          <div class="price"><b>$19.00</b></div>
+          <div class="zonetag">Zones 3–9 · full sun</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🌸</div>
+        <div class="card-b">
+          <div class="cat">Perennial</div>
+          <h4>Woodland Phlox</h4>
+          <div class="latin">Phlox divaricata</div>
+          <div class="price"><b>$16.00</b></div>
+          <div class="zonetag">Zones 3–8 · shade</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🪴</div>
+        <div class="card-b">
+          <div class="cat">Pots</div>
+          <h4>Loam Terracotta Planter, 10&quot;</h4>
+          <div class="latin">Hand-thrown, drainage hole</div>
+          <div class="price"><b>$34.00</b></div>
+          <div class="zonetag">Ships immediately</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">✂️</div>
+        <div class="card-b">
+          <div class="cat">Tools</div>
+          <h4>Bypass Secateurs</h4>
+          <div class="latin">Forged carbon steel</div>
+          <div class="price"><b>$46.00</b></div>
+          <div class="zonetag">Ships immediately</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🫙</div>
+        <div class="card-b">
+          <div class="cat">Soil</div>
+          <h4>Loam No. 3 Potting Mix, 12qt</h4>
+          <div class="latin">Bark, pumice, coir</div>
+          <div class="price"><b>$21.00</b></div>
+          <div class="zonetag">Ships immediately</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="thumb">🧺</div>
+        <div class="card-b">
+          <div class="cat">Subscription</div>
+          <h4>The Seasonal Box</h4>
+          <div class="latin">Four shipments, timed to your zone</div>
+          <div class="price"><b>$64.00</b> <span style="font-size:13px;color:var(--ink-3)">/ box</span></div>
+          <div class="zonetag">15% off everything else</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="promise">
+  <section id="promise" style="padding:62px 0">
+    <div class="wrap pgrid">
+      <div class="p-item">
+        <div class="ic">🌱</div>
+        <h4>30 days, no return leg</h4>
+        <p>If it arrives dead or fails to leaf out, we replace or refund. Send us three photos — including the roots — and keep the plant.</p>
+      </div>
+      <div class="p-item">
+        <div class="ic">❄️</div>
+        <h4>Automatic weather holds</h4>
+        <p>Below 32°F or above 95°F in your forecast and we pause the order ourselves. Holds release when it clears, checked twice daily.</p>
+      </div>
+      <div class="p-item">
+        <div class="ic">📦</div>
+        <h4>Mon–Wed dispatch only</h4>
+        <p>Nothing sits in a sorting facility over a weekend. Heat packs and cool packs are included, chosen by forecast, never charged for.</p>
+      </div>
+      <div class="p-item">
+        <div class="ic">🌎</div>
+        <h4>We follow the quarantines</h4>
+        <p>Some species can't legally enter your state. Checkout blocks those, and we'll suggest a legal substitute that fills the same role.</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <h2>Before you ask us</h2>
+        <p>Or ask the assistant in the corner — it reads the same policy documents our team does.</p>
+      </div>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>I ordered in January. Why hasn't it shipped?</summary>
+        <p>Because it would die. Live plants leave only inside your zone's planting window — zone 5–6 opens April 20, zone 3–4 not until May 15. Hard goods in the same order ship immediately, in their own box, at no extra shipping cost.</p>
+      </details>
+      <details>
+        <summary>What does the guarantee not cover?</summary>
+        <p>Plants left boxed more than 48 hours, plants planted outside their stated zone, hail and hard freezes after delivery, bare-root stock planted more than 14 days after arrival, and anything sold as Nursery Seconds.</p>
+      </details>
+      <details>
+        <summary>Can I delay my shipment?</summary>
+        <p>Yes — a manual hold runs up to 90 days from the order date. Past that we refund rather than hold, because plants can't sit in a queue that long.</p>
+      </details>
+      <details>
+        <summary>Why was I charged twice?</summary>
+        <p>You almost certainly weren't. Hard goods are captured at checkout because they ship immediately; plants are captured when they ship, which for a winter order can be months later. One order, two lines on the statement.</p>
+      </details>
+      <details>
+        <summary>My leaves dropped in the first week.</summary>
+        <p>Normal, and not a claim. Unbox immediately, water until it drains, and keep it in bright indirect light for 7–10 days. Black roots or a sour smell from the soil are a different matter — photograph those the same day.</p>
+      </details>
+      <details>
+        <summary>Is this plant safe for my cat?</summary>
+        <p>We don't advise on toxicity — it's a health question and we're a nursery. The ASPCA Animal Poison Control Center maintains the authoritative list, and our assistant will point you there rather than guess.</p>
+      </details>
+    </div>
+
+    <div class="nudge">
+      <div>
+        <h3>Not sure what will survive where you live?</h3>
+        <p>The assistant in the bottom-right corner can check your zone's shipping window, quote the guarantee, place a weather hold on an order, and tell you which species can't legally cross into your state. When it shouldn't answer — pets, pesticides, quarantine workarounds — it says so and finds you a person.</p>
+      </div>
+      <a class="btn btn-p" href="#">Ask a question</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="fgrid">
+      <div>
+        <div class="logo" style="margin-bottom:13px"><span class="leaf"></span> Larkspur &amp; Loam</div>
+        <p style="margin:0;line-height:1.65;max-width:36ch">Field-grown perennials, shrubs and grasses from Asheville, North Carolina. Shipped when the ground is ready for them.</p>
+      </div>
+      <div><h5>Shop</h5><ul><li>Perennials</li><li>Shrubs</li><li>Seeds &amp; bulbs</li><li>The Seasonal Box</li></ul></div>
+      <div><h5>Help</h5><ul><li>Shipping windows</li><li>Live plant guarantee</li><li>Weather holds</li><li>Restricted species</li></ul></div>
+      <div><h5>Nursery</h5><ul><li>Our growers</li><li>Sustainability</li><li>Wholesale</li><li>Careers</li></ul></div>
+    </div>
+    <div class="demo-note">
+      <strong>Demo page.</strong> Larkspur &amp; Loam is a fictional nursery built to exercise the CX Platform chat widget. Policy answers come from a five-article knowledge base loaded into the platform; catalog lookups hit the public <code>dummyjson.com</code> test API; weather holds post to <code>jsonplaceholder.typicode.com</code>. Nothing here is a real business, no plants exist, and nothing can be purchased.
+    </div>
+  </div>
+</footer>
+
+<!-- CX Platform chat widget -->
+<script src="http://localhost:3000/widget.js" data-widget-key="wgt_5qeBHQ69pd05mJNj" data-position="bottom-right"></script>
+</body>
+</html>

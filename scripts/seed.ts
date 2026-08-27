@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import { createDb } from "../src/db/client";
+import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { UserRepository } from "../src/db/repositories/user-repository";
 import { seedFixtures } from "../src/testing/seed-fixtures";
 import { AnthropicProvider } from "../src/gateway/providers/anthropic";
@@ -15,9 +16,15 @@ import type { ApprovalPolicy } from "../src/db/repositories/tool-repository";
  * Per the requirements doc's own risk mitigation: "resist building the
  * admin UI before the runtime works — configure via seed scripts until the
  * shape is stable." Creates the fixture tenant (generic sample commerce
- * data), its model aliases, tool registry entries, KB, router + specialist
- * agent defs (src/testing/seed-fixtures.ts — shared with the eval harness),
- * and a staff owner account.
+ * data), its model aliases, tool registry entries, KB, support-generalist +
+ * specialist agent defs (src/testing/seed-fixtures.ts — shared with the eval
+ * harness), and two distinct staff accounts kept deliberately separate:
+ * the platform owner (manages every tenant via /platform-admin, lives in
+ * its own reserved "platform" tenant, never a demo/mock one) and the
+ * fixture tenant's own owner (logs into that one tenant's ordinary /admin
+ * UI — ordinary tenant-scoped sessions can't cross into a different
+ * tenant, so without this a freshly seeded DB would have no way to log
+ * into the demo tenant's admin panel at all).
  */
 async function main() {
   const db = createDb();
@@ -41,22 +48,46 @@ async function main() {
     embeddings,
     approvalPolicyOverrides,
     supportMain: process.env.ANTHROPIC_API_KEY ? { provider: "anthropic", model: "claude-sonnet-5" } : undefined,
-    // NFR-1.2/FR-5.5: routing must not be heavy — a cheap model bound per-node, not global.
-    triageFast: process.env.ANTHROPIC_API_KEY ? { provider: "anthropic", model: "claude-haiku-4-5-20251001" } : undefined,
   });
 
   console.log(`Tenant "${tenant.slug}" ready (${tenant.id})`);
-  console.log("Seeded business data, model aliases (one per catalog model, plus the router/support-main targets), tool defs, KB, and router + billing/technical/support-generalist agent defs.");
+  console.log("Seeded business data, model aliases (one per catalog model, plus the support-main target), tool defs, KB, and support-generalist + billing/technical agent defs.");
 
-  const users = new UserRepository(db, tenant);
+  // The platform owner lives in its own reserved "platform" tenant (see
+  // src/platform/reserved-subdomains.ts), never in a demo/mock tenant like
+  // the one seedFixtures just built — that tenant is sample business data,
+  // not an identity home for whoever administers the whole platform.
+  const tenants = new TenantRepository(db);
+  const platformTenant = tenants.getBySlug("platform") ?? tenants.create("Platform", "platform");
+
+  const platformUsers = new UserRepository(db, platformTenant);
   const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@example.com";
-  if (!users.getByEmail(ownerEmail)) {
+  const existingOwner = platformUsers.getByEmail(ownerEmail);
+  if (!existingOwner) {
     const password = process.env.SEED_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
     const passwordHash = await hashPassword(password);
-    users.create({ email: ownerEmail, passwordHash, role: "owner" });
-    console.log(`Seeded staff owner "${ownerEmail}" — password: ${password} (set SEED_OWNER_PASSWORD to pin this)`);
+    const owner = platformUsers.create({ email: ownerEmail, passwordHash, role: "owner" });
+    platformUsers.setPlatformAdmin(owner.id, true);
+    console.log(`Seeded platform owner "${ownerEmail}" in the platform tenant — password: ${password} (set SEED_OWNER_PASSWORD to pin this)`);
   } else {
-    console.log(`Staff owner "${ownerEmail}" already exists`);
+    if (!existingOwner.isPlatformAdmin) platformUsers.setPlatformAdmin(existingOwner.id, true);
+    console.log(`Platform owner "${ownerEmail}" already exists`);
+  }
+
+  // Separate from the platform owner above: an ordinary owner of the demo
+  // tenant itself, so `tenant.slug`.localhost:3000/login has something to
+  // log into. Tenant-scoped sessions can't cross into a different tenant
+  // (src/auth/session.ts), so the platform owner's credentials alone
+  // wouldn't get you into this tenant's own /admin UI.
+  const tenantUsers = new UserRepository(db, tenant);
+  const tenantOwnerEmail = process.env.SEED_TENANT_OWNER_EMAIL ?? "admin@fixture-retail.demo";
+  if (!tenantUsers.getByEmail(tenantOwnerEmail)) {
+    const password = process.env.SEED_TENANT_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
+    const passwordHash = await hashPassword(password);
+    tenantUsers.create({ email: tenantOwnerEmail, passwordHash, role: "owner" });
+    console.log(`Seeded "${tenant.slug}" tenant owner "${tenantOwnerEmail}" — password: ${password} (set SEED_TENANT_OWNER_PASSWORD to pin this)`);
+  } else {
+    console.log(`Tenant owner "${tenantOwnerEmail}" already exists`);
   }
 }
 

@@ -5,7 +5,7 @@ import { requireRole, AuthError } from "../../../../../../src/auth/require-role"
 
 export const runtime = "nodejs";
 
-/** Phase 3 M6: the flow builder's write path. A full republish of the target agent with only handoffTargets changed — publish() has no partial-update variant, and shouldn't get one (see M5's carry-forward note in app/api/admin/agents/route.ts for the same reasoning in reverse). */
+/** The "Hands off to" card's write path (components/admin/AgentEditor.tsx, Tools & skills tab) — bot-level routing, edited per-agent. A full republish of the target agent with only handoffTargets changed — publish() has no partial-update variant, and shouldn't get one (see M5's carry-forward note in app/api/admin/agents/route.ts for the same reasoning in reverse). */
 export async function PATCH(req: Request, context: RouteContext<"/api/admin/agents/[key]/handoffs">) {
   const { key } = await context.params;
   const body = (await req.json().catch(() => ({}))) as { handoffTargets?: string[] };

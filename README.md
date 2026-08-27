@@ -89,23 +89,24 @@ sequence):
   per agent (`agent_defs.guardrails`, previously unused) that buffers the
   full reply and swaps in a fallback instead of ever forwarding a blocked
   one.
-- **M5/M6 — done.** Router + specialist agents + handoff protocol.
-  `src/agents/router.ts`'s `runRouterTurn` is still an `agent_defs` row
-  (FR-6.1) but issues one non-streaming call offering a single forced-shape
-  tool, `route_to_agent`, whose enum is the router's own `handoffTargets`
-  column (FR-6.6 — constrained enum, never free text; no new gateway
-  capability needed). `src/agents/handoff.ts`'s `HandoffPackage`
-  (reason/summary/extracted entities/instructions, FR-6.7) is what one
-  agent hands another — never the raw transcript — persisted as a
-  `messages` row (`role='handoff'`) and mirrored `events` row.
-  `src/agents/loop-prevention.ts` forbids A→B→C→B-style cycles
-  (FR-6.8) against `conversations.metadata.agentPath`, and a small
-  per-request hop cap catches anything else, both escalating to a human
-  rather than looping the customer's message. `src/channel/turn.ts` routes
-  once on a conversation's first turn (tenants without a published
-  `router` agent keep the original single-agent behavior, unchanged) and
-  re-invokes the loop when a specialist requests a mid-turn handoff. Fixed
-  a real bug this forced: the desk's copilot-draft endpoint had hardcoded
+- **M5/M6 — done, later simplified.** Specialist agents + handoff protocol.
+  `src/agents/handoff.ts`'s `HandoffPackage` (reason/summary/extracted
+  entities/instructions, FR-6.7) is what one agent hands another — never
+  the raw transcript — persisted as a `messages` row (`role='handoff'`)
+  and mirrored `events` row. `src/agents/loop-prevention.ts` forbids
+  A→B→C→B-style cycles (FR-6.8) against `conversations.metadata.agentPath`,
+  and a small per-request hop cap catches anything else, both escalating
+  to a human rather than looping the customer's message. Routing is
+  bot-level, not tenant-level: `src/channel/turn.ts` always starts a
+  conversation on its pinned agent (`support-generalist` by default, or a
+  widget's explicit `agent_key`), and that agent decides for itself — via
+  its own `agent_defs.handoffTargets` + the `handoff_to_agent` tool —
+  whether to hand off before ever replying, using the exact same mechanism
+  as any later mid-turn handoff. (M5/M6 originally shipped a separate
+  `router` agent that ran a forced-tool-choice classification turn before
+  the pinned agent ever ran; removed as redundant once every agent already
+  had its own handoff capability — one mechanism instead of two.) Fixed a
+  real bug this forced: the desk's copilot-draft endpoint had hardcoded
   `support-generalist` regardless of which agent a conversation was
   actually pinned to — harmless with one agent, wrong the moment a second
   one exists. The desk conversation page now shows an agent-path breadcrumb

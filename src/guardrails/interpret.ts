@@ -8,9 +8,9 @@ const SYSTEM_PROMPT = `You convert an admin's plain-language description of guar
 Only include a field if the text actually implies it — omit anything not mentioned so existing settings aren't overwritten. blockedTopics and competitorNames are short topic/name strings pulled from the text, not full sentences. aiDisclosureMessage is the literal disclosure wording if the admin gives exact wording, otherwise a short natural sentence that captures their intent. Booleans (promptInjectionScreening, groundednessCheck, piiLeakageCheck, forbiddenClaimsCheck, profanityCheck, blockingMode) are only set when the text clearly turns something on or off — most descriptions won't mention these at all.`;
 
 /**
- * Phase 3 M4 spike: same forced-single-tool-call pattern src/agents/router.ts
- * uses for route_to_agent — no free-text JSON parsing, no new gateway
- * capability. The tool's parameters mirror AgentGuardrailConfig field-for-
+ * Phase 3 M4 spike: a forced-single-tool-call pattern (offer exactly one
+ * tool, require the model to call it) — no free-text JSON parsing, no new
+ * gateway capability. The tool's parameters mirror AgentGuardrailConfig field-for-
  * field so the response merges straight into the existing structured form
  * (mergeGuardrailPatch below) instead of replacing it — the toggles/chip-
  * lists stay the source of truth and the only place to see exactly what

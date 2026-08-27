@@ -33,20 +33,21 @@ export class TenantNotFoundError extends Error {
  * First host label is the tenant slug (`tenant-slug.localhost:3000`, or
  * `tenant-slug.APP_DOMAIN` in production). A bare host with no subdomain
  * label — plain `localhost:3000`, or the bare `APP_DOMAIN` itself — has no
- * tenant to read, so it falls back to `DEFAULT_TENANT_SLUG`/"demo": this is
- * what keeps `npm run dev` zero-config (NFR-9.5) while
- * `tenant-slug.localhost:3000` opts into real multi-tenant resolution.
+ * tenant to read, so it falls back to `DEFAULT_TENANT_SLUG`/the seed
+ * script's fixture tenant slug: this is what keeps `npm run dev`
+ * zero-config (NFR-9.5) while `tenant-slug.localhost:3000` opts into real
+ * multi-tenant resolution.
  */
 export function resolveTenantSlugFromHost(host: string | null | undefined): string {
   const hostname = (host ?? "").split(":")[0].trim().toLowerCase();
-  if (!hostname) return process.env.DEFAULT_TENANT_SLUG ?? "demo";
+  if (!hostname) return process.env.DEFAULT_TENANT_SLUG ?? "fixture-retail";
 
   const labels = hostname.split(".").filter(Boolean);
   const appDomainLabels = (process.env.APP_DOMAIN ?? "localhost").split(".").filter(Boolean);
 
   // Bare app domain (or bare "localhost" in dev) has no subdomain label.
   if (labels.length <= appDomainLabels.length) {
-    return process.env.DEFAULT_TENANT_SLUG ?? "demo";
+    return process.env.DEFAULT_TENANT_SLUG ?? "fixture-retail";
   }
   return labels[0];
 }

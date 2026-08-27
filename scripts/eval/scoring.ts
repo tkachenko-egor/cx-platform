@@ -8,10 +8,8 @@ export interface ScriptedChatResponse {
 
 export interface GoldenTurn {
   userText: string;
-  /** What the model says this turn — one response, or an array for a multi-round tool loop. Omit for a turn expected to never reach the model (e.g. a guardrail block). */
+  /** What the model says this turn — one response, or an array for a multi-round tool loop (e.g. a handoff_to_agent call followed by the receiving specialist's reply, on a case that exercises routing). Omit for a turn expected to never reach the model (e.g. a guardrail block). */
   scriptedResponse?: ScriptedChatResponse | ScriptedChatResponse[];
-  /** Only meaningful on a conversation's first turn, when the case exercises routing. */
-  scriptedRouterResponse?: ScriptedChatResponse;
   expectedRoute?: string;
   expectedToolCalls?: string[];
   expectedEscalate?: boolean;

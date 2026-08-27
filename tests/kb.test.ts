@@ -9,6 +9,8 @@ import { KbRetrievalLogRepository } from "../src/db/repositories/kb-retrieval-lo
 import { chunkMarkdown } from "../src/kb/chunking";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
 import { hybridSearch } from "../src/kb/retrieval";
+import type { RerankProvider } from "../src/gateway/rerank/types";
+import { StubRerankProvider } from "../src/gateway/rerank/stub";
 import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
 import { ModelGateway } from "../src/gateway/gateway";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/types";
@@ -73,6 +75,71 @@ describe("hybrid retrieval", () => {
     expect(results.some((r) => r.article.docId === "doc-c")).toBe(false);
   });
 
+  it("A1: the rerank stage reorders a candidate set where RRF alone puts the right chunk second", async () => {
+    const db = createDb(":memory:");
+    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const embeddings = new StubEmbeddingProvider();
+    await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
+
+    const query = "skin reaction refund";
+    const baseline = await hybridSearch(db, tenant, { audience: ["customer"] }, query, 4, embeddings);
+    expect(baseline.length).toBeGreaterThanOrEqual(2);
+
+    const secondText = baseline[1].chunk.text;
+    let sawRan: boolean | undefined;
+    const promoteSecond: RerankProvider = {
+      provider: "test",
+      model: "test",
+      async rerank(_q, docs) {
+        return docs.map((d) => (d === secondText ? 1 : 0));
+      },
+    };
+
+    const reranked = await hybridSearch(db, tenant, { audience: ["customer"], rerank: { enabled: true } }, query, 2, embeddings, {
+      reranker: promoteSecond,
+      onRerankRan: (ran) => {
+        sawRan = ran;
+      },
+    });
+
+    expect(sawRan).toBe(true);
+    expect(reranked[0].chunk.id).toBe(baseline[1].chunk.id);
+    expect(reranked[0].chunk.id).not.toBe(baseline[0].chunk.id);
+    // RRF score scale is preserved on the result even after reordering.
+    expect(reranked[0].score).toBeGreaterThan(0);
+  });
+
+  it("A1: a failing or absent reranker returns the un-reranked RRF order rather than throwing", async () => {
+    const db = createDb(":memory:");
+    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const embeddings = new StubEmbeddingProvider();
+    await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
+
+    const query = "returns and refunds";
+    const baseline = await hybridSearch(db, tenant, { audience: ["customer"] }, query, 3, embeddings);
+
+    const throwing: RerankProvider = {
+      provider: "test",
+      model: "test",
+      async rerank() {
+        throw new Error("sidecar down");
+      },
+    };
+    let sawRan: boolean | undefined;
+    const degraded = await hybridSearch(db, tenant, { audience: ["customer"], rerank: { enabled: true } }, query, 3, embeddings, {
+      reranker: throwing,
+      onRerankRan: (ran) => {
+        sawRan = ran;
+      },
+    });
+    expect(sawRan).toBe(false);
+    expect(degraded.map((r) => r.chunk.id)).toEqual(baseline.map((r) => r.chunk.id));
+
+    // A provider present but the agent not opted in (rerank absent) is also a no-op.
+    const notOptedIn = await hybridSearch(db, tenant, { audience: ["customer"] }, query, 3, embeddings, { reranker: new StubRerankProvider() });
+    expect(notOptedIn.map((r) => r.chunk.id)).toEqual(baseline.map((r) => r.chunk.id));
+  });
+
   it("re-ingesting unchanged content skips re-embedding", async () => {
     const db = createDb(":memory:");
     const tenant = new TenantRepository(db).create("Demo", "demo");
@@ -121,5 +188,27 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
     const gaps = getCoverageGaps(db, tenant, { thresholdScore: 0.01 });
     expect(gaps).toHaveLength(1);
     expect(gaps[0].queryText).toBe("a poorly-matched question");
+  });
+
+  it("A1: kb_retrieval_log persists whether the rerank stage ran", () => {
+    const db = createDb(":memory:");
+    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const repo = new KbRetrievalLogRepository(db, tenant);
+    repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "with rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"], reranked: true });
+    repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "without rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"] });
+
+    const byQuery = new Map(repo.listLowConfidence(1).map((e) => [e.queryText, e.reranked]));
+    expect(byQuery.get("with rerank")).toBe(true);
+    expect(byQuery.get("without rerank")).toBe(false);
+  });
+});
+
+describe("StubRerankProvider", () => {
+  it("scores by query-token overlap, deterministically", async () => {
+    const stub = new StubRerankProvider();
+    const scores = await stub.rerank("full refund policy", ["a full refund is available", "orders ship in two days", "refund"]);
+    expect(scores).toEqual(await stub.rerank("full refund policy", ["a full refund is available", "orders ship in two days", "refund"]));
+    expect(scores[0]).toBeGreaterThan(scores[1]);
+    expect(scores[0]).toBeGreaterThan(scores[2]);
   });
 });

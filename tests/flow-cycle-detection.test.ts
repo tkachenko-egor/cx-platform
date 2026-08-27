@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { detectCyclicEdges } from "../src/agents/flow-graph";
 
 describe("detectCyclicEdges", () => {
-  it("returns nothing for an acyclic graph (router fanning out to specialists)", () => {
+  it("returns nothing for an acyclic graph (entry agent fanning out to specialists)", () => {
     const cyclic = detectCyclicEdges([
-      { key: "router", handoffTargets: ["billing", "technical"] },
+      { key: "support-generalist", handoffTargets: ["billing", "technical"] },
       { key: "billing", handoffTargets: [] },
       { key: "technical", handoffTargets: [] },
     ]);
@@ -49,14 +49,14 @@ describe("detectCyclicEdges", () => {
     );
   });
 
-  it("a router with only outbound edges to that graph has no cyclic edges of its own", () => {
+  it("an entry agent with only outbound edges into that graph has no cyclic edges of its own", () => {
     const cyclic = detectCyclicEdges([
-      { key: "router", handoffTargets: ["billing", "support", "technical"] },
+      { key: "support-generalist", handoffTargets: ["billing", "support", "technical"] },
       { key: "billing", handoffTargets: ["technical", "support"] },
       { key: "support", handoffTargets: ["billing", "technical"] },
       { key: "technical", handoffTargets: ["billing", "support"] },
     ]);
-    expect([...cyclic].every((edge) => !edge.startsWith("router->"))).toBe(true);
+    expect([...cyclic].every((edge) => !edge.startsWith("support-generalist->"))).toBe(true);
   });
 
   it("handles a target key that isn't a node in the list (dangling reference) without throwing", () => {

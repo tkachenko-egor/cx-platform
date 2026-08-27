@@ -105,8 +105,8 @@ describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
 
     const conversations = new ConversationRepository(db, tenant);
     const conversation = ensureConversation({ db }, tenant, undefined, "widget");
-    // Simulates what src/channel/turn.ts's router/handoff branches already do
-    // via setTags — a full router setup isn't needed to prove the regression
+    // Simulates what src/channel/turn.ts's entry-turn bookkeeping already does
+    // via setTags — a full handoff setup isn't needed to prove the regression
     // this guards against: addTags below must not stomp this.
     conversations.setTags(conversation.id, [DEFAULT_AGENT_KEY]);
 

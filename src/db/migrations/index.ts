@@ -27,6 +27,8 @@ import { migration025AgentBusinessHoursOverride } from "./025-agent-business-hou
 import { migration026GenericCommerceColumns } from "./026-generic-commerce-columns";
 import { migration027AgentToolSettings } from "./027-agent-tool-settings";
 import { migration028ToolDefDisplayName } from "./028-tool-def-display-name";
+import { migration029PlatformOwnerTenant } from "./029-platform-owner-tenant";
+import { migration030KbRetrievalLogReranked } from "./030-kb-retrieval-log-reranked";
 
 /** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
 export const ALL_MIGRATIONS: Migration[] = [
@@ -58,4 +60,6 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration026GenericCommerceColumns,
   migration027AgentToolSettings,
   migration028ToolDefDisplayName,
+  migration029PlatformOwnerTenant,
+  migration030KbRetrievalLogReranked,
 ];

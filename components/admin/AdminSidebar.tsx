@@ -15,7 +15,6 @@ import {
   ClipboardCheck,
   Clock,
   Tags,
-  Waypoints,
   type LucideIcon,
 } from "lucide-react";
 import { SignOutButton } from "../desk/SignOutButton";
@@ -31,7 +30,6 @@ interface NavItem {
 
 const BUILD_ITEMS: NavItem[] = [
   { href: "/admin/agents", label: "Agents", icon: Bot },
-  { href: "/admin/agents/flow", label: "Routing", icon: Waypoints, adminOnly: true },
   { href: "/admin/agents/approvals", label: "Publish approvals", icon: ClipboardCheck, adminOnly: true },
   { href: "/admin/tools", label: "Tools", icon: Wrench, adminOnly: true },
   { href: "/admin/kb", label: "Knowledge base", icon: BookOpen, adminOnly: true },

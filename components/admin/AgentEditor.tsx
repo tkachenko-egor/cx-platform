@@ -15,6 +15,7 @@ import { KbDocumentsModal } from "./KbDocumentsModal";
 import { AgentPreviewChat } from "./AgentPreviewChat";
 import { WeeklyHoursEditor, daysFromRules, rulesFromDays, type DayRow } from "./WeeklyHoursEditor";
 import { MODEL_CATALOG, PROVIDER_DISPLAY_NAMES, displayNameForAlias } from "../../src/gateway/model-catalog";
+import { detectCyclicEdges } from "../../src/agents/flow-graph";
 
 export interface ToolOption {
   key: string;
@@ -120,6 +121,8 @@ export interface AgentEditorInitial {
   toolIds: string[];
   guardrails: Record<string, unknown>;
   skills: string[];
+  /** Bot-level routing (FR-6.6/6.7): which other agents this one can hand a conversation off to, via its own handoff_to_agent tool. Edited independently of Save draft/Publish, same as FlowCanvas used to — see the "Hands off to" card in the Tools & skills tab. */
+  handoffTargets: string[];
   kbScope: Record<string, unknown>;
   nativeTools: AgentNativeToolsConfig;
   quickReplies: string[];
@@ -249,6 +252,12 @@ function SectionHeading({ icon: Icon, title, subtitle }: { icon: typeof Bot; tit
 
 const textareaClass = "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-fg outline-none focus:border-accent focus:ring-2 focus:ring-accent/15";
 
+export interface HandoffTargetOption {
+  key: string;
+  displayName?: string;
+  handoffTargets: string[];
+}
+
 export function AgentEditor({
   initial,
   availableTools,
@@ -256,6 +265,7 @@ export function AgentEditor({
   availableCollections,
   availableOwners = [],
   existingAgentKeys = [],
+  availableHandoffTargets = [],
   versions,
   mode = "edit",
   tenantBusinessHours,
@@ -270,6 +280,8 @@ export function AgentEditor({
   availableOwners?: OwnerOption[];
   /** create mode only: existing agent keys, for inline "already taken" validation instead of only finding out on submit. */
   existingAgentKeys?: string[];
+  /** edit mode only: every other published agent in the tenant (with their own current handoffTargets, for cycle warnings) — bot-level routing's "Hands off to" picker in the Tools & skills tab. */
+  availableHandoffTargets?: HandoffTargetOption[];
   /** Phase 6 M4: every published version of this agent, newest first — powers the Prompt card's version dropdown. Omitted in create mode. */
   versions?: AgentEditorInitial[];
   mode?: "create" | "edit";
@@ -299,6 +311,9 @@ export function AgentEditor({
   const isLegacyKbScope = !Array.isArray(initial.kbScope.collectionIds);
   const [collectionIds, setCollectionIds] = useState<Set<string>>(new Set(Array.isArray(initial.kbScope.collectionIds) ? (initial.kbScope.collectionIds as string[]) : []));
   const [skills, setSkills] = useState(initial.skills.join(", "));
+  const [handoffTargets, setHandoffTargets] = useState<Set<string>>(new Set(initial.handoffTargets));
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffError, setHandoffError] = useState<string | null>(null);
   const [guardrailsJson, setGuardrailsJson] = useState(JSON.stringify(initial.guardrails, null, 2));
   /** Phase 3 M4 spike: "describe in plain language" input above the structured guardrail cards. */
   const [guardrailText, setGuardrailText] = useState("");
@@ -558,6 +573,31 @@ export function AgentEditor({
       else next.add(toolKey);
       return next;
     });
+  };
+
+  /** Bot-level routing: saved immediately via PATCH, independent of Save draft/Publish — same as FlowCanvas used to, before handoff editing moved from the tenant-wide Routing tab into each agent's own editor. */
+  const toggleHandoffTarget = async (targetKey: string) => {
+    const has = handoffTargets.has(targetKey);
+    const next = new Set(handoffTargets);
+    if (has) next.delete(targetKey);
+    else next.add(targetKey);
+
+    setHandoffBusy(true);
+    setHandoffError(null);
+    try {
+      const res = await fetch(`/api/admin/agents/${initial.key}/handoffs`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handoffTargets: [...next] }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Could not update handoff targets");
+      setHandoffTargets(next);
+      router.refresh();
+    } catch (err) {
+      setHandoffError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHandoffBusy(false);
+    }
   };
 
   const toggleCollection = (id: string) => {
@@ -1787,6 +1827,41 @@ export function AgentEditor({
                   </Field>
                 </div>
               </Card>
+
+              {mode === "edit" && (
+                <Card className="p-6">
+                  <SectionHeading
+                    icon={Waypoints}
+                    title="Hands off to"
+                    subtitle="Other agents this one can pass a conversation to mid-turn (or on the very first turn, if it's the entry point) via its own handoff_to_agent tool. Bot-level — there's no separate tenant-wide router or routing page."
+                  />
+                  {availableHandoffTargets.length === 0 ? (
+                    <p className="mt-4 text-xs text-muted">No other published agents in this tenant yet — publish one to hand off to it.</p>
+                  ) : (
+                    <div className="mt-4 divide-y divide-border">
+                      {availableHandoffTargets
+                        .filter((a) => a.key !== initial.key)
+                        .map((a) => {
+                          const cyclicEdges = detectCyclicEdges([
+                            { key: initial.key, handoffTargets: [...handoffTargets] },
+                            ...availableHandoffTargets.filter((o) => o.key !== initial.key),
+                          ]);
+                          const wouldCycle = handoffTargets.has(a.key) && cyclicEdges.has(`${initial.key}->${a.key}`);
+                          return (
+                            <div key={a.key} className="flex items-center gap-3 py-2.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm text-fg">{a.displayName || a.key}</p>
+                                {wouldCycle && <p className="text-xs text-warning">Part of a handoff cycle — the runtime loop guard will still catch it, but double-check this is intentional.</p>}
+                              </div>
+                              <Toggle checked={handoffTargets.has(a.key)} onChange={() => void toggleHandoffTarget(a.key)} disabled={handoffBusy} />
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                  {handoffError && <p className="mt-2 text-xs text-danger">{handoffError}</p>}
+                </Card>
+              )}
             </div>
           )}
 
