@@ -146,6 +146,7 @@ without a write tool behind it.
 ```bash
 npm install
 cp .env.example .env    # ANTHROPIC_API_KEY + OPENAI_API_KEY for the real experience
+docker compose up -d db  # Postgres (pgvector) — B1; tests and seed need it running
 npm run seed             # tenant, business data, tool defs, KB ingest, published agent
 npm test
 npm run typecheck

@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../pg";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
 export interface LlmCallRecord {
@@ -28,7 +28,7 @@ interface LlmCallRow {
   cached_tokens: number;
   cost_usd: number;
   latency_ms: number;
-  fallback_used: number;
+  fallback_used: boolean;
   error_type: string | null;
 }
 
@@ -51,13 +51,13 @@ function rowToRecord(row: LlmCallRow): LlmCallRecord {
 
 /** FR-5.10 usage accounting + FR-13.1 basic tracing, one row per call attempt. */
 export class LlmCallRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async record(entry: LlmCallRecord): Promise<void> {
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO llm_calls (
            id, tenant_id, run_id, model_alias, provider, model,
@@ -77,14 +77,14 @@ export class LlmCallRepository extends TenantScopedRepository {
         entry.cachedTokens,
         entry.costUsd,
         entry.latencyMs,
-        entry.fallbackUsed ? 1 : 0,
+        entry.fallbackUsed,
         entry.errorType,
         now,
       );
   }
 
   async listByRun(runId: string): Promise<LlmCallRecord[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM llm_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`)
       .all(this.tenantId, runId) as LlmCallRow[];
     return rows.map(rowToRecord);
@@ -92,7 +92,7 @@ export class LlmCallRepository extends TenantScopedRepository {
 
   /** Phase 7 M2: per-conversation cost ceiling check — sums every llm_calls row across every run (turn) this conversation has had so far, joined through runs.conversation_id since llm_calls itself only carries run_id. */
   async sumCostForConversation(conversationId: string): Promise<number> {
-    const row = this.db
+    const row = await this.db
       .prepare(
         `SELECT COALESCE(SUM(lc.cost_usd), 0) as total FROM llm_calls lc
          JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id

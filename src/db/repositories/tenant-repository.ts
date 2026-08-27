@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 
 /**
@@ -58,35 +59,35 @@ function rowToTenant(row: TenantRow): Tenant {
     name: row.name,
     slug: row.slug,
     timezone: row.timezone,
-    businessHours: JSON.parse(row.business_hours) as BusinessHoursConfig,
-    alertThresholds: JSON.parse(row.alert_thresholds) as AlertThresholdsConfig,
+    businessHours: fromJson<BusinessHoursConfig>(row.business_hours),
+    alertThresholds: fromJson<AlertThresholdsConfig>(row.alert_thresholds),
   };
 }
 
 export class TenantRepository {
-  constructor(private readonly db: Database.Database) {}
+  constructor(private readonly db: SqlDatabase) {}
 
   async create(name: string, slug: string): Promise<Tenant> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(`INSERT INTO tenants (id, name, slug, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`)
       .run(id, name, slug, now, now);
     return { id, tenantId: id, name, slug, timezone: "UTC", businessHours: {}, alertThresholds: {} };
   }
 
   async getBySlug(slug: string): Promise<Tenant | undefined> {
-    const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
+    const row = await this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
   async getById(id: string): Promise<Tenant | undefined> {
-    const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
+    const row = await this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
   async list(): Promise<Tenant[]> {
-    const rows = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants ORDER BY name`).all() as TenantRow[];
+    const rows = await this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants ORDER BY name`).all() as TenantRow[];
     return rows.map(rowToTenant);
   }
 
@@ -95,17 +96,17 @@ export class TenantRepository {
     if (!existing) throw new Error(`Tenant ${id} not found`);
     const name = input.name ?? existing.name;
     const slug = input.slug ?? existing.slug;
-    this.db.prepare(`UPDATE tenants SET name = ?, slug = ?, updated_at = ? WHERE id = ?`).run(name, slug, new Date().toISOString(), id);
+    await this.db.prepare(`UPDATE tenants SET name = ?, slug = ?, updated_at = ? WHERE id = ?`).run(name, slug, new Date().toISOString(), id);
     return { ...existing, name, slug };
   }
 
   /** Phase 9: admin-facing business-hours editor (app/admin/business-hours/page.tsx). */
   async updateBusinessHours(id: string, config: BusinessHoursConfig): Promise<void> {
-    this.db.prepare(`UPDATE tenants SET business_hours = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
+    await this.db.prepare(`UPDATE tenants SET business_hours = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
   }
 
   /** Phase 9: admin-facing alert-threshold editor on /analytics. */
   async updateAlertThresholds(id: string, config: AlertThresholdsConfig): Promise<void> {
-    this.db.prepare(`UPDATE tenants SET alert_thresholds = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
+    await this.db.prepare(`UPDATE tenants SET alert_thresholds = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
   }
 }

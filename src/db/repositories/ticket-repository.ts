@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -52,14 +52,14 @@ function rowToTicket(row: TicketRow): Ticket {
 
 /** FR-3.17/3.18: ticket lifecycle for the email channel — a separate state machine from Conversation.state. */
 export class TicketRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async create(input: { conversationId: string; subject: string; priority?: TicketPriority; category?: string }): Promise<Ticket> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO tickets (id, tenant_id, conversation_id, subject, status, priority, category, created_at, updated_at)
          VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`,
@@ -69,32 +69,32 @@ export class TicketRepository extends TenantScopedRepository {
   }
 
   async get(id: string): Promise<Ticket | undefined> {
-    const row = this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as TicketRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as TicketRow | undefined;
     return row ? rowToTicket(row) : undefined;
   }
 
   async getByConversation(conversationId: string): Promise<Ticket | undefined> {
-    const row = this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND conversation_id = ?`).get(this.tenantId, conversationId) as TicketRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND conversation_id = ?`).get(this.tenantId, conversationId) as TicketRow | undefined;
     return row ? rowToTicket(row) : undefined;
   }
 
   async setStatus(id: string, status: TicketStatus): Promise<void> {
-    this.db.prepare(`UPDATE tickets SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(status, new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE tickets SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(status, new Date().toISOString(), this.tenantId, id);
   }
 
   async assign(id: string, assigneeId: string | null): Promise<void> {
-    this.db.prepare(`UPDATE tickets SET assignee_id = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(assigneeId, new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE tickets SET assignee_id = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(assigneeId, new Date().toISOString(), this.tenantId, id);
   }
 
   async list(opts: { statuses?: TicketStatus[] } = {}): Promise<Ticket[]> {
     if (opts.statuses && opts.statuses.length > 0) {
       const placeholders = opts.statuses.map(() => "?").join(",");
-      const rows = this.db
+      const rows = await this.db
         .prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND status IN (${placeholders}) ORDER BY updated_at DESC`)
         .all(this.tenantId, ...opts.statuses) as TicketRow[];
       return rows.map(rowToTicket);
     }
-    const rows = this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? ORDER BY updated_at DESC`).all(this.tenantId) as TicketRow[];
+    const rows = await this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? ORDER BY updated_at DESC`).all(this.tenantId) as TicketRow[];
     return rows.map(rowToTicket);
   }
 }

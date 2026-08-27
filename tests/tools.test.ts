@@ -17,7 +17,7 @@ beforeAll(async () => {
 async function seededTenant() {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
   return { db, tenant };
 }
 

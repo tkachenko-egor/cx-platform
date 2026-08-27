@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
+import type { SqlDatabase } from "../db/pg";
 import type { TenantContext } from "../tenancy/context";
 import { SemanticCacheRepository } from "../db/repositories/semantic-cache-repository";
 import { cosineSimilarity } from "./retrieval";
@@ -18,7 +18,7 @@ export interface SemanticCacheHit {
 }
 
 export async function lookupCache(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   agentKey: string,
   queryText: string,
@@ -43,7 +43,7 @@ export async function lookupCache(
 }
 
 export async function writeCache(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   agentKey: string,
   queryText: string,

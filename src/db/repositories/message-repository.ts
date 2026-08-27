@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import type { CanonicalMessage, MessageRole, MessageVisibility } from "../../core/types";
@@ -37,7 +37,7 @@ function rowToMessage(row: MessageRow): CanonicalMessage {
 
 /** FR-4.3: append-only — messages are never edited in place. */
 export class MessageRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -52,8 +52,8 @@ export class MessageRepository extends TenantScopedRepository {
   }): Promise<CanonicalMessage> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const sequence = this.nextSequence(input.conversationId);
-    this.db
+    const sequence = await this.nextSequence(input.conversationId);
+    await this.db
       .prepare(
         `INSERT INTO messages (id, tenant_id, conversation_id, role, content, visibility, sequence, channel_message_id, in_reply_to, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -84,14 +84,14 @@ export class MessageRepository extends TenantScopedRepository {
 
   /** Sets the outbound channel id after the fact — e.g. the email provider's Message-ID, known only once the send succeeds. */
   async setChannelMessageId(id: string, channelMessageId: string): Promise<void> {
-    this.db.prepare(`UPDATE messages SET channel_message_id = ? WHERE tenant_id = ? AND id = ?`).run(channelMessageId, this.tenantId, id);
+    await this.db.prepare(`UPDATE messages SET channel_message_id = ? WHERE tenant_id = ? AND id = ?`).run(channelMessageId, this.tenantId, id);
   }
 
   /** FR-3.12: resolve a conversation from Message-ID/In-Reply-To/References headers. */
   async findConversationIdByChannelMessageIds(channelMessageIds: string[]): Promise<string | undefined> {
     if (channelMessageIds.length === 0) return undefined;
     const placeholders = channelMessageIds.map(() => "?").join(",");
-    const row = this.db
+    const row = await this.db
       .prepare(`SELECT conversation_id FROM messages WHERE tenant_id = ? AND channel_message_id IN (${placeholders}) ORDER BY sequence DESC LIMIT 1`)
       .get(this.tenantId, ...channelMessageIds) as MessageThreadRow | undefined;
     return row?.conversation_id;
@@ -99,13 +99,13 @@ export class MessageRepository extends TenantScopedRepository {
 
   /** Phase 9 M4: lets a feedback-submission route confirm the message actually belongs to the conversation/tenant it claims before recording anything. */
   async get(id: string): Promise<CanonicalMessage | undefined> {
-    const row = this.db.prepare(`SELECT * FROM messages WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as MessageRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM messages WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as MessageRow | undefined;
     return row ? rowToMessage(row) : undefined;
   }
 
   async listByConversation(conversationId: string, opts: { includeInternal?: boolean } = {}): Promise<CanonicalMessage[]> {
     const visibilityClause = opts.includeInternal ? "" : `AND visibility = 'public'`;
-    const rows = this.db
+    const rows = await this.db
       .prepare(
         `SELECT * FROM messages WHERE tenant_id = ? AND conversation_id = ? ${visibilityClause} ORDER BY sequence ASC`,
       )
@@ -117,7 +117,7 @@ export class MessageRepository extends TenantScopedRepository {
   async latestByConversationIds(conversationIds: string[]): Promise<Map<string, CanonicalMessage>> {
     if (conversationIds.length === 0) return new Map();
     const placeholders = conversationIds.map(() => "?").join(",");
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM messages WHERE tenant_id = ? AND conversation_id IN (${placeholders}) AND visibility = 'public' ORDER BY sequence ASC`)
       .all(this.tenantId, ...conversationIds) as MessageRow[];
     const latest = new Map<string, CanonicalMessage>();
@@ -125,10 +125,10 @@ export class MessageRepository extends TenantScopedRepository {
     return latest;
   }
 
-  private nextSequence(conversationId: string): number {
-    const row = this.db
-      .prepare(`SELECT MAX(sequence) as maxSeq FROM messages WHERE tenant_id = ? AND conversation_id = ?`)
-      .get(this.tenantId, conversationId) as { maxSeq: number | null };
+  private async nextSequence(conversationId: string): Promise<number> {
+    const row = (await this.db
+      .prepare(`SELECT MAX(sequence) as "maxSeq" FROM messages WHERE tenant_id = ? AND conversation_id = ?`)
+      .get(this.tenantId, conversationId)) as { maxSeq: number | null };
     return (row.maxSeq ?? 0) + 1;
   }
 }

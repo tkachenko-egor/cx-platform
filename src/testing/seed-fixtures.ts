@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { TenantRepository, type Tenant } from "../db/repositories/tenant-repository";
+import type { SqlDatabase } from "../db/pg";
 import { ModelAliasRepository } from "../db/repositories/model-alias-repository";
 import { MODEL_CATALOG } from "../gateway/model-catalog";
 import { AgentDefRepository } from "../db/repositories/agent-def-repository";
@@ -19,7 +19,7 @@ export interface ModelTarget {
 }
 
 export interface SeedFixturesOptions {
-  db: Database.Database;
+  db: SqlDatabase;
   tenantName?: string;
   tenantSlug?: string;
   /** Providers keyed by name, e.g. { anthropic, stub } for real seeding or { scripted, stub } for evals/tests. */
@@ -55,7 +55,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   const slug = opts.tenantSlug ?? "fixture-retail";
   const tenant = (await tenants.getBySlug(slug)) ?? (await tenants.create(opts.tenantName ?? "Fixture Retail Co", slug));
 
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
 
   const supportMain = opts.supportMain ?? DEFAULT_TARGET;
 
@@ -77,7 +77,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
 
   const toolDefs = new ToolDefRepository(db, tenant);
   for (const spec of allToolSpecs()) {
-    toolDefs.upsert({
+    await toolDefs.upsert({
       key: spec.key,
       displayName: spec.displayName,
       description: spec.description,
@@ -91,7 +91,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   await ingestKnowledgeBase(db, tenant, embeddings);
 
   const agents = new AgentDefRepository(db, tenant);
-  agents.publish({
+  await agents.publish({
     key: "support-generalist",
     systemPrompt: buildCorePrompt(tenant.name),
     toolIds: ["lookup_order", "search_products", "check_return_eligibility", "cancel_order"],
@@ -104,7 +104,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   });
 
   if (!opts.skipSpecialists) {
-    agents.publish({
+    await agents.publish({
       key: "billing-specialist",
       systemPrompt: `# SPECIALTY\nYou handle billing, payments, charges and refund-status questions. Hand off anything outside that scope to the right specialist rather than guessing.\n\n${buildCorePrompt(tenant.name)}`,
       toolIds: ["lookup_order", "check_return_eligibility", "cancel_order"],
@@ -112,7 +112,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
       kbScope: { audience: ["customer"] },
       handoffTargets: ["technical-specialist", "support-generalist"],
     });
-    agents.publish({
+    await agents.publish({
       key: "technical-specialist",
       systemPrompt: `# SPECIALTY\nYou handle product defects, technical order problems and troubleshooting. Hand off anything outside that scope to the right specialist rather than guessing.\n\n${buildCorePrompt(tenant.name)}`,
       toolIds: ["lookup_order", "search_products"],

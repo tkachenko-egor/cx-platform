@@ -318,21 +318,13 @@ better. `kb_scope` audience filtering (FR-7.4/7.6/7.7) is preserved. Dense
 and keyword halves can now be one query — take that only if it does not
 obscure the fusion logic.
 
-## B4 — Keep tests dependency-free
+## B4 — Keep tests dependency-free → **folded into B1, PGlite dropped**
 
-**Component:** PGlite (Apache-2.0 / PostgreSQL). Alternative: Testcontainers,
-at the cost of Docker in the test loop.
-
-**Why:** the `:memory:` branch of `createDb()` is what keeps NFR-9.5's
-zero-cloud-dependency promise across 40+ suites.
-
-**Files:** `src/db/client.ts`, `src/testing/`.
-
-**Approach:** PGlite runs in-process and supports pgvector, so KB tests stay
-real rather than stubbed. Should land with B1 — a migration that leaves the
-suite needing a live server has broken a stated NFR.
-
-**Acceptance:** `npm test` runs green with no external services and no Docker.
+The decision (B1) was a **real Postgres in the test loop**, not PGlite:
+`docker compose up -d db` locally, a `services:` container in CI. NFR-9.5's
+"zero *cloud* dependency" holds — the DB is a local disposable container, no
+API key, no network. `createDb(":memory:")` clones a throwaway database from
+a migrated template built once per run. There is no separate B4 task.
 
 ## B5 — Row-level security as a tenancy backstop
 
@@ -378,12 +370,14 @@ product, with no per-seat or per-message fee:
 | bge-reranker-v2-m3, Presidio, LLM Guard, Docling, promptfoo, pg, Kysely | MIT |
 | Ragas, OpenTelemetry, OpenLLMetry, FlashRank, Unstructured (library) | Apache-2.0 |
 | pgvector | PostgreSQL licence |
-| PGlite | Apache-2.0 / PostgreSQL (dual) |
-| postgres.js | Unlicense |
 
 ## Rejected — do not re-open without a reason
 
 - **sqlite-vec** — obsolete once Phase B lands.
+- **PGlite / postgres.js** — B1 chose `pg` against a real disposable
+  Postgres (Docker / CI service container) for the test loop rather than an
+  in-process WASM engine or a second driver. Re-opening PGlite means
+  re-accepting a second engine's dialect quirks in the test path.
 - **Dify** — its modified Apache licence forbids operating a multi-tenant
   environment without written authorisation. Disqualifying.
 - **n8n** — Sustainable Use Licence forbids offering it as a service.

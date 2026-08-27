@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../tenancy/context";
+import type { SqlDatabase } from "../db/pg";
 import { ProviderCredentialRepository } from "../db/repositories/provider-credential-repository";
 import { KbCollectionRepository } from "../db/repositories/kb-collection-repository";
 import { KbArticleRepository, type KbArticle } from "../db/repositories/kb-repository";
@@ -16,12 +16,12 @@ const VECTOR_STORES_ENDPOINT = "https://api.openai.com/v1/vector_stores";
  * just silently has nothing to search, same fallback style as embeddings.
  */
 
-async function getApiKey(db: Database.Database, tenant: TenantContext): Promise<string | undefined> {
+async function getApiKey(db: SqlDatabase, tenant: TenantContext): Promise<string | undefined> {
   return (await new ProviderCredentialRepository(db, tenant).getActiveLlmKey("openai"))?.decryptedKey ?? process.env.OPENAI_API_KEY;
 }
 
 /** Creates the collection's vector store on first use and backfills its existing articles. Returns the vector store id, or undefined if no OpenAI credential is configured. Already-provisioned collections just return their existing id. */
-export async function ensureVectorStore(db: Database.Database, tenant: TenantContext, collectionId: string): Promise<string | undefined> {
+export async function ensureVectorStore(db: SqlDatabase, tenant: TenantContext, collectionId: string): Promise<string | undefined> {
   const collections = new KbCollectionRepository(db, tenant);
   const collection = await collections.getById(collectionId);
   if (!collection) return undefined;
@@ -48,7 +48,7 @@ export async function ensureVectorStore(db: Database.Database, tenant: TenantCon
 }
 
 /** Uploads (or re-uploads, since OpenAI files are immutable) one article's content and attaches it to the vector store. No-op if no OpenAI credential is configured. */
-export async function syncArticleToVectorStore(db: Database.Database, tenant: TenantContext, vectorStoreId: string, article: KbArticle): Promise<void> {
+export async function syncArticleToVectorStore(db: SqlDatabase, tenant: TenantContext, vectorStoreId: string, article: KbArticle): Promise<void> {
   const apiKey = await getApiKey(db, tenant);
   if (!apiKey) return;
 
@@ -76,7 +76,7 @@ export async function syncArticleToVectorStore(db: Database.Database, tenant: Te
 }
 
 /** Detaches + deletes a previously-uploaded article file. Best-effort — failures here shouldn't block the admin action that triggered them. */
-export async function removeArticleFromVectorStore(db: Database.Database, tenant: TenantContext, vectorStoreId: string, openaiFileId: string): Promise<void> {
+export async function removeArticleFromVectorStore(db: SqlDatabase, tenant: TenantContext, vectorStoreId: string, openaiFileId: string): Promise<void> {
   const apiKey = await getApiKey(db, tenant);
   if (!apiKey) return;
   const headers = { Authorization: `Bearer ${apiKey}` };
@@ -85,7 +85,7 @@ export async function removeArticleFromVectorStore(db: Database.Database, tenant
 }
 
 /** Deletes the vector store itself (a collection's articles no longer need remote sync). Best-effort. */
-export async function deleteVectorStore(db: Database.Database, tenant: TenantContext, vectorStoreId: string): Promise<void> {
+export async function deleteVectorStore(db: SqlDatabase, tenant: TenantContext, vectorStoreId: string): Promise<void> {
   const apiKey = await getApiKey(db, tenant);
   if (!apiKey) return;
   await fetch(`${VECTOR_STORES_ENDPOINT}/${vectorStoreId}`, { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } }).catch(() => undefined);

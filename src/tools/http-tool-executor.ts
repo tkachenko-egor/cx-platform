@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../tenancy/context";
+import type { SqlDatabase } from "../db/pg";
 import { ProviderCredentialRepository } from "../db/repositories/provider-credential-repository";
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -87,7 +87,7 @@ export function parseHttpToolConfig(raw: Record<string, unknown>): HttpToolConfi
  * Mirrors every code tool's { ok: false, error } contract (FR-8.9): never
  * throws to the caller, so a bad integration can't break the agent loop.
  */
-export async function runHttpTool(db: Database.Database, tenant: TenantContext, config: HttpToolConfig, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+export async function runHttpTool(db: SqlDatabase, tenant: TenantContext, config: HttpToolConfig, args: Record<string, unknown>): Promise<Record<string, unknown>> {
   let url: URL;
   try {
     url = new URL(config.url);

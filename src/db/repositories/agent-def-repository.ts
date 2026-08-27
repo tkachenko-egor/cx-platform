@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import { AgentExperimentRepository } from "./agent-experiment-repository";
@@ -147,7 +148,7 @@ interface AgentDefRow {
   handoff_targets: string;
   guardrails: string;
   skills: string;
-  semantic_cache_enabled: number;
+  semantic_cache_enabled: boolean;
   native_tools: string;
   quick_replies: string;
   display_name: string;
@@ -179,32 +180,32 @@ function rowToAgentDef(row: AgentDefRow): AgentDef {
     status: row.status,
     systemPrompt: row.system_prompt,
     modelAlias: row.model_alias,
-    toolIds: JSON.parse(row.tool_ids) as string[],
-    kbScope: JSON.parse(row.kb_scope) as Record<string, unknown>,
-    handoffTargets: JSON.parse(row.handoff_targets) as string[],
-    guardrails: JSON.parse(row.guardrails) as Record<string, unknown>,
-    skills: JSON.parse(row.skills) as string[],
-    semanticCacheEnabled: row.semantic_cache_enabled === 1,
-    nativeTools: JSON.parse(row.native_tools) as AgentNativeToolsConfig,
-    quickReplies: JSON.parse(row.quick_replies) as string[],
+    toolIds: fromJson<string[]>(row.tool_ids),
+    kbScope: fromJson<Record<string, unknown>>(row.kb_scope),
+    handoffTargets: fromJson<string[]>(row.handoff_targets),
+    guardrails: fromJson<Record<string, unknown>>(row.guardrails),
+    skills: fromJson<string[]>(row.skills),
+    semanticCacheEnabled: row.semantic_cache_enabled,
+    nativeTools: fromJson<AgentNativeToolsConfig>(row.native_tools),
+    quickReplies: fromJson<string[]>(row.quick_replies),
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
     internalDescription: row.internal_description,
     ownerUserId: row.owner_user_id,
-    tags: JSON.parse(row.tags) as string[],
+    tags: fromJson<string[]>(row.tags),
     agentStatus: row.agent_status,
     environment: row.environment,
     changeNotes: row.change_notes,
     temperature: row.temperature,
     maxOutputTokens: row.max_output_tokens,
     costCeilingUsd: row.cost_ceiling_usd,
-    persona: JSON.parse(row.persona) as AgentPersonaConfig,
-    languageConfig: JSON.parse(row.language_config) as AgentLanguageConfig,
-    escalationConfig: JSON.parse(row.escalation_config) as AgentEscalationConfig,
-    conversationConfig: JSON.parse(row.conversation_config) as AgentConversationConfig,
-    enabledChannels: JSON.parse(row.enabled_channels) as string[],
-    businessHours: row.business_hours ? (JSON.parse(row.business_hours) as BusinessHoursConfig) : null,
-    toolSettings: JSON.parse(row.tool_settings) as AgentToolSettingsConfig,
+    persona: fromJson<AgentPersonaConfig>(row.persona),
+    languageConfig: fromJson<AgentLanguageConfig>(row.language_config),
+    escalationConfig: fromJson<AgentEscalationConfig>(row.escalation_config),
+    conversationConfig: fromJson<AgentConversationConfig>(row.conversation_config),
+    enabledChannels: fromJson<string[]>(row.enabled_channels),
+    businessHours: row.business_hours ? (fromJson<BusinessHoursConfig>(row.business_hours)) : null,
+    toolSettings: fromJson<AgentToolSettingsConfig>(row.tool_settings),
   };
 }
 
@@ -244,7 +245,7 @@ export interface AgentDefWriteInput {
 }
 
 export class AgentDefRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -279,7 +280,7 @@ export class AgentDefRepository extends TenantScopedRepository {
       "escalation_config", "conversation_config", "enabled_channels", "business_hours", "tool_settings", "created_at", "updated_at",
     ];
     const placeholders = columns.map((c) => (c === "status" ? "'published'" : "?")).join(", ");
-    this.db
+    await this.db
       .prepare(`INSERT INTO agent_defs (${columns.join(", ")}) VALUES (${placeholders})`)
       .run(
         id,
@@ -293,7 +294,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(input.handoffTargets ?? []),
         JSON.stringify(input.guardrails ?? {}),
         JSON.stringify(input.skills ?? []),
-        input.semanticCacheEnabled ? 1 : 0,
+        input.semanticCacheEnabled ?? false,
         JSON.stringify(input.nativeTools ?? {}),
         JSON.stringify(input.quickReplies ?? []),
         displayName,
@@ -386,7 +387,7 @@ export class AgentDefRepository extends TenantScopedRepository {
     const businessHours = input.businessHours ?? null;
     const toolSettings = input.toolSettings ?? {};
 
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO agent_defs (
            id, tenant_id, key, version, status, system_prompt, model_alias,
@@ -420,7 +421,7 @@ export class AgentDefRepository extends TenantScopedRepository {
         JSON.stringify(input.handoffTargets ?? []),
         JSON.stringify(input.guardrails ?? {}),
         JSON.stringify(input.skills ?? []),
-        input.semanticCacheEnabled ? 1 : 0,
+        input.semanticCacheEnabled ?? false,
         JSON.stringify(input.nativeTools ?? {}),
         JSON.stringify(input.quickReplies ?? []),
         displayName,
@@ -449,24 +450,24 @@ export class AgentDefRepository extends TenantScopedRepository {
   }
 
   async getDraft(key: string): Promise<AgentDef | undefined> {
-    const row = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).get(this.tenantId, key) as AgentDefRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).get(this.tenantId, key) as AgentDefRow | undefined;
     return row ? rowToAgentDef(row) : undefined;
   }
 
   async clearDraft(key: string): Promise<void> {
-    this.db.prepare(`DELETE FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).run(this.tenantId, key);
+    await this.db.prepare(`DELETE FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).run(this.tenantId, key);
   }
 
   /** A running conversation pins the version it started with (FR-6.3) — call with an explicit version to pin. */
   async getVersion(key: string, version: number): Promise<AgentDef | undefined> {
-    const row = this.db
+    const row = await this.db
       .prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = ?`)
       .get(this.tenantId, key, version) as AgentDefRow | undefined;
     return row ? rowToAgentDef(row) : undefined;
   }
 
   async getLatestPublished(key: string): Promise<AgentDef | undefined> {
-    const row = this.db
+    const row = await this.db
       .prepare(
         `SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND status = 'published'
          ORDER BY version DESC LIMIT 1`,
@@ -495,21 +496,21 @@ export class AgentDefRepository extends TenantScopedRepository {
 
   /** Phase 2 M6a admin UI: every published version of every agent, for building a "pick a variant" form. */
   async listAllPublished(): Promise<AgentDef[]> {
-    const rows = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND status = 'published' ORDER BY key, version`).all(this.tenantId) as AgentDefRow[];
+    const rows = await this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND status = 'published' ORDER BY key, version`).all(this.tenantId) as AgentDefRow[];
     return rows.map(rowToAgentDef);
   }
 
   /** Phase 6 M4: every published version of one agent, newest first — powers the Prompt card's version history dropdown. */
   async listVersions(key: string): Promise<AgentDef[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND status = 'published' ORDER BY version DESC`)
       .all(this.tenantId, key) as AgentDefRow[];
     return rows.map(rowToAgentDef);
   }
 
   private async latestVersion(key: string): Promise<number> {
-    const row = this.db
-      .prepare(`SELECT MAX(version) as maxVersion FROM agent_defs WHERE tenant_id = ? AND key = ?`)
+    const row = await this.db
+      .prepare(`SELECT MAX(version) as "maxVersion" FROM agent_defs WHERE tenant_id = ? AND key = ?`)
       .get(this.tenantId, key) as { maxVersion: number | null };
     return row.maxVersion ?? 0;
   }

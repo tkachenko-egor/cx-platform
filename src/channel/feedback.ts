@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../tenancy/context";
+import type { SqlDatabase } from "../db/pg";
 import { MessageRepository } from "../db/repositories/message-repository";
 import { MessageFeedbackRepository, type FeedbackRating } from "../db/repositories/message-feedback-repository";
 
@@ -13,7 +13,7 @@ export class FeedbackValidationError extends Error {}
  * other tenant-scoped write in this codebase.
  */
 export async function recordMessageFeedback(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   input: { conversationId: string; messageId: string; rating: FeedbackRating; comment?: string | null },
 ) {

@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import { slugify } from "../../core/slugify";
@@ -31,7 +32,7 @@ interface ToolDefRow {
   display_name: string;
   description: string;
   input_schema: string;
-  write_flag: number;
+  write_flag: boolean;
   approval_policy: ApprovalPolicy;
   type: ToolType;
   handler_config: string;
@@ -44,17 +45,17 @@ function rowToToolDef(row: ToolDefRow): ToolDef {
     key: row.key,
     displayName: row.display_name || row.key,
     description: row.description,
-    inputSchema: JSON.parse(row.input_schema) as Record<string, unknown>,
+    inputSchema: fromJson<Record<string, unknown>>(row.input_schema),
     writeFlag: Boolean(row.write_flag),
     approvalPolicy: row.approval_policy,
     type: row.type,
-    handlerConfig: JSON.parse(row.handler_config) as Record<string, unknown>,
+    handlerConfig: fromJson<Record<string, unknown>>(row.handler_config),
   };
 }
 
 /** FR-8.1: registry metadata. Handlers live in code (src/tools/**), keyed by `key`. */
 export class ToolDefRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -73,16 +74,16 @@ export class ToolDefRepository extends TenantScopedRepository {
     const existing = await this.getByKey(input.key);
     const displayName = input.displayName?.trim() || existing?.displayName || input.key;
     if (existing) {
-      this.db
+      await this.db
         .prepare(
           `UPDATE tool_defs SET display_name = ?, description = ?, input_schema = ?, write_flag = ?, approval_policy = ?, type = ?, handler_config = ?
            WHERE id = ? AND tenant_id = ?`,
         )
-        .run(displayName, input.description, JSON.stringify(input.inputSchema), input.writeFlag ? 1 : 0, input.approvalPolicy, type, JSON.stringify(handlerConfig), existing.id, this.tenantId);
+        .run(displayName, input.description, JSON.stringify(input.inputSchema), input.writeFlag, input.approvalPolicy, type, JSON.stringify(handlerConfig), existing.id, this.tenantId);
       return { ...existing, ...input, displayName, type, handlerConfig };
     }
     const id = randomUUID();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO tool_defs (id, tenant_id, key, display_name, description, input_schema, write_flag, approval_policy, type, handler_config, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -94,7 +95,7 @@ export class ToolDefRepository extends TenantScopedRepository {
         displayName,
         input.description,
         JSON.stringify(input.inputSchema),
-        input.writeFlag ? 1 : 0,
+        input.writeFlag,
         input.approvalPolicy,
         type,
         JSON.stringify(handlerConfig),
@@ -119,18 +120,18 @@ export class ToolDefRepository extends TenantScopedRepository {
   }
 
   async getByKey(key: string): Promise<ToolDef | undefined> {
-    const row = this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ? AND key = ?`).get(this.tenantId, key) as ToolDefRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ? AND key = ?`).get(this.tenantId, key) as ToolDefRow | undefined;
     return row ? rowToToolDef(row) : undefined;
   }
 
   async list(): Promise<ToolDef[]> {
-    const rows = this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ?`).all(this.tenantId) as ToolDefRow[];
+    const rows = await this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ?`).all(this.tenantId) as ToolDefRow[];
     return rows.map(rowToToolDef);
   }
 
   /** Only ever called for type === 'http' rows — code tools have no admin lifecycle (enforced by the caller route, not here). */
   async delete(key: string): Promise<void> {
-    this.db.prepare(`DELETE FROM tool_defs WHERE tenant_id = ? AND key = ?`).run(this.tenantId, key);
+    await this.db.prepare(`DELETE FROM tool_defs WHERE tenant_id = ? AND key = ?`).run(this.tenantId, key);
   }
 }
 
@@ -161,8 +162,8 @@ function rowToToolCall(row: ToolCallRow): ToolCallRecord {
     id: row.id,
     runId: row.run_id,
     toolKey: row.tool_key,
-    arguments: JSON.parse(row.arguments) as Record<string, unknown>,
-    result: JSON.parse(row.result) as Record<string, unknown>,
+    arguments: fromJson<Record<string, unknown>>(row.arguments),
+    result: fromJson<Record<string, unknown>>(row.result),
     status: row.status,
     latencyMs: row.latency_ms,
     idempotencyKey: row.idempotency_key ?? undefined,
@@ -171,12 +172,12 @@ function rowToToolCall(row: ToolCallRow): ToolCallRecord {
 
 /** FR-8.10: the audit trail for any action taken on a customer's behalf. */
 export class ToolCallRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async record(entry: Omit<ToolCallRecord, "id">): Promise<void> {
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO tool_calls (id, tenant_id, run_id, tool_key, arguments, result, status, latency_ms, idempotency_key, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -196,13 +197,13 @@ export class ToolCallRepository extends TenantScopedRepository {
   }
 
   async listByRun(runId: string): Promise<ToolCallRecord[]> {
-    const rows = this.db.prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`).all(this.tenantId, runId) as ToolCallRow[];
+    const rows = await this.db.prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`).all(this.tenantId, runId) as ToolCallRow[];
     return rows.map(rowToToolCall);
   }
 
   /** FR-8.6: look up a prior completed attempt so a retry with the same key never double-executes. */
   async findByIdempotencyKey(toolKey: string, idempotencyKey: string): Promise<ToolCallRecord | undefined> {
-    const row = this.db
+    const row = await this.db
       .prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND tool_key = ? AND idempotency_key = ? ORDER BY created_at DESC LIMIT 1`)
       .get(this.tenantId, toolKey, idempotencyKey) as ToolCallRow | undefined;
     return row ? rowToToolCall(row) : undefined;

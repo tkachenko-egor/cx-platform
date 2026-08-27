@@ -4,7 +4,7 @@ import { WidgetChannelAdapter } from "../../../../src/channel/widget-adapter";
 import { ensureConversation, processInboundTurn } from "../../../../src/channel/turn";
 import { getWidgetContext } from "../../../../src/platform/widget-context";
 
-// better-sqlite3 needs the Node runtime, not edge.
+// pg needs the Node runtime, not edge.
 export const runtime = "nodejs";
 
 const widgetAdapter = new WidgetChannelAdapter();

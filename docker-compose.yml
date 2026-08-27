@@ -1,0 +1,33 @@
+# Local Postgres for dev, tests and `npm run seed`. B1 (SQLite → Postgres).
+# `docker compose up -d db`, then `npm run seed`.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    # This database is disposable (tests clone throwaway DBs from a template,
+    # dev is rebuilt with `npm run seed`) — trade durability for speed.
+    command:
+      - postgres
+      - -c
+      - max_connections=300
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+    environment:
+      POSTGRES_USER: cx
+      POSTGRES_PASSWORD: cx
+      POSTGRES_DB: cx_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - cx-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cx -d cx_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cx-pg-data:

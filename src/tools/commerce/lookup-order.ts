@@ -1,6 +1,5 @@
-import { z } from "zod";
-import type Database from "better-sqlite3";
-import type { TenantContext } from "../../tenancy/context";
+import { z } from "zod";import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../../db/pg";
 import { CommerceRepo } from "./repo";
 import { daysSinceDelivery } from "./rules";
 import { DEFAULT_CURRENCY, formatDayMonth, formatMoney, formatWeekday, statusLabel } from "./format";
@@ -168,7 +167,7 @@ async function buildOrderResult(repo: CommerceRepo, orderId: string, currency: s
   };
 }
 
-export async function runLookupOrder(db: Database.Database, tenant: TenantContext, input: LookupOrderInput, settings?: Record<string, unknown>) {
+export async function runLookupOrder(db: SqlDatabase, tenant: TenantContext, input: LookupOrderInput, settings?: Record<string, unknown>) {
   const { currency } = resolveLookupOrderSettings(settings);
   const repo = new CommerceRepo(db, tenant);
   if (input.order_id) return await buildOrderResult(repo, input.order_id, currency);

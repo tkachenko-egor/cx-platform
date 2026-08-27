@@ -19,6 +19,15 @@ export default defineConfig([
               message:
                 "Provider SDK types must not cross the gateway boundary (FR-5.1). Import only inside src/gateway/providers/.",
             },
+            {
+              name: "better-sqlite3",
+              message:
+                "B1 moved the engine to Postgres. Use the SqlDatabase surface from src/db/pg.ts; the driver (pg) is only imported there.",
+            },
+            {
+              name: "pg",
+              message: "Import the SqlDatabase surface from src/db/pg.ts instead — pg is wrapped there only.",
+            },
           ],
         },
       ],
@@ -26,6 +35,13 @@ export default defineConfig([
   },
   {
     files: ["src/gateway/providers/**/*.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
+    // B1: the one module allowed to touch the Postgres driver.
+    files: ["src/db/pg.ts"],
     rules: {
       "no-restricted-imports": "off",
     },

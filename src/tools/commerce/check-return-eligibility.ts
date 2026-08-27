@@ -1,6 +1,5 @@
-import { z } from "zod";
-import type Database from "better-sqlite3";
-import type { TenantContext } from "../../tenancy/context";
+import { z } from "zod";import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../../db/pg";
 import { CommerceRepo } from "./repo";
 import { checkReturnEligibility, REASON_CODES, resolveReturnPolicy, type EligibilityContext } from "./rules";
 import { today } from "../../core/clock";
@@ -43,7 +42,7 @@ const ALTERNATIVE_ACTION_MAP: Record<string, string> = {
   SUPERVISOR_REVIEW: "request_review",
 };
 
-export async function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
+export async function runCheckReturnEligibility(db: SqlDatabase, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
   const policy = resolveReturnPolicy(settings);
   const repo = new CommerceRepo(db, tenant);
   const order = await repo.findOrder(input.order_id);

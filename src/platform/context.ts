@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { headers } from "next/headers";
+import type { SqlDatabase } from "../db/pg";
 import { getDb } from "../db/client";
 import { TenantRepository, type Tenant } from "../db/repositories/tenant-repository";
 import { ProviderCredentialRepository } from "../db/repositories/provider-credential-repository";
@@ -14,7 +14,7 @@ import type { ProviderAdapter } from "../gateway/types";
 import { RESERVED_SUBDOMAINS } from "./reserved-subdomains";
 
 export interface PlatformContext {
-  db: Database.Database;
+  db: SqlDatabase;
   tenant: Tenant;
   gateway: ModelGateway;
   embeddings: EmbeddingProvider;
@@ -61,7 +61,7 @@ const cacheBySlug = new Map<string, PlatformContext>();
  * takes precedence once one exists.
  */
 /** Exported for src/platform/widget-context.ts — an embed resolves its tenant from a public widget key instead of the Host header, but needs the exact same gateway/embeddings construction once it has one. */
-export async function buildContext(tenant: Tenant, db: Database.Database): Promise<PlatformContext> {
+export async function buildContext(tenant: Tenant, db: SqlDatabase): Promise<PlatformContext> {
   const credentials = new ProviderCredentialRepository(db, tenant);
   const providers: Record<string, ProviderAdapter> = { stub: new StubProvider() };
 

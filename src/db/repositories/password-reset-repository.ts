@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -29,25 +29,25 @@ function rowToToken(row: PasswordResetTokenRow): PasswordResetToken {
 
 /** Phase 3 M2: password-reset tokens, same shape as UserInviteRepository. */
 export class PasswordResetRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async create(input: { userId: string; tokenHash: string; expiresAt: string }): Promise<PasswordResetToken> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(`INSERT INTO password_reset_tokens (id, tenant_id, user_id, token_hash, expires_at, used_at, created_at) VALUES (?, ?, ?, ?, ?, NULL, ?)`)
       .run(id, this.tenantId, input.userId, input.tokenHash, input.expiresAt, now);
     return { id, tenantId: this.tenantId, userId: input.userId, tokenHash: input.tokenHash, expiresAt: input.expiresAt, usedAt: null, createdAt: now };
   }
 
   async getByTokenHash(tokenHash: string): Promise<PasswordResetToken | undefined> {
-    const row = this.db.prepare(`SELECT * FROM password_reset_tokens WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as PasswordResetTokenRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM password_reset_tokens WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as PasswordResetTokenRow | undefined;
     return row ? rowToToken(row) : undefined;
   }
 
   async markUsed(id: string): Promise<void> {
-    this.db.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
   }
 }

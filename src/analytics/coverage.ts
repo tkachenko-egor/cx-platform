@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../tenancy/context";
+import type { SqlDatabase } from "../db/pg";
 import { KbRetrievalLogRepository } from "../db/repositories/kb-retrieval-log-repository";
 
 export interface CoverageGap {
@@ -22,7 +22,7 @@ export interface CoverageGap {
 export const DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.02;
 
 /** FR-7.10/11.9 substrate: low-confidence retrievals as a worklist, not yet clustered. */
-export async function getCoverageGaps(db: Database.Database, tenant: TenantContext, options: { thresholdScore?: number; since?: string } = {}): Promise<CoverageGap[]> {
+export async function getCoverageGaps(db: SqlDatabase, tenant: TenantContext, options: { thresholdScore?: number; since?: string } = {}): Promise<CoverageGap[]> {
   const threshold = options.thresholdScore ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD;
   return (await new KbRetrievalLogRepository(db, tenant).listLowConfidence(threshold, options.since)).map((e) => ({
     queryText: e.queryText,

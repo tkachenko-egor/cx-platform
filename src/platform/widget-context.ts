@@ -1,4 +1,5 @@
 import { getDb } from "../db/client";
+import { fromJson } from "../db/pg";
 import { TenantRepository } from "../db/repositories/tenant-repository";
 import { buildContext, type PlatformContext } from "./context";
 import type { WidgetPosition, AudienceRules } from "../db/repositories/widget-config-repository";
@@ -57,7 +58,7 @@ interface WidgetConfigRow {
  */
 export async function getWidgetContext(publicKey: string): Promise<WidgetContext | undefined> {
   const db = getDb();
-  const row = db.prepare(`SELECT * FROM widget_configs WHERE public_key = ?`).get(publicKey) as WidgetConfigRow | undefined;
+  const row = (await db.prepare(`SELECT * FROM widget_configs WHERE public_key = ?`).get(publicKey)) as WidgetConfigRow | undefined;
   if (!row) return undefined;
 
   const tenant = await new TenantRepository(db).getById(row.tenant_id);
@@ -76,7 +77,7 @@ export async function getWidgetContext(publicKey: string): Promise<WidgetContext
       fontFamily: row.font_family,
       userBubbleColor: row.user_bubble_color,
       botBubbleColor: row.bot_bubble_color,
-      audienceRules: JSON.parse(row.audience_rules) as AudienceRules,
+      audienceRules: fromJson<AudienceRules>(row.audience_rules),
     },
   };
 }

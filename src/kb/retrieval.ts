@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
+import type { SqlDatabase } from "../db/pg";
 import type { RerankProvider } from "../gateway/rerank/types";
 import type { TenantContext } from "../tenancy/context";
 import { KbArticleRepository, KbChunkRepository, type KbArticle, type KbChunk } from "../db/repositories/kb-repository";
@@ -52,11 +52,18 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom;
 }
 
-/** FTS5 MATCH has its own query syntax — raw user text can contain characters that break it. Reduce to an OR of quoted word tokens. */
+/**
+ * B1: `websearch_to_tsquery` (used in KbChunkRepository.searchKeyword) is
+ * injection-safe on raw user text, so this only guards the "no searchable
+ * tokens at all" case — a query of pure punctuation would match nothing and
+ * shouldn't hit the DB.
+ */
 function toFtsQuery(query: string): string | null {
   const tokens = query.match(/[\p{L}\p{N}]+/gu) ?? [];
   if (tokens.length === 0) return null;
-  return tokens.map((t) => `"${t}"`).join(" OR ");
+  // OR semantics, matching the pre-B1 fts5 behaviour — `websearch_to_tsquery`
+  // reads a bare `or` as disjunction.
+  return tokens.join(" or ");
 }
 
 /**
@@ -72,7 +79,7 @@ function toFtsQuery(query: string): string | null {
  * every existing caller — `opts` is optional and defaults to no reranking.
  */
 export async function hybridSearch(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   kbScope: KbScope,
   query: string,

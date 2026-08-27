@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../../db/pg";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import type { OpenState, OrderStatus } from "./rules";
 
@@ -53,7 +53,7 @@ export type ProductRow = {
   tags: string | null;
   price: number;
   stock_qty: number;
-  is_promotional_item: number;
+  is_promotional_item: boolean;
   rating: number | null;
   short_description: string | null;
   image_url: string | null;
@@ -61,50 +61,50 @@ export type ProductRow = {
 
 /** Read-only queries over the generic commerce tables the built-in toolkit reads. */
 export class CommerceRepo extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async findOrder(orderId: string): Promise<OrderRow | undefined> {
-    return this.db.prepare(`SELECT * FROM orders WHERE tenant_id = ? AND order_id = ?`).get(this.tenantId, orderId) as OrderRow | undefined;
+    return await this.db.prepare(`SELECT * FROM orders WHERE tenant_id = ? AND order_id = ?`).get(this.tenantId, orderId) as OrderRow | undefined;
   }
 
   async findCustomer(customerId: string): Promise<CustomerRow | undefined> {
-    return this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?`).get(this.tenantId, customerId) as CustomerRow | undefined;
+    return await this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?`).get(this.tenantId, customerId) as CustomerRow | undefined;
   }
 
   async findCustomerByEmail(email: string): Promise<CustomerRow | undefined> {
-    return this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND lower(email) = lower(?)`).get(this.tenantId, email) as CustomerRow | undefined;
+    return await this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND lower(email) = lower(?)`).get(this.tenantId, email) as CustomerRow | undefined;
   }
 
   async findLinesForOrder(orderId: string): Promise<LineRow[]> {
-    return this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND order_id = ?`).all(this.tenantId, orderId) as LineRow[];
+    return await this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND order_id = ?`).all(this.tenantId, orderId) as LineRow[];
   }
 
   async findLine(lineId: string): Promise<LineRow | undefined> {
-    return this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND line_id = ?`).get(this.tenantId, lineId) as LineRow | undefined;
+    return await this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND line_id = ?`).get(this.tenantId, lineId) as LineRow | undefined;
   }
 
   async findLineByProductName(orderId: string, productName: string): Promise<LineRow | undefined> {
-    return this.db
+    return await this.db
       .prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND order_id = ? AND lower(product_name) = lower(?) LIMIT 1`)
       .get(this.tenantId, orderId, productName) as LineRow | undefined;
   }
 
   async findProduct(productId: string): Promise<ProductRow | undefined> {
-    return this.db.prepare(`SELECT * FROM products WHERE tenant_id = ? AND product_id = ?`).get(this.tenantId, productId) as ProductRow | undefined;
+    return await this.db.prepare(`SELECT * FROM products WHERE tenant_id = ? AND product_id = ?`).get(this.tenantId, productId) as ProductRow | undefined;
   }
 
   /** FR-8.5's first real write path — see cancel-order.ts for the status gate around it. */
   async cancelOrder(orderId: string): Promise<void> {
-    this.db.prepare(`UPDATE orders SET status = 'Cancelled' WHERE tenant_id = ? AND order_id = ?`).run(this.tenantId, orderId);
+    await this.db.prepare(`UPDATE orders SET status = 'Cancelled' WHERE tenant_id = ? AND order_id = ?`).run(this.tenantId, orderId);
   }
 
   async findOrdersByCustomer(customerId: string, limit: number): Promise<{ orders: OrderRow[]; total: number }> {
-    const orders = this.db
+    const orders = await this.db
       .prepare(`SELECT * FROM orders WHERE tenant_id = ? AND customer_id = ? ORDER BY order_date DESC LIMIT ?`)
       .all(this.tenantId, customerId, limit) as OrderRow[];
-    const { n } = this.db.prepare(`SELECT COUNT(*) n FROM orders WHERE tenant_id = ? AND customer_id = ?`).get(this.tenantId, customerId) as { n: number };
+    const { n } = await this.db.prepare(`SELECT COUNT(*) n FROM orders WHERE tenant_id = ? AND customer_id = ?`).get(this.tenantId, customerId) as { n: number };
     return { orders, total: n };
   }
 
@@ -133,6 +133,6 @@ export class CommerceRepo extends TenantScopedRepository {
     if (input.inStock) clauses.push(`stock_qty > 0`);
 
     const where = `WHERE ${clauses.join(" AND ")}`;
-    return this.db.prepare(`SELECT * FROM products ${where} ORDER BY rating DESC LIMIT ?`).all(...params, input.limit) as ProductRow[];
+    return await this.db.prepare(`SELECT * FROM products ${where} ORDER BY rating DESC LIMIT ?`).all(...params, input.limit) as ProductRow[];
   }
 }

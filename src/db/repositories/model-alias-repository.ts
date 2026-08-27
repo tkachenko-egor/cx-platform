@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -33,7 +34,7 @@ function rowToModelAlias(row: ModelAliasRow): ModelAlias {
     alias: row.alias,
     provider: row.provider,
     model: row.model,
-    fallbackChain: JSON.parse(row.fallback_chain) as FallbackTarget[],
+    fallbackChain: fromJson<FallbackTarget[]>(row.fallback_chain),
   };
 }
 
@@ -42,7 +43,7 @@ function rowToModelAlias(row: ModelAliasRow): ModelAlias {
  * upsert() call — this is the mechanism the Phase 0 exit criterion tests.
  */
 export class ModelAliasRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -57,7 +58,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
     const existing = await this.getByAlias(input.alias);
 
     if (existing) {
-      this.db
+      await this.db
         .prepare(
           `UPDATE model_aliases SET provider = ?, model = ?, fallback_chain = ?, updated_at = ?
            WHERE id = ? AND tenant_id = ?`,
@@ -67,7 +68,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
     }
 
     const id = randomUUID();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO model_aliases (id, tenant_id, alias, provider, model, fallback_chain, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -77,7 +78,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
   }
 
   async getByAlias(alias: string): Promise<ModelAlias | undefined> {
-    const row = this.db
+    const row = await this.db
       .prepare(
         `SELECT id, tenant_id, alias, provider, model, fallback_chain FROM model_aliases
          WHERE tenant_id = ? AND alias = ?`,
@@ -88,7 +89,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
 
   /** Phase 4 M1 admin UI: every alias a tenant has defined, for a "pick a model" dropdown. */
   async list(): Promise<ModelAlias[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT id, tenant_id, alias, provider, model, fallback_chain FROM model_aliases WHERE tenant_id = ? ORDER BY alias`)
       .all(this.tenantId) as ModelAliasRow[];
     return rows.map(rowToModelAlias);

@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
+import type { SqlDatabase } from "../db/pg";
 import type { TenantContext } from "../tenancy/context";
 import { ToolCallRepository, ToolDefRepository, type ToolDef } from "../db/repositories/tool-repository";
 import { ToolApprovalRepository, type ToolApproval } from "../db/repositories/tool-approval-repository";
@@ -24,7 +24,7 @@ export interface ToolSpec {
   writeFlag: boolean;
   parse: (args: unknown) => unknown;
   run: (
-    db: Database.Database,
+    db: SqlDatabase,
     tenant: TenantContext,
     args: unknown,
     settings?: Record<string, unknown>,
@@ -95,7 +95,7 @@ function buildHttpToolSpec(def: ToolDef): ToolSpec {
 }
 
 /** REGISTRY (code tools) first, then a DB lookup for admin-authored 'http' tools — so a new HTTP tool needs no code change or redeploy. */
-async function resolveToolSpec(db: Database.Database, tenant: TenantContext, toolKey: string): Promise<ToolSpec | undefined> {
+async function resolveToolSpec(db: SqlDatabase, tenant: TenantContext, toolKey: string): Promise<ToolSpec | undefined> {
   const staticSpec = REGISTRY[toolKey];
   if (staticSpec) return staticSpec;
   const def = await new ToolDefRepository(db, tenant).getByKey(toolKey);
@@ -104,7 +104,7 @@ async function resolveToolSpec(db: Database.Database, tenant: TenantContext, too
 }
 
 /** Converts an agent's tool_ids allowlist into the gateway's canonical ToolDefinition shape. Unknown keys (a stale reference to a deleted tool) are silently dropped, same as a removed REGISTRY entry always has been. */
-export async function toGatewayToolDefinitions(db: Database.Database, tenant: TenantContext, toolKeys: string[]): Promise<ToolDefinition[]> {
+export async function toGatewayToolDefinitions(db: SqlDatabase, tenant: TenantContext, toolKeys: string[]): Promise<ToolDefinition[]> {
   const toolDefs = new ToolDefRepository(db, tenant);
   const defs: ToolDefinition[] = [];
   for (const key of toolKeys) {
@@ -140,7 +140,7 @@ function computeIdempotencyKey(conversationId: string, args: unknown): string {
 }
 
 async function logToolCall(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   input: { runId: string; toolKey: string; arguments: unknown; result: Record<string, unknown>; status: "ok" | "error"; latencyMs: number; idempotencyKey?: string },
 ): Promise<void> {
@@ -165,7 +165,7 @@ async function logToolCall(
 
 /** Runs an already-parsed call end to end: execute, classify ok/error, log. */
 async function runAndLog(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   spec: ToolSpec,
   parsedArgs: unknown,
@@ -194,7 +194,7 @@ async function runAndLog(
  * tool_defs.approval_policy and never double-execute on a retry.
  */
 export async function executeTool(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   conversationId: string,
   runId: string,
@@ -283,7 +283,7 @@ export async function executeTool(
  * row records the call, not which agent version raised it, so there's no
  * agent_defs.tool_settings slice to resolve here.
  */
-export async function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Promise<Record<string, unknown>> {
+export async function executeApprovedTool(db: SqlDatabase, tenant: TenantContext, approval: ToolApproval): Promise<Record<string, unknown>> {
   const spec = await resolveToolSpec(db, tenant, approval.toolKey);
   if (!spec) return { ok: false, error: `Unknown tool: ${approval.toolKey}` };
   return runAndLog(db, tenant, spec, approval.arguments, { runId: approval.runId, toolKey: approval.toolKey, arguments: approval.arguments, idempotencyKey: approval.idempotencyKey });

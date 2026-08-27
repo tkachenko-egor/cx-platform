@@ -4,7 +4,7 @@ import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { buildInterpretRequest, extractGuardrailPatch, mergeGuardrailPatch } from "../../../../../src/guardrails/interpret";
 import type { AgentGuardrailConfig } from "../../../../../src/guardrails/types";
 
-// better-sqlite3 needs the Node runtime, not edge.
+// pg needs the Node runtime, not edge.
 export const runtime = "nodejs";
 
 /**

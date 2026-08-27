@@ -48,7 +48,7 @@ class ScriptedProvider implements ProviderAdapter {
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
@@ -97,7 +97,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     // scoring quirks or any real KB content's incidental keyword overlap.
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE]) } });
@@ -123,7 +123,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
   it("pins the version an A/B-tested conversation was assigned, surviving later turns and experiment changes (Phase 2 M6a)", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 

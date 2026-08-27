@@ -1,6 +1,5 @@
-import { redirect } from "next/navigation";
-import type Database from "better-sqlite3";
-import type { Tenant } from "../db/repositories/tenant-repository";
+import { redirect } from "next/navigation";import type { Tenant } from "../db/repositories/tenant-repository";
+import type { SqlDatabase } from "../db/pg";
 import { getSessionUser } from "./session";
 import { roleAtLeast } from "./permissions";
 
@@ -12,7 +11,7 @@ import { roleAtLeast } from "./permissions";
  * supervisor gets redirected to the one area they do have access to instead
  * of a raw 403.
  */
-export async function requireAdminPage(db: Database.Database, tenant: Tenant): Promise<void> {
+export async function requireAdminPage(db: SqlDatabase, tenant: Tenant): Promise<void> {
   const user = (await getSessionUser(db, tenant))!; // app/admin/layout.tsx already guarantees a session exists
   if (!roleAtLeast(user.role, "admin")) redirect("/admin/agents");
 }

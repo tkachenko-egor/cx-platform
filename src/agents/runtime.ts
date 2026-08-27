@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
+import type { SqlDatabase } from "../db/pg";
 import { ModelGateway } from "../gateway/gateway";
 import type { ChatMessage, ChatRequest, NativeToolConfig } from "../gateway/types";
 import type { AgentDef } from "../db/repositories/agent-def-repository";
@@ -22,7 +22,7 @@ import { LlmCallRepository } from "../db/repositories/llm-call-repository";
 import { DEFAULT_LOW_CONFIDENCE_THRESHOLD } from "../analytics/coverage";
 
 export interface RuntimeDeps {
-  db: Database.Database;
+  db: SqlDatabase;
   gateway: ModelGateway;
   embeddings: EmbeddingProvider;
 }
@@ -383,7 +383,7 @@ export async function runAgentTurn(
  * silently drops "file_search"/"mcp" — harmless to compute unconditionally
  * either way, since each adapter decides what it actually supports.
  */
-async function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: AgentDef): Promise<NativeToolConfig[]> {
+async function buildNativeTools(db: SqlDatabase, tenant: TenantContext, agent: AgentDef): Promise<NativeToolConfig[]> {
   const config = agent.nativeTools;
   const tools: NativeToolConfig[] = [];
   if (config.webSearch) tools.push({ type: "web_search" });

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createDb } from "../../src/db/client";
+import { createDb, buildTemplateDatabase, dropTestDatabases } from "../../src/db/client";
 import { seedFixtures } from "../../src/testing/seed-fixtures";
 import { StubProvider } from "../../src/gateway/providers/stub";
 import { ensureConversation, processInboundTurn } from "../../src/channel/turn";
@@ -74,6 +74,14 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
   }
 
   const db = createDb(":memory:");
+  try {
+    return await runCaseWith(db, golden, script);
+  } finally {
+    await db.close();
+  }
+}
+
+async function runCaseWith(db: ReturnType<typeof createDb>, golden: GoldenCase, script: ChatResponse[]): Promise<CaseResult> {
   const provider = new ScriptedProvider(script);
   const { tenant, gateway, embeddings } = await seedFixtures({
     db,
@@ -143,6 +151,7 @@ async function main() {
   const thresholds = JSON.parse(fs.readFileSync(path.join(moduleDir, "thresholds.json"), "utf-8")) as Record<string, number>;
 
   console.log(`Running ${golden.length} golden case(s)...\n`);
+  await buildTemplateDatabase();
 
   const results: CaseResult[] = [];
   for (const goldenCase of golden) {
@@ -209,7 +218,9 @@ async function main() {
   console.log(`\nRegression gate passed.`);
 }
 
-main().catch((err) => {
+main()
+  .finally(() => dropTestDatabases())
+  .catch((err) => {
   console.error(err);
   process.exitCode = 1;
 });

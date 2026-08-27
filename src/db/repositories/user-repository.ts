@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import type { Role } from "../../auth/permissions";
@@ -27,7 +28,7 @@ export interface UserRow {
   role: Role;
   status: "active" | "disabled";
   skills: string;
-  is_platform_admin: number;
+  is_platform_admin: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -41,7 +42,7 @@ export function rowToUser(row: UserRow): User {
     passwordHash: row.password_hash,
     role: row.role,
     status: row.status,
-    skills: JSON.parse(row.skills) as string[],
+    skills: fromJson<string[]>(row.skills),
     isPlatformAdmin: Boolean(row.is_platform_admin),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -50,14 +51,14 @@ export function rowToUser(row: UserRow): User {
 
 /** FR-2.1/2.2: staff identity. Not to be confused with FR-2.3's end-customer identity. */
 export class UserRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async create(input: { email: string; passwordHash: string; role: Role; skills?: string[] }): Promise<User> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO users (id, tenant_id, email, password_hash, role, status, skills, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
@@ -67,23 +68,23 @@ export class UserRepository extends TenantScopedRepository {
   }
 
   async get(id: string): Promise<User | undefined> {
-    const row = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as UserRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as UserRow | undefined;
     return row ? rowToUser(row) : undefined;
   }
 
   async getByEmail(email: string): Promise<User | undefined> {
-    const row = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND email = ?`).get(this.tenantId, email) as UserRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND email = ?`).get(this.tenantId, email) as UserRow | undefined;
     return row ? rowToUser(row) : undefined;
   }
 
   async list(): Promise<User[]> {
-    const rows = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? ORDER BY created_at ASC`).all(this.tenantId) as UserRow[];
+    const rows = await this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? ORDER BY created_at ASC`).all(this.tenantId) as UserRow[];
     return rows.map(rowToUser);
   }
 
   /** Phase 3 M2: password reset. */
   async setPasswordHash(id: string, passwordHash: string): Promise<void> {
-    this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(passwordHash, new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(passwordHash, new Date().toISOString(), this.tenantId, id);
   }
 
   /** Phase 3 M3: team management — role reassignment / deactivation. WHERE tenant_id = ? AND id = ? throughout, matching get()'s scoping. */
@@ -94,7 +95,7 @@ export class UserRepository extends TenantScopedRepository {
     const status = input.status ?? existing.status;
     const skills = input.skills ?? existing.skills;
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(`UPDATE users SET role = ?, status = ?, skills = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(role, status, JSON.stringify(skills), now, this.tenantId, id);
     return { ...existing, role, status, skills, updatedAt: now };
@@ -102,6 +103,6 @@ export class UserRepository extends TenantScopedRepository {
 
   /** Phase 3 M4: grant/revoke platform-admin (tenant management crossing tenant boundaries — see src/auth/platform-admin-lookup.ts). */
   async setPlatformAdmin(id: string, value: boolean): Promise<void> {
-    this.db.prepare(`UPDATE users SET is_platform_admin = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(value ? 1 : 0, new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE users SET is_platform_admin = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(value, new Date().toISOString(), this.tenantId, id);
   }
 }

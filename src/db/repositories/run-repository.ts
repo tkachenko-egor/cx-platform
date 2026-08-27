@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -25,13 +25,13 @@ interface RunRow {
 
 /** Ties one conversation turn to every llm_call/tool_call it produced (data-model sketch). */
 export class RunRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async start(input: { conversationId: string; agentKey: string; agentVersion: number; trigger: string }): Promise<Run> {
     const id = randomUUID();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO runs (id, tenant_id, conversation_id, agent_key, agent_version, trigger, status, started_at)
          VALUES (?, ?, ?, ?, ?, ?, 'running', ?)`,
@@ -49,13 +49,13 @@ export class RunRepository extends TenantScopedRepository {
   }
 
   async complete(id: string, status: "completed" | "failed"): Promise<void> {
-    this.db
+    await this.db
       .prepare(`UPDATE runs SET status = ?, ended_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, new Date().toISOString(), this.tenantId, id);
   }
 
   async listByConversation(conversationId: string): Promise<Run[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM runs WHERE tenant_id = ? AND conversation_id = ? ORDER BY started_at ASC`)
       .all(this.tenantId, conversationId) as RunRow[];
     return rows.map((row) => ({

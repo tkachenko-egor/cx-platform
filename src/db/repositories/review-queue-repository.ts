@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -50,30 +50,30 @@ function rowToEntry(row: ReviewQueueRow): ReviewQueueEntry {
  * pending/decided shape (src/db/repositories/tool-approval-repository.ts).
  */
 export class ReviewQueueRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async enqueue(input: { conversationId: string; reason: string; sourceEventId?: string }): Promise<ReviewQueueEntry> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(`INSERT INTO review_queue (id, tenant_id, conversation_id, reason, source_event_id, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', ?)`)
       .run(id, this.tenantId, input.conversationId, input.reason, input.sourceEventId ?? null, now);
     return { id, tenantId: this.tenantId, conversationId: input.conversationId, reason: input.reason, sourceEventId: input.sourceEventId ?? null, status: "pending", reviewedBy: null, reviewedAt: null, createdAt: now };
   }
 
   async get(id: string): Promise<ReviewQueueEntry | undefined> {
-    const row = this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ReviewQueueRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ReviewQueueRow | undefined;
     return row ? rowToEntry(row) : undefined;
   }
 
   async listPending(): Promise<ReviewQueueEntry[]> {
-    const rows = this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND status = 'pending' ORDER BY created_at ASC`).all(this.tenantId) as ReviewQueueRow[];
+    const rows = await this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND status = 'pending' ORDER BY created_at ASC`).all(this.tenantId) as ReviewQueueRow[];
     return rows.map(rowToEntry);
   }
 
   async markDecided(id: string, status: "reviewed" | "dismissed", reviewedBy: string): Promise<void> {
-    this.db.prepare(`UPDATE review_queue SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE tenant_id = ? AND id = ?`).run(status, reviewedBy, new Date().toISOString(), this.tenantId, id);
+    await this.db.prepare(`UPDATE review_queue SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE tenant_id = ? AND id = ?`).run(status, reviewedBy, new Date().toISOString(), this.tenantId, id);
   }
 }

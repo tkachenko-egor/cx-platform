@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-import type Database from "better-sqlite3";
-import type { Tenant } from "../../db/repositories/tenant-repository";
+import { createHash } from "node:crypto";import type { Tenant } from "../../db/repositories/tenant-repository";
+import type { SqlDatabase } from "../../db/pg";
 import { ConversationRepository } from "../../db/repositories/conversation-repository";
 import { MessageRepository } from "../../db/repositories/message-repository";
 
@@ -18,7 +17,7 @@ export function normalizedSubjectHash(subject: string): string {
 
 /** FR-3.12: resolve via Message-ID/In-Reply-To/References first, with a subject-hash fallback. */
 export async function resolveEmailConversationId(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: Tenant,
   input: { inReplyToExternalId?: string; references?: string[]; subject: string },
 ): Promise<string | undefined> {

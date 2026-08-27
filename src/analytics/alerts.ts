@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { Tenant } from "../db/repositories/tenant-repository";
+import type { SqlDatabase } from "../db/pg";
 import { MessageFeedbackRepository } from "../db/repositories/message-feedback-repository";
 import { getContainmentRate } from "./agent-performance";
 
@@ -16,7 +16,7 @@ export interface ActiveAlert {
  * average against tenants.alert_thresholds, both already-computed metrics —
  * no new aggregation machinery, just a threshold comparison.
  */
-export async function getActiveAlerts(db: Database.Database, tenant: Tenant): Promise<ActiveAlert[]> {
+export async function getActiveAlerts(db: SqlDatabase, tenant: Tenant): Promise<ActiveAlert[]> {
   const alerts: ActiveAlert[] = [];
   const { maxHandoffRatePct, minCsatScore } = tenant.alertThresholds;
 

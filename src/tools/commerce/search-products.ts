@@ -1,6 +1,5 @@
-import { z } from "zod";
-import type Database from "better-sqlite3";
-import type { TenantContext } from "../../tenancy/context";
+import { z } from "zod";import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../../db/pg";
 import { CommerceRepo } from "./repo";
 import { DEFAULT_CURRENCY, formatMoney } from "./format";
 import type { ProductResultCard } from "../cards";
@@ -51,7 +50,7 @@ function splitTags(tags: string | null): string[] {
     .filter(Boolean);
 }
 
-export async function runSearchProducts(db: Database.Database, tenant: TenantContext, input: SearchProductsInput, settings?: Record<string, unknown>) {
+export async function runSearchProducts(db: SqlDatabase, tenant: TenantContext, input: SearchProductsInput, settings?: Record<string, unknown>) {
   const { currency } = resolveSearchProductsSettings(settings);
   const repo = new CommerceRepo(db, tenant);
   const rows = await repo.searchProducts(input);

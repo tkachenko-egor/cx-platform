@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { getPlatformContext } from "../../../../src/platform/context";
+import type { SqlDatabase } from "../../../../src/db/pg";
 import {
   AgentDefRepository,
   type AgentNativeToolsConfig,
@@ -35,7 +35,7 @@ function requiresApprovalGate(actor: User, agentStatus: string, environment: str
 }
 
 /** When File Search is turned on, make sure every KB collection this agent draws from has a vector store — provisioning + backfilling any that don't yet. Best-effort: a failure here shouldn't block publishing the agent itself. */
-async function provisionFileSearch(db: Database.Database, tenant: TenantContext, nativeTools: AgentNativeToolsConfig | undefined, kbScope: Record<string, unknown> | undefined): Promise<void> {
+async function provisionFileSearch(db: SqlDatabase, tenant: TenantContext, nativeTools: AgentNativeToolsConfig | undefined, kbScope: Record<string, unknown> | undefined): Promise<void> {
   if (!nativeTools?.fileSearch) return;
   const collectionIds = Array.isArray(kbScope?.collectionIds) ? (kbScope.collectionIds as string[]) : [];
   for (const collectionId of collectionIds) {

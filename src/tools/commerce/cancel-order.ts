@@ -1,6 +1,5 @@
-import { z } from "zod";
-import type Database from "better-sqlite3";
-import type { TenantContext } from "../../tenancy/context";
+import { z } from "zod";import type { TenantContext } from "../../tenancy/context";
+import type { SqlDatabase } from "../../db/pg";
 import { CommerceRepo } from "./repo";
 
 export const cancelOrderInputSchema = z.object({
@@ -39,7 +38,7 @@ export function resolveCancelOrderSettings(settings?: Record<string, unknown>): 
 }
 
 /** FR-8.5's first real write path. Approval-policy gating happens one layer up, in src/tools/registry.ts. */
-export async function runCancelOrder(db: Database.Database, tenant: TenantContext, input: CancelOrderInput, settings?: Record<string, unknown>) {
+export async function runCancelOrder(db: SqlDatabase, tenant: TenantContext, input: CancelOrderInput, settings?: Record<string, unknown>) {
   const { mutableStatuses } = resolveCancelOrderSettings(settings);
   const repo = new CommerceRepo(db, tenant);
   const order = await repo.findOrder(input.order_id);

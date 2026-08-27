@@ -47,7 +47,7 @@ function usage() {
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 

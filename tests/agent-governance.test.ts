@@ -134,7 +134,7 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
   it("escalates once consecutive tool-call errors reach the configured threshold, without waiting for ROUND_CAP", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
 
     // cancel_order on a Delivered order returns ok:false (a legitimate business "no" —

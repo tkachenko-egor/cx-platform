@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID, randomBytes } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import type { WidgetFontKey } from "../../platform/widget-fonts";
@@ -57,7 +58,7 @@ function rowToConfig(row: WidgetConfigRow): WidgetConfig {
     fontFamily: row.font_family,
     userBubbleColor: row.user_bubble_color,
     botBubbleColor: row.bot_bubble_color,
-    audienceRules: JSON.parse(row.audience_rules) as AudienceRules,
+    audienceRules: fromJson<AudienceRules>(row.audience_rules),
   };
 }
 
@@ -67,12 +68,12 @@ function mintPublicKey(): string {
 
 /** Phase 4 M4: staff-facing CRUD, always tenant-scoped. The one public, unscoped lookup an embed needs lives in src/platform/widget-context.ts instead. */
 export class WidgetConfigRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async getByAgentKey(agentKey: string): Promise<WidgetConfig | undefined> {
-    const row = this.db.prepare(`SELECT * FROM widget_configs WHERE tenant_id = ? AND agent_key = ?`).get(this.tenantId, agentKey) as WidgetConfigRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM widget_configs WHERE tenant_id = ? AND agent_key = ?`).get(this.tenantId, agentKey) as WidgetConfigRow | undefined;
     return row ? rowToConfig(row) : undefined;
   }
 
@@ -93,7 +94,7 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     const now = new Date().toISOString();
     const audienceRules = input.audienceRules ?? existing?.audienceRules ?? {};
     if (existing) {
-      this.db
+      await this.db
         .prepare(
           `UPDATE widget_configs SET title = ?, greeting_text = ?, primary_color = ?, logo_url = ?, position = ?, font_family = ?, user_bubble_color = ?, bot_bubble_color = ?, audience_rules = ?, updated_at = ?
            WHERE id = ? AND tenant_id = ?`,
@@ -117,7 +118,7 @@ export class WidgetConfigRepository extends TenantScopedRepository {
 
     const id = randomUUID();
     const publicKey = mintPublicKey();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO widget_configs (id, tenant_id, agent_key, public_key, title, greeting_text, primary_color, logo_url, position, font_family, user_bubble_color, bot_bubble_color, audience_rules, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -147,7 +148,7 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     const existing = await this.getByAgentKey(agentKey);
     if (!existing) return undefined;
     const publicKey = mintPublicKey();
-    this.db.prepare(`UPDATE widget_configs SET public_key = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`).run(publicKey, new Date().toISOString(), existing.id, this.tenantId);
+    await this.db.prepare(`UPDATE widget_configs SET public_key = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`).run(publicKey, new Date().toISOString(), existing.id, this.tenantId);
     return { ...existing, publicKey };
   }
 }

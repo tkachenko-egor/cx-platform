@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../db/pg";
 import { ModelAliasRepository, type ModelAlias } from "../db/repositories/model-alias-repository";
 import { LlmCallRepository } from "../db/repositories/llm-call-repository";
 import type { TenantContext } from "../tenancy/context";
@@ -7,7 +7,7 @@ import { emitTrace } from "../tracing/trace";
 import { GatewayError, type ChatRequest, type ChatResponse, type GatewayErrorType, type ProviderAdapter } from "./types";
 
 export interface ModelGatewayDeps {
-  db: Database.Database;
+  db: SqlDatabase;
   providers: Record<string, ProviderAdapter>;
 }
 

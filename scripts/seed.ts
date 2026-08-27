@@ -28,6 +28,14 @@ import type { ApprovalPolicy } from "../src/db/repositories/tool-repository";
  */
 async function main() {
   const db = createDb();
+  try {
+    await run(db);
+  } finally {
+    await db.close();
+  }
+}
+
+async function run(db: ReturnType<typeof createDb>) {
 
   const providers: Record<string, ProviderAdapter> = { stub: new StubProvider() };
   if (process.env.ANTHROPIC_API_KEY) providers.anthropic = new AnthropicProvider(process.env.ANTHROPIC_API_KEY);

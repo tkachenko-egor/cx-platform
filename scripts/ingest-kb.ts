@@ -23,6 +23,7 @@ async function main() {
   const { ingested, skipped } = await ingestKnowledgeBase(db, tenant, embeddings);
   console.log(`Ingested: ${ingested.join(", ") || "(none)"}`);
   console.log(`Skipped (unchanged): ${skipped.join(", ") || "(none)"}`);
+  await db.close();
 }
 
 main().catch((err) => {

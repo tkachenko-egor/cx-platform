@@ -1,4 +1,4 @@
-import type Database from "better-sqlite3";
+import type { SqlDatabase } from "../db/pg";
 import type { TenantContext } from "./context";
 
 /**
@@ -9,10 +9,10 @@ import type { TenantContext } from "./context";
  * follow. Every query a subclass writes must filter on `this.tenantId`.
  */
 export abstract class TenantScopedRepository {
-  protected readonly db: Database.Database;
+  protected readonly db: SqlDatabase;
   protected readonly tenantId: string;
 
-  protected constructor(db: Database.Database, tenant: TenantContext) {
+  protected constructor(db: SqlDatabase, tenant: TenantContext) {
     if (!tenant || !tenant.tenantId) {
       throw new Error(`${new.target.name} requires a tenant context`);
     }

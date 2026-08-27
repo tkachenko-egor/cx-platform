@@ -18,10 +18,22 @@ mode, cost tracking, tracing). Full requirements:
    constructor, not as a per-method argument. Don't add a repository method
    that accepts `tenantId` as a parameter instead of relying on
    `this.tenantId` — that reopens the "forgot to filter" bug class this
-   pattern exists to close. **Repository methods are `async`** (Phase B0 —
-   the engine is still `better-sqlite3`, but the method surface is the async
-   shape a Postgres driver needs); every call site `await`s. The
-   constructor stays synchronous.
+   pattern exists to close. **Repository methods are `async`** and run on
+   Postgres via the `SqlDatabase` surface in `src/db/pg.ts` (Phase B1 — `pg`
+   pool underneath; `?` placeholders are translated to `$n`, `jsonb` columns
+   come back parsed, `timestamptz` comes back as ISO strings). Every call
+   site `await`s; the constructor stays synchronous. Multi-statement
+   transactions go through `db.tx(async (q) => …)` so they pin one pooled
+   client. `SELECT … AS "camelCaseAlias"` **must be quoted** — unquoted
+   Postgres identifiers fold to lowercase.
+
+   **The schema is migrations-only — there is no `schema.sql`.** B1 squashed
+   the SQLite schema + 30 migrations into
+   `src/db/migrations/000-baseline.ts`; new changes append `001-*`, `002-*`,
+   … each idempotent (`IF NOT EXISTS` / `information_schema` guards) and
+   tracked in `schema_migrations`. Tests and local dev need a reachable
+   Postgres — `docker compose up -d db`; `createDb(":memory:")` clones a
+   disposable database from a migrated template (`src/testing/global-setup.ts`).
 3. **Model bindings are aliases, resolved per-tenant through
    `model_aliases`, never hardcoded to a provider/model string** in agent
    or gateway code. Changing what a tenant's agent runs on is a DB row
@@ -66,6 +78,8 @@ mode, cost tracking, tracing). Full requirements:
 
 ## Before committing
 
+Postgres must be up: `docker compose up -d db`.
+
 ```
 npm test         # tenancy, gateway swap/fallback, KB retrieval, tools, agent runtime, guardrails, router/handoff
 npm run typecheck
@@ -73,8 +87,7 @@ npm run lint
 npm run eval      # golden-dataset regression gate (routing/tool-selection/escalation/guardrail accuracy)
 ```
 
-If a change touches `src/db/schema.sql` or `src/db/migrations/`, also run
-`npm run seed` against the real `cx-platform.db` (not just `:memory:`
-tests) — `schema.sql`'s `CREATE TABLE IF NOT EXISTS` is a no-op against a
-pre-existing DB file, so a bug where `schema.sql` itself references a
-migration-added column only surfaces there, not in any test.
+If a change touches `src/db/migrations/`, also run `npm run seed` against the
+real dev database (`docker compose up -d db`) — the migration path against a
+fresh Postgres is not the same as a test's template clone, and a broken
+`ALTER`/backfill in a new migration only surfaces there.

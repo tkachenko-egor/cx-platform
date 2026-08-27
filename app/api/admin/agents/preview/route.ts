@@ -8,7 +8,7 @@ import { runAgentTurn } from "../../../../../src/agents/runtime";
 import type { AgentDef, AgentNativeToolsConfig, AgentPersonaConfig, AgentLanguageConfig, AgentEscalationConfig, AgentConversationConfig } from "../../../../../src/db/repositories/agent-def-repository";
 import type { ChatMessage } from "../../../../../src/gateway/types";
 
-// better-sqlite3 needs the Node runtime, not edge.
+// pg needs the Node runtime, not edge.
 export const runtime = "nodejs";
 
 interface PreviewDraft {

@@ -57,7 +57,7 @@ const OK_RESPONSE: ChatResponse = {
 async function setup(providerScript: ChatResponse[], guardrails: Record<string, unknown> = {}) {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
@@ -301,7 +301,7 @@ describe("runAgentTurn — input guardrails", () => {
     // poisoned chunk is the only candidate and retrieval ranking can't be swamped by it.
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     const provider = new ScriptedProvider([OK_RESPONSE]);
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });

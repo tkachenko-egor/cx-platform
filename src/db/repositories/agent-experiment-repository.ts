@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -43,7 +43,7 @@ function rowToExperiment(row: AgentExperimentRow): AgentExperiment {
 
 /** Phase 2 M6a: A/B testing on top of agent_defs' existing versioning — see AgentDefRepository.getForTraffic for the assignment logic that reads this. */
 export class AgentExperimentRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -51,7 +51,7 @@ export class AgentExperimentRepository extends TenantScopedRepository {
   async create(input: { agentKey: string; variantAVersion: number; variantBVersion: number; trafficSplit: number }): Promise<AgentExperiment> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO agent_experiments (id, tenant_id, agent_key, variant_a_version, variant_b_version, traffic_split, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`,
@@ -61,18 +61,18 @@ export class AgentExperimentRepository extends TenantScopedRepository {
   }
 
   async getActive(agentKey: string): Promise<AgentExperiment | undefined> {
-    const row = this.db
+    const row = await this.db
       .prepare(`SELECT * FROM agent_experiments WHERE tenant_id = ? AND agent_key = ? AND status = 'active'`)
       .get(this.tenantId, agentKey) as AgentExperimentRow | undefined;
     return row ? rowToExperiment(row) : undefined;
   }
 
   async stop(id: string): Promise<void> {
-    this.db.prepare(`UPDATE agent_experiments SET status = 'stopped' WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
+    await this.db.prepare(`UPDATE agent_experiments SET status = 'stopped' WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
   }
 
   async list(): Promise<AgentExperiment[]> {
-    const rows = this.db.prepare(`SELECT * FROM agent_experiments WHERE tenant_id = ? ORDER BY created_at DESC`).all(this.tenantId) as AgentExperimentRow[];
+    const rows = await this.db.prepare(`SELECT * FROM agent_experiments WHERE tenant_id = ? ORDER BY created_at DESC`).all(this.tenantId) as AgentExperimentRow[];
     return rows.map(rowToExperiment);
   }
 }

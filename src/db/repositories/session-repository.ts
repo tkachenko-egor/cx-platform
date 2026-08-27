@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -27,25 +27,25 @@ function rowToSession(row: SessionRow): Session {
 
 /** Server-side session records — only a hash of the session token is ever stored (see src/auth/session.ts). */
 export class SessionRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
   async create(input: { userId: string; tokenHash: string; expiresAt: string }): Promise<Session> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(`INSERT INTO sessions (id, tenant_id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
       .run(id, this.tenantId, input.userId, input.tokenHash, input.expiresAt, now);
     return { id, tenantId: this.tenantId, userId: input.userId, tokenHash: input.tokenHash, expiresAt: input.expiresAt, createdAt: now };
   }
 
   async getByTokenHash(tokenHash: string): Promise<Session | undefined> {
-    const row = this.db.prepare(`SELECT * FROM sessions WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as SessionRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM sessions WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as SessionRow | undefined;
     return row ? rowToSession(row) : undefined;
   }
 
   async deleteByTokenHash(tokenHash: string): Promise<void> {
-    this.db.prepare(`DELETE FROM sessions WHERE tenant_id = ? AND token_hash = ?`).run(this.tenantId, tokenHash);
+    await this.db.prepare(`DELETE FROM sessions WHERE tenant_id = ? AND token_hash = ?`).run(this.tenantId, tokenHash);
   }
 }

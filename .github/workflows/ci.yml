@@ -8,6 +8,27 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    # B1: tests, seed and eval run against a real Postgres (pgvector).
+    services:
+      db:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: cx
+          POSTGRES_PASSWORD: cx
+          POSTGRES_DB: cx_platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cx -d cx_platform"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://cx:cx@localhost:5432/cx_platform
+      TEST_DATABASE_URL: postgres://cx:cx@localhost:5432/postgres
+
     steps:
       - uses: actions/checkout@v4
 

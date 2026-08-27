@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import { createHash } from "node:crypto";
+import type { SqlDatabase } from "../db/pg";
 import fs from "node:fs";
 import path from "node:path";
 import type { EmbeddingProvider } from "../gateway/embeddings/types";
@@ -87,7 +87,7 @@ export async function chunkAndEmbedArticle(
  * size (a handful of short docs).
  */
 export async function ingestKnowledgeBase(
-  db: Database.Database,
+  db: SqlDatabase,
   tenant: TenantContext,
   embeddings: EmbeddingProvider,
   dir: string = KNOWLEDGE_DIR,

@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 
@@ -47,7 +48,7 @@ function rowToApproval(row: AgentPublishApprovalRow): AgentPublishApproval {
     agentKey: row.agent_key,
     requestedVersion: row.requested_version,
     requestedBy: row.requested_by,
-    payload: JSON.parse(row.payload) as Record<string, unknown>,
+    payload: fromJson<Record<string, unknown>>(row.payload),
     fromStatus: row.from_status,
     toStatus: row.to_status,
     fromEnvironment: row.from_environment,
@@ -61,7 +62,7 @@ function rowToApproval(row: AgentPublishApprovalRow): AgentPublishApproval {
 
 /** Phase 8 M3: the parking lot for a supervisor's attempt to publish an agent live — see src/db/migrations/023-escalation-config-and-publish-approvals.ts. */
 export class AgentPublishApprovalRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -77,7 +78,7 @@ export class AgentPublishApprovalRepository extends TenantScopedRepository {
   }): Promise<AgentPublishApproval> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO agent_publish_approvals (
            id, tenant_id, agent_key, requested_version, requested_by, payload,
@@ -101,19 +102,19 @@ export class AgentPublishApprovalRepository extends TenantScopedRepository {
   }
 
   async get(id: string): Promise<AgentPublishApproval | undefined> {
-    const row = this.db.prepare(`SELECT * FROM agent_publish_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as AgentPublishApprovalRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM agent_publish_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as AgentPublishApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
   async listPending(): Promise<AgentPublishApproval[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM agent_publish_approvals WHERE tenant_id = ? AND status = 'pending' ORDER BY created_at ASC`)
       .all(this.tenantId) as AgentPublishApprovalRow[];
     return rows.map(rowToApproval);
   }
 
   async markDecided(id: string, status: "approved" | "rejected", decidedBy: string): Promise<void> {
-    this.db
+    await this.db
       .prepare(`UPDATE agent_publish_approvals SET status = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, decidedBy, new Date().toISOString(), this.tenantId, id);
   }

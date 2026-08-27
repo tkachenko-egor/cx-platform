@@ -1,65 +1,10 @@
 import type { Migration } from "../migrate";
-import { migration001MessagesRebuildAndThreading } from "./001-messages-rebuild-and-threading";
-import { migration002RbacAndAudit } from "./002-rbac-and-audit";
-import { migration003ConversationsAssignee } from "./003-conversations-assignee";
-import { migration004Tickets } from "./004-tickets";
-import { migration005ToolApprovals } from "./005-tool-approvals";
-import { migration006Phase2Foundation } from "./006-phase2-foundation";
-import { migration007CoverageGapAndSemanticCache } from "./007-coverage-gap-and-semantic-cache";
-import { migration008SlaPolicies } from "./008-sla-policies";
-import { migration009ReviewQueue } from "./009-review-queue";
-import { migration010AgentExperiments } from "./010-agent-experiments";
-import { migration011Macros } from "./011-macros";
-import { migration012UserInvitesAndPasswordResets } from "./012-user-invites-and-password-resets";
-import { migration013PlatformAdminFlag } from "./013-platform-admin-flag";
-import { migration014ProviderCredentials } from "./014-provider-credentials";
-import { migration015ToolDefsHttpType } from "./015-tool-defs-http-type";
-import { migration016KbArticlesBody } from "./016-kb-articles-body";
-import { migration017WidgetConfigs } from "./017-widget-configs";
-import { migration018KbCollections } from "./018-kb-collections";
-import { migration019AgentNativeToolsAndQuickReplies } from "./019-agent-native-tools-and-quick-replies";
-import { migration020KbOpenaiVectorStore } from "./020-kb-openai-vector-store";
-import { migration021WidgetThemeFields } from "./021-widget-theme-fields";
-import { migration022AgentIdentityPersonaLanguage } from "./022-agent-identity-persona-language";
-import { migration023EscalationConfigAndPublishApprovals } from "./023-escalation-config-and-publish-approvals";
-import { migration024ConversationChannelsFeedbackTagging } from "./024-conversation-channels-feedback-tagging";
-import { migration025AgentBusinessHoursOverride } from "./025-agent-business-hours-override";
-import { migration026GenericCommerceColumns } from "./026-generic-commerce-columns";
-import { migration027AgentToolSettings } from "./027-agent-tool-settings";
-import { migration028ToolDefDisplayName } from "./028-tool-def-display-name";
-import { migration029PlatformOwnerTenant } from "./029-platform-owner-tenant";
-import { migration030KbRetrievalLogReranked } from "./030-kb-retrieval-log-reranked";
+import { migration000Baseline } from "./000-baseline";
 
-/** Applied in order, once each, tracked in schema_migrations (see migrate.ts). */
-export const ALL_MIGRATIONS: Migration[] = [
-  migration001MessagesRebuildAndThreading,
-  migration002RbacAndAudit,
-  migration003ConversationsAssignee,
-  migration004Tickets,
-  migration005ToolApprovals,
-  migration006Phase2Foundation,
-  migration007CoverageGapAndSemanticCache,
-  migration008SlaPolicies,
-  migration009ReviewQueue,
-  migration010AgentExperiments,
-  migration011Macros,
-  migration012UserInvitesAndPasswordResets,
-  migration013PlatformAdminFlag,
-  migration014ProviderCredentials,
-  migration015ToolDefsHttpType,
-  migration016KbArticlesBody,
-  migration017WidgetConfigs,
-  migration018KbCollections,
-  migration019AgentNativeToolsAndQuickReplies,
-  migration020KbOpenaiVectorStore,
-  migration021WidgetThemeFields,
-  migration022AgentIdentityPersonaLanguage,
-  migration023EscalationConfigAndPublishApprovals,
-  migration024ConversationChannelsFeedbackTagging,
-  migration025AgentBusinessHoursOverride,
-  migration026GenericCommerceColumns,
-  migration027AgentToolSettings,
-  migration028ToolDefDisplayName,
-  migration029PlatformOwnerTenant,
-  migration030KbRetrievalLogReranked,
-];
+/**
+ * B1 squashed the SQLite schema + 30 incremental migrations into a single
+ * Postgres baseline. New schema changes append `001-*`, `002-*`, … here, each
+ * idempotent (guard on `information_schema` / `IF NOT EXISTS`) and tracked in
+ * `schema_migrations` (see migrate.ts).
+ */
+export const ALL_MIGRATIONS: Migration[] = [migration000Baseline];

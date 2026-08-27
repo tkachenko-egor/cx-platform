@@ -95,7 +95,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
   async function setup(providerScript: ChatResponse[], semanticCacheEnabled: boolean) {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 

@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import type { TenantContext } from "../tenancy/context";
+import { fromJson } from "../db/pg";
+import type { SqlDatabase } from "../db/pg";
 
 export interface AgentVolumeRow {
   agentKey: string;
@@ -10,7 +11,7 @@ export interface AgentVolumeRow {
 const EXCLUDE_PREVIEW_RUNS = `NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = runs.conversation_id AND pc.channel = 'test_harness')`;
 
 /** Volume per agent — a straight COUNT over `runs`, the join point every debugging/cost question already uses. Phase 5 M6: optional agentKey scopes this to one agent's own page instead of the tenant-wide breakdown. */
-export async function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<AgentVolumeRow[]> {
+export async function getAgentVolume(db: SqlDatabase, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<AgentVolumeRow[]> {
   const conditions = ["tenant_id = ?", EXCLUDE_PREVIEW_RUNS];
   const params: unknown[] = [tenant.tenantId];
   if (options.agentKey) {
@@ -21,8 +22,8 @@ export async function getAgentVolume(db: Database.Database, tenant: TenantContex
     conditions.push("started_at >= ?");
     params.push(options.since);
   }
-  const query = `SELECT agent_key as agentKey, COUNT(*) as runCount FROM runs WHERE ${conditions.join(" AND ")} GROUP BY agent_key ORDER BY runCount DESC`;
-  return db.prepare(query).all(...params) as AgentVolumeRow[];
+  const query = `SELECT agent_key as "agentKey", COUNT(*) as "runCount" FROM runs WHERE ${conditions.join(" AND ")} GROUP BY agent_key ORDER BY "runCount" DESC`;
+  return await db.prepare(query).all(...params) as AgentVolumeRow[];
 }
 
 export interface EscalationReasonCount {
@@ -36,7 +37,7 @@ export interface EscalationReasonCount {
  * on the desk detail page, never aggregated. Small enough at this scale to
  * tally in JS rather than reaching for SQLite's json_each.
  */
-export async function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<EscalationReasonCount[]> {
+export async function getEscalationReasonBreakdown(db: SqlDatabase, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<EscalationReasonCount[]> {
   const conditions = [
     "tenant_id = ?",
     "type = 'escalated'",
@@ -52,11 +53,11 @@ export async function getEscalationReasonBreakdown(db: Database.Database, tenant
     params.push(options.since);
   }
   const query = `SELECT payload FROM events WHERE ${conditions.join(" AND ")}`;
-  const rows = db.prepare(query).all(...params) as { payload: string }[];
+  const rows = await db.prepare(query).all(...params) as { payload: string }[];
 
   const counts = new Map<string, number>();
   for (const row of rows) {
-    const payload = JSON.parse(row.payload) as { reasons?: unknown };
+    const payload = fromJson(row.payload) as { reasons?: unknown };
     const reasons = Array.isArray(payload.reasons) ? payload.reasons : [];
     for (const reason of reasons) {
       if (typeof reason === "string") counts.set(reason, (counts.get(reason) ?? 0) + 1);
@@ -80,7 +81,7 @@ export interface ContainmentRate {
  * at all" is the honest substitute, and M1's event-integrity fix is what
  * makes it reliable.
  */
-export async function getContainmentRate(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<ContainmentRate> {
+export async function getContainmentRate(db: SqlDatabase, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<ContainmentRate> {
   let conversationIds: string[];
   if (options.agentKey) {
     // Scoped to one agent: a conversation counts if that agent handled at least one run in it — runs.agent_key, not
@@ -91,7 +92,7 @@ export async function getContainmentRate(db: Database.Database, tenant: TenantCo
       conditions.push("started_at >= ?");
       params.push(options.since);
     }
-    conversationIds = (db.prepare(`SELECT DISTINCT conversation_id as id FROM runs WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
+    conversationIds = (await db.prepare(`SELECT DISTINCT conversation_id as id FROM runs WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
   } else {
     const conditions = ["tenant_id = ?", "channel != 'test_harness'"];
     const params: unknown[] = [tenant.tenantId];
@@ -99,13 +100,13 @@ export async function getContainmentRate(db: Database.Database, tenant: TenantCo
       conditions.push("created_at >= ?");
       params.push(options.since);
     }
-    conversationIds = (db.prepare(`SELECT id FROM conversations WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
+    conversationIds = (await db.prepare(`SELECT id FROM conversations WHERE ${conditions.join(" AND ")}`).all(...params) as { id: string }[]).map((r) => r.id);
   }
   if (conversationIds.length === 0) return { totalConversations: 0, containedConversations: 0, rate: 0 };
 
   const placeholders = conversationIds.map(() => "?").join(",");
   const escalatedCount = (
-    db.prepare(`SELECT COUNT(DISTINCT conversation_id) as c FROM events WHERE tenant_id = ? AND type = 'escalated' AND conversation_id IN (${placeholders})`).get(tenant.tenantId, ...conversationIds) as {
+    await db.prepare(`SELECT COUNT(DISTINCT conversation_id) as c FROM events WHERE tenant_id = ? AND type = 'escalated' AND conversation_id IN (${placeholders})`).get(tenant.tenantId, ...conversationIds) as {
       c: number;
     }
   ).c;
@@ -122,10 +123,10 @@ export interface LatencyPercentiles {
 }
 
 /** No PERCENTILE_CONT in SQLite — small enough at this scale to sort in JS rather than reach for a window-function approximation. */
-export async function getLatencyPercentiles(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<LatencyPercentiles> {
+export async function getLatencyPercentiles(db: SqlDatabase, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<LatencyPercentiles> {
   const conditions = ["lc.tenant_id = ?", "NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = r.conversation_id AND pc.channel = 'test_harness')"];
   const params: unknown[] = [tenant.tenantId];
-  let query = `SELECT lc.latency_ms as latencyMs FROM llm_calls lc JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id`;
+  let query = `SELECT lc.latency_ms as "latencyMs" FROM llm_calls lc JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id`;
 
   if (options.agentKey) {
     conditions.push("r.agent_key = ?");
@@ -137,7 +138,7 @@ export async function getLatencyPercentiles(db: Database.Database, tenant: Tenan
   }
   query += ` WHERE ${conditions.join(" AND ")}`;
 
-  const sorted = (db.prepare(query).all(...params) as { latencyMs: number }[]).map((r) => r.latencyMs).sort((a, b) => a - b);
+  const sorted = (await db.prepare(query).all(...params) as { latencyMs: number }[]).map((r) => r.latencyMs).sort((a, b) => a - b);
   const percentile = (p: number) => (sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))]);
   return { p50: percentile(0.5), p95: percentile(0.95), count: sorted.length };
 }
@@ -151,16 +152,16 @@ export interface AgentVersionPerformance {
 }
 
 /** Phase 2 M7a: the read side of M6a's A/B tests — per-version cost/latency/escalation-rate comparison. */
-export async function getAgentVersionPerformance(db: Database.Database, tenant: TenantContext, agentKey: string, options: { since?: string } = {}): Promise<AgentVersionPerformance[]> {
+export async function getAgentVersionPerformance(db: SqlDatabase, tenant: TenantContext, agentKey: string, options: { since?: string } = {}): Promise<AgentVersionPerformance[]> {
   const sinceClause = options.since ? "AND started_at >= ?" : "";
   const listParams = options.since ? [tenant.tenantId, agentKey, options.since] : [tenant.tenantId, agentKey];
   const versions = (
-    db.prepare(`SELECT DISTINCT agent_version FROM runs WHERE tenant_id = ? AND agent_key = ? AND ${EXCLUDE_PREVIEW_RUNS} ${sinceClause}`).all(...listParams) as { agent_version: number }[]
+    await db.prepare(`SELECT DISTINCT agent_version FROM runs WHERE tenant_id = ? AND agent_key = ? AND ${EXCLUDE_PREVIEW_RUNS} ${sinceClause}`).all(...listParams) as { agent_version: number }[]
   ).map((r) => r.agent_version);
 
-  return versions
-    .map((agentVersion) => {
-      const runRows = db
+  const perVersion = await Promise.all(
+    versions.map(async (agentVersion) => {
+      const runRows = await db
         .prepare(`SELECT id, conversation_id FROM runs WHERE tenant_id = ? AND agent_key = ? AND agent_version = ? AND ${EXCLUDE_PREVIEW_RUNS} ${sinceClause}`)
         .all(...(options.since ? [tenant.tenantId, agentKey, agentVersion, options.since] : [tenant.tenantId, agentKey, agentVersion])) as { id: string; conversation_id: string }[];
       const runIds = runRows.map((r) => r.id);
@@ -170,7 +171,7 @@ export async function getAgentVersionPerformance(db: Database.Database, tenant: 
       let avgLatencyMs = 0;
       if (runIds.length > 0) {
         const placeholders = runIds.map(() => "?").join(",");
-        const agg = db.prepare(`SELECT AVG(cost_usd) as avgCost, AVG(latency_ms) as avgLatency FROM llm_calls WHERE tenant_id = ? AND run_id IN (${placeholders})`).get(tenant.tenantId, ...runIds) as {
+        const agg = await db.prepare(`SELECT AVG(cost_usd) as "avgCost", AVG(latency_ms) as "avgLatency" FROM llm_calls WHERE tenant_id = ? AND run_id IN (${placeholders})`).get(tenant.tenantId, ...runIds) as {
           avgCost: number | null;
           avgLatency: number | null;
         };
@@ -182,7 +183,7 @@ export async function getAgentVersionPerformance(db: Database.Database, tenant: 
       if (conversationIds.length > 0) {
         const placeholders = conversationIds.map(() => "?").join(",");
         const escalatedCount = (
-          db.prepare(`SELECT COUNT(DISTINCT conversation_id) as c FROM events WHERE tenant_id = ? AND type = 'escalated' AND conversation_id IN (${placeholders})`).get(
+          await db.prepare(`SELECT COUNT(DISTINCT conversation_id) as c FROM events WHERE tenant_id = ? AND type = 'escalated' AND conversation_id IN (${placeholders})`).get(
             tenant.tenantId,
             ...conversationIds,
           ) as { c: number }
@@ -191,6 +192,7 @@ export async function getAgentVersionPerformance(db: Database.Database, tenant: 
       }
 
       return { agentVersion, runCount: runRows.length, avgCostUsd, avgLatencyMs, escalationRate };
-    })
-    .sort((a, b) => a.agentVersion - b.agentVersion);
+    }),
+  );
+  return perVersion.sort((a, b) => a.agentVersion - b.agentVersion);
 }

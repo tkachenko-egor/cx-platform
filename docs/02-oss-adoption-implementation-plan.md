@@ -24,11 +24,20 @@ Rules unchanged from the roadmap:
 
 1. **A1** first (roadmap says so — B2/B3 must preserve the rerank stage).
 2. Rest of Phase A in any order: **A2**, **A3**, **A4**, **A5**. A6/A7 optional.
-3. Phase B strictly in sequence: **B0 → B1 (+B4) → B2 → B3 → B5 → B6**.
-   B6 optional; B4 lands together with B1.
+3. Phase B strictly in sequence: **B0 → B1 → B2 → B3 → B5 → B6**.
+   B6 optional. **B4 was folded into B1** — the decision was a real Postgres
+   in the test loop (Docker / CI service container), not PGlite, so there is
+   no separate "keep tests dependency-free" task; the disposable-database
+   harness ships as part of B1.
 
 Phase A ships on the current SQLite build. Nothing in Phase A depends on
 Phase B.
+
+> **Note (post-B1):** the SQLite statements below are historical. B1 replaced
+> the engine with Postgres, squashed `schema.sql` + all 30 migrations into
+> `src/db/migrations/000-baseline.ts`, and moved every repository onto the
+> `SqlDatabase` surface in `src/db/pg.ts`. B2/B3/B5/B6 build on that; where
+> they still say "SQLite" read "the pre-B1 state".
 
 ---
 
@@ -52,7 +61,25 @@ helpers outside `src/db/repositories/` too — `src/analytics/*`,
 with the C4 conversation cluster rather than C1 (it is used from ~25 route
 files). Full gate green: `npm test` (266), `typecheck`, `lint` (0 errors),
 `npm run eval` (15/15, zero baseline movement), `npm run seed`.
-**B1 is next** — do not start it until B0 is merged.
+
+**Phase B — B1 (+B4): done** on branch `b1-postgres-engine`. Engine is now
+`pg` (node-postgres) against real Postgres (pgvector image), wrapped by
+`SqlDatabase` in `src/db/pg.ts` — the old `db.prepare(sql).get/all/run`
+surface, but async, with `?`→`$n` translation, `jsonb`/`boolean` native,
+`timestamptz` handed back as ISO strings, and `db.tx()` pinning one pooled
+client. `schema.sql` + all 30 migrations squashed into
+`src/db/migrations/000-baseline.ts` (type upgrade taken: `jsonb`,
+`boolean`, `timestamptz`, `double precision`; commerce dates stay `text`).
+fts5 → a `tsvector` generated column + GIN with `ts_rank_cd` ranking (a lean
+pull-forward of B3). **B4 folded in**: `createDb(":memory:")` clones a
+disposable database from a migrated template built by
+`src/testing/global-setup.ts`; `docker compose up -d db` for local/CI, no
+PGlite. Divergences from the plan: (a) `SELECT … AS "camelCase"` aliases had
+to be quoted (Postgres folds unquoted identifiers) — 6 sites; (b) `pg`
+returns aggregates as strings — neutralised with global type parsers in
+`pg.ts`; (c) `getEphemeralDb` keeps `createDb` synchronous via a deferred
+`#gate` so ~100 test call sites didn't move.
+**B2 is next.**
 
 Where the implementation diverged from the plan below:
 
@@ -473,56 +500,55 @@ B1 until B0 is fully merged.
 
 **Effort:** XL.
 
-## B1 — Swap the engine
+## B1 (+B4) — Swap the engine → **DONE**
 
-**Component:** `pg` (MIT) or `postgres.js` (Unlicense); optionally Kysely
-(MIT).
+**Component:** `pg` (MIT), against real Postgres (`pgvector/pgvector:pg17`).
+No `postgres.js`, no Kysely, **no PGlite** — the decision was a real Postgres
+in the test loop, so B4 has no separate existence.
 
-**Files:** `src/db/client.ts`, `src/db/migrate.ts`, `src/db/schema.sql`,
-`src/db/migrations/`, `src/tenancy/repository.ts`. Lands **with B4**.
+**What shipped** (branch `b1-postgres-engine`):
 
-**Steps:**
-1. Connection pool replaces the single `Database` handle in `client.ts`.
-   `getDb()` singleton → a pool; `createDb()` → pool + bootstrap.
-2. Dialect fixes (only a handful): `json_extract`/`json_each` → `->>` /
-   `jsonb_array_elements`; `INSERT OR REPLACE` → `ON CONFLICT DO UPDATE`
-   (note `agent-def-repository.ts`'s `saveDraft` already uses
-   `ON CONFLICT` syntax — verify it's PG-compatible).
-3. Type upgrade while rewriting schema: real `boolean` (drop the `=== 1`
-   dance in `rowToAgentDef` etc.), `timestamptz`, `jsonb`.
-4. **Bootstrap decision (make it explicitly, update `CLAUDE.md`):** either
-   (a) keep `schema.sql` + migrations as a pair with a written rule for
-   which owns what, or (b) squash to a single baseline migration and delete
-   `schema.sql`. Recommendation: **(b)** — the `CREATE TABLE IF NOT EXISTS`
-   no-op hazard `CLAUDE.md` warns about is SQLite-shaped and goes away with
-   a migrations-only model.
-5. Transactions must pin one pooled client for their whole life
-   (`migrate.ts`'s `db.transaction(...)` wrapper → a checked-out client).
-   This is the most likely bug source — the sync code never had to think
-   about it.
-6. `src/core/clock.ts` still owns time — no `now()` in SQL for
-   business/eligibility logic (invariant #6).
+1. **`src/db/pg.ts`** — `SqlDatabase`, the `better-sqlite3`-shaped surface B0
+   left behind (`prepare(sql).get/all/run`, `exec`), now async over a
+   `pg.Pool`. `?`→`$n` translation at `prepare()` time. `db.tx(async q => …)`
+   pins one pooled client for a transaction. Global `pg` type parsers:
+   `int8`/`numeric` → `Number`, `timestamptz` → ISO string. `fromJson()`
+   helper for the `jsonb` read path.
+2. **`src/db/client.ts`** — `getDb()` → pooled singleton;
+   `createDb(":memory:")` clones a throwaway `cx_test_<uuid>` from a migrated
+   template (`buildTemplateDatabase` / `dropTestDatabases`), staying
+   synchronous via a deferred bootstrap gate so ~100 test call sites didn't
+   move. `src/testing/global-setup.ts` builds/drops the template per run;
+   `scripts/eval/run-eval.ts` does the same inline.
+3. **Squash** — `schema.sql` + all 30 migrations → `000-baseline.ts` (pure
+   Postgres DDL). `migrate.ts` is async, one tx per migration. **`CLAUDE.md`
+   updated**: migrations-only, no `schema.sql`.
+4. **Type upgrade taken:** `jsonb`, `boolean`, `timestamptz`,
+   `double precision`, pgvector extension present (embedding stays `jsonb`
+   until B2). Commerce dates + `kb_articles.effective` deliberately stay
+   `text` (string-compared against `today()`, invariant #6).
+5. **Dialect fixes:** `json_extract(metadata,'$.x')` → `metadata->>'x'`;
+   `macros … LIKE` → `ILIKE`; `SELECT … AS "camelCase"` quoted (6 sites —
+   Postgres folds unquoted identifiers to lowercase). No `INSERT OR REPLACE`
+   existed; the two `ON CONFLICT` upserts were already PG-valid.
+6. **Transactions:** the 3 `db.transaction()` sites (`kb-repository`,
+   `provider-credential-repository`, `commerce/seed-data`) + `migrate.ts`
+   now use `db.tx()`. `seedCommerceBusinessData` became async.
+7. **fts5 → `tsvector`** (lean B3 pull-forward, unavoidable): `kb_chunks.fts`
+   generated column + GIN, `searchKeyword` ranks with `ts_rank_cd` /
+   `websearch_to_tsquery('english', …)`; `toFtsQuery()` deleted.
+8. **Infra:** `docker-compose.yml` (`pgvector/pgvector:pg17`, durability off
+   — the DB is disposable), CI `services.db`, `.env(.example)` →
+   `DATABASE_URL` / `TEST_DATABASE_URL`. `better-sqlite3` removed;
+   `no-restricted-imports` now blocks it and `pg` (except `src/db/pg.ts`).
 
-**Acceptance:** full gate against Postgres; `npm run seed` builds a working
-DB from scratch; `tests/gateway-swap.test.ts` + tenancy suite unchanged in
-intent.
+**Gate:** `npm test` 266/266, `typecheck`, `lint` (0 errors),
+`npm run eval` 15/15 (contextPrecision +16.7pp from the tsvector swap — an
+improvement, not a regression), `npm run seed`.
 
-**Effort:** XL.
-
-## B4 — Keep tests dependency-free (lands with B1)
-
-**Component:** PGlite (Apache-2.0 / PostgreSQL).
-
-**Files:** `src/db/client.ts`, `src/testing/`.
-
-**Steps:** the `":memory:"` branch of `createDb()` → PGlite in-process
-(supports pgvector, so B2's KB tests stay real). Everything else in
-`src/testing/seed-fixtures.ts` is engine-agnostic already.
-
-**Acceptance:** `npm test` green, no external services, no Docker.
-
-**Effort:** M — but non-negotiable to land with B1 (a migration that leaves
-the suite needing a live server has broken NFR-9.5).
+**Bug found along the way:** B0 had left three unawaited repo calls in
+`seed-fixtures.ts` (`agents.publish`, `toolDefs.upsert`) — invisible with
+synchronous SQLite, a race with real async. Now awaited.
 
 ## B2 — pgvector for dense retrieval
 
@@ -540,23 +566,25 @@ matches pre-migration (modulo ANN recall); `npm run eval` no regression.
 
 **Effort:** M.
 
-## B3 — Postgres full-text search
+## B3 — Postgres full-text search (per-language config)
 
-**Files:** `src/kb/retrieval.ts`, schema/migration.
+**B1 already did the base port** — `kb_chunks.fts tsvector` + GIN,
+`websearch_to_tsquery('english', …)`, `ts_rank_cd`, same RRF fusion / same
+`RRF_K = 60`, `kb_scope` filtering unchanged. What's **left for B3**:
 
-**Steps:** `kb_chunks_fts` (fts5) → a `tsvector` column on `kb_chunks` with
-a GIN index. `toFtsQuery()` → `websearch_to_tsquery`; rank with
-`ts_rank_cd`; **same RRF fusion, same `RRF_K = 60`**. Wire the text-search
-config to the agent language field (migration 022) — `english` covers
-today's porter stemming, don't hardcode it. Preserve `kb_scope` audience /
-collection filtering (FR-7.4/7.6/7.7) — it runs before both rankings today
-and must still.
+- The `'english'` config is hardcoded in `KbChunkRepository.searchKeyword`
+  and in the `fts` generated column. Wire it to the agent language field
+  (was migration 022, now a column on `agent_defs`). The generated column
+  can't be per-agent — either store `fts` per configured language, or drop
+  the generated column and compute `to_tsvector($lang, text)` in the query.
+- Revisit whether the keyword and dense halves should be one SQL query now
+  that both can be (B2 moves dense into SQL too) — only if it doesn't
+  obscure the fusion.
 
-**Acceptance:** keyword-half results equivalent or better on the fixture
-corpus; `kb_scope` filtering preserved. Fusing dense+keyword into one query
-is allowed only if it doesn't obscure the fusion logic.
+**Acceptance:** keyword results per-language correct; `english` path
+byte-identical to B1; `kb_scope` filtering preserved.
 
-**Effort:** M.
+**Effort:** S–M.
 
 ## B5 — Row-level security as a tenancy backstop
 

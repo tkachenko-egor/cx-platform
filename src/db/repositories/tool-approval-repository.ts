@@ -1,5 +1,6 @@
-import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { fromJson } from "../pg";
+import type { SqlDatabase } from "../pg";
 import type { TenantContext } from "../../tenancy/context";
 import { TenantScopedRepository } from "../../tenancy/repository";
 import type { ApprovalPolicy } from "./tool-repository";
@@ -43,7 +44,7 @@ function rowToApproval(row: ToolApprovalRow): ToolApproval {
     runId: row.run_id,
     conversationId: row.conversation_id,
     toolKey: row.tool_key,
-    arguments: JSON.parse(row.arguments) as Record<string, unknown>,
+    arguments: fromJson<Record<string, unknown>>(row.arguments),
     idempotencyKey: row.idempotency_key,
     policy: row.policy,
     status: row.status,
@@ -55,7 +56,7 @@ function rowToApproval(row: ToolApprovalRow): ToolApproval {
 
 /** FR-8.5: the parking lot for write-tool calls whose approval_policy isn't 'auto'. */
 export class ToolApprovalRepository extends TenantScopedRepository {
-  constructor(db: Database.Database, tenant: TenantContext) {
+  constructor(db: SqlDatabase, tenant: TenantContext) {
     super(db, tenant);
   }
 
@@ -69,7 +70,7 @@ export class ToolApprovalRepository extends TenantScopedRepository {
   }): Promise<ToolApproval> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO tool_approvals (id, tenant_id, run_id, conversation_id, tool_key, arguments, idempotency_key, policy, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
@@ -79,23 +80,23 @@ export class ToolApprovalRepository extends TenantScopedRepository {
   }
 
   async get(id: string): Promise<ToolApproval | undefined> {
-    const row = this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ToolApprovalRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ToolApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
   async getByIdempotencyKey(idempotencyKey: string): Promise<ToolApproval | undefined> {
-    const row = this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND idempotency_key = ?`).get(this.tenantId, idempotencyKey) as ToolApprovalRow | undefined;
+    const row = await this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND idempotency_key = ?`).get(this.tenantId, idempotencyKey) as ToolApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
   async markDecided(id: string, status: "approved" | "denied", decidedBy: string | null): Promise<void> {
-    this.db
+    await this.db
       .prepare(`UPDATE tool_approvals SET status = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, decidedBy, new Date().toISOString(), this.tenantId, id);
   }
 
   async listPendingByConversation(conversationId: string): Promise<ToolApproval[]> {
-    const rows = this.db
+    const rows = await this.db
       .prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND conversation_id = ? AND status = 'pending' ORDER BY created_at ASC`)
       .all(this.tenantId, conversationId) as ToolApprovalRow[];
     return rows.map(rowToApproval);

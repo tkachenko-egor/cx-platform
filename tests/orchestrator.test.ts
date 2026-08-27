@@ -48,7 +48,7 @@ function usage() {
 async function setup(script: ChatResponse[]) {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  seedCommerceBusinessData(db, tenant.id);
+  await seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
@@ -167,7 +167,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
   it("a plain single agent with no handoff targets just answers directly, no handoff overhead", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-    seedCommerceBusinessData(db, tenant.id);
+    await seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
