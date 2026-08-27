@@ -341,7 +341,16 @@ The decision (B1) was a **real Postgres in the test loop**, not PGlite:
 API key, no network. `createDb(":memory:")` clones a throwaway database from
 a migrated template built once per run. There is no separate B4 task.
 
-## B5 — Row-level security as a tenancy backstop
+## B5 — Row-level security as a tenancy backstop → **done**
+
+Shipped: `FORCE` RLS + a `tenant_isolation` policy on all 34 `tenant_id`
+tables (migration `003`). `TenantScopedRepository`'s `db` is now a
+`SqlDatabase.forTenant()` handle: every query runs in a tx that does
+`SET LOCAL ROLE cx_tenant` (a non-superuser role the migration creates — `cx`
+is a superuser and bypasses RLS) + `set_config('app.tenant_id', …)`. Unscoped
+paths (migrations, seed, `TenantRepository`, `platform-admin-lookup`) stay on
+the root superuser handle — that's the documented exemption. `src/db/client.ts`
+was not touched. See `02-oss-adoption-implementation-plan.md`.
 
 **Why:** invariant #2 exists to close the "forgot to filter" bug class by
 convention. Postgres can make it an enforced constraint.
