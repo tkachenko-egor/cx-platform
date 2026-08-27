@@ -16,39 +16,39 @@ describe("MacroRepository (Phase 2 M8)", () => {
     const { db, tenant, agentUser } = await setup();
     const macros = new MacroRepository(db, tenant);
 
-    const macro = macros.create({ name: "Order delay", body: "Your order is running a bit behind — sorry about that!", createdBy: agentUser.id });
+    const macro = await macros.create({ name: "Order delay", body: "Your order is running a bit behind — sorry about that!", createdBy: agentUser.id });
     expect(macro.tags).toEqual([]);
     expect(macro.createdBy).toBe(agentUser.id);
-    expect(macros.get(macro.id)?.id).toBe(macro.id);
+    expect((await macros.get(macro.id))?.id).toBe(macro.id);
   });
 
   it("lists macros alphabetically by name", async () => {
     const { db, tenant } = await setup();
     const macros = new MacroRepository(db, tenant);
-    macros.create({ name: "Zzz macro", body: "z" });
-    macros.create({ name: "Aaa macro", body: "a" });
+    await macros.create({ name: "Zzz macro", body: "z" });
+    await macros.create({ name: "Aaa macro", body: "a" });
 
-    expect(macros.list().map((m) => m.name)).toEqual(["Aaa macro", "Zzz macro"]);
+    expect((await macros.list()).map((m) => m.name)).toEqual(["Aaa macro", "Zzz macro"]);
   });
 
   it("searches by substring across name and body", async () => {
     const { db, tenant } = await setup();
     const macros = new MacroRepository(db, tenant);
-    macros.create({ name: "Refund policy", body: "We process refunds within 5 business days." });
-    macros.create({ name: "Shipping delay", body: "Your package is delayed due to carrier issues." });
+    await macros.create({ name: "Refund policy", body: "We process refunds within 5 business days." });
+    await macros.create({ name: "Shipping delay", body: "Your package is delayed due to carrier issues." });
 
-    expect(macros.search("refund").map((m) => m.name)).toEqual(["Refund policy"]);
-    expect(macros.search("delayed").map((m) => m.name)).toEqual(["Shipping delay"]);
-    expect(macros.search("nonexistent")).toEqual([]);
+    expect((await macros.search("refund")).map((m) => m.name)).toEqual(["Refund policy"]);
+    expect((await macros.search("delayed")).map((m) => m.name)).toEqual(["Shipping delay"]);
+    expect(await macros.search("nonexistent")).toEqual([]);
   });
 
   it("updates name/body/tags and bumps updatedAt", async () => {
     const { db, tenant } = await setup();
     const macros = new MacroRepository(db, tenant);
-    const macro = macros.create({ name: "Welcome", body: "Hi there!", tags: ["greeting"] });
+    const macro = await macros.create({ name: "Welcome", body: "Hi there!", tags: ["greeting"] });
 
-    macros.update(macro.id, { body: "Hello, welcome to Fixture Retail Co!", tags: ["greeting", "onboarding"] });
-    const updated = macros.get(macro.id)!;
+    await macros.update(macro.id, { body: "Hello, welcome to Fixture Retail Co!", tags: ["greeting", "onboarding"] });
+    const updated = (await macros.get(macro.id))!;
     expect(updated.name).toBe("Welcome");
     expect(updated.body).toBe("Hello, welcome to Fixture Retail Co!");
     expect(updated.tags).toEqual(["greeting", "onboarding"]);
@@ -57,10 +57,10 @@ describe("MacroRepository (Phase 2 M8)", () => {
   it("deletes a macro", async () => {
     const { db, tenant } = await setup();
     const macros = new MacroRepository(db, tenant);
-    const macro = macros.create({ name: "Temp", body: "temp" });
+    const macro = await macros.create({ name: "Temp", body: "temp" });
 
-    macros.delete(macro.id);
-    expect(macros.get(macro.id)).toBeUndefined();
+    await macros.delete(macro.id);
+    expect(await macros.get(macro.id)).toBeUndefined();
   });
 
   it("scopes macros per tenant", async () => {
@@ -70,8 +70,8 @@ describe("MacroRepository (Phase 2 M8)", () => {
     const macrosA = new MacroRepository(db, tenantA);
     const macrosB = new MacroRepository(db, tenantB);
 
-    macrosA.create({ name: "A-only", body: "a" });
-    expect(macrosB.list()).toEqual([]);
-    expect(macrosA.list()).toHaveLength(1);
+    await macrosA.create({ name: "A-only", body: "a" });
+    expect(await macrosB.list()).toEqual([]);
+    expect(await macrosA.list()).toHaveLength(1);
   });
 });

@@ -11,8 +11,8 @@ export default async function ExperimentsPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const agentVersions = new AgentDefRepository(db, tenant).listAllPublished().map((a) => ({ key: a.key, version: a.version }));
-  const experiments = new AgentExperimentRepository(db, tenant).list();
+  const agentVersions = (await new AgentDefRepository(db, tenant).listAllPublished()).map((a) => ({ key: a.key, version: a.version }));
+  const experiments = await new AgentExperimentRepository(db, tenant).list();
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

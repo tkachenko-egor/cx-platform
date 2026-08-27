@@ -11,8 +11,8 @@ export default async function ToolsPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const tools = new ToolDefRepository(db, tenant)
-    .list()
+  const tools = (await new ToolDefRepository(db, tenant)
+    .list())
     .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, type: t.type }));
 
   const httpTools = tools.filter((t) => t.type === "http");

@@ -51,7 +51,7 @@ export async function POST(req: Request) {
   let conversation;
   try {
     const existing = inbound.conversationId ? conversations.get(inbound.conversationId) : undefined;
-    conversation = ensureConversation({ db }, tenant, existing, "widget");
+    conversation = await ensureConversation({ db }, tenant, existing, "widget");
   } catch (err) {
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), { status: 500 });
   }

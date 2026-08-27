@@ -58,7 +58,7 @@ export class ToolDefRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  upsert(input: {
+  async upsert(input: {
     key: string;
     displayName?: string;
     description: string;
@@ -67,10 +67,10 @@ export class ToolDefRepository extends TenantScopedRepository {
     approvalPolicy: ApprovalPolicy;
     type?: ToolType;
     handlerConfig?: Record<string, unknown>;
-  }): ToolDef {
+  }): Promise<ToolDef> {
     const type = input.type ?? "code";
     const handlerConfig = input.handlerConfig ?? {};
-    const existing = this.getByKey(input.key);
+    const existing = await this.getByKey(input.key);
     const displayName = input.displayName?.trim() || existing?.displayName || input.key;
     if (existing) {
       this.db
@@ -108,28 +108,28 @@ export class ToolDefRepository extends TenantScopedRepository {
    * Only ever called when creating a tool — a key is immutable afterwards,
    * since agent_defs.tool_ids, tool_calls and idempotency keys reference it.
    */
-  generateUniqueKey(alias: string): string {
+  async generateUniqueKey(alias: string): Promise<string> {
     const base = slugify(alias) || "tool";
-    if (!this.getByKey(base)) return base;
+    if (!await this.getByKey(base)) return base;
     for (let suffix = 2; suffix < 1000; suffix++) {
       const candidate = `${base}_${suffix}`;
-      if (!this.getByKey(candidate)) return candidate;
+      if (!await this.getByKey(candidate)) return candidate;
     }
     return `${base}_${randomUUID().slice(0, 8)}`;
   }
 
-  getByKey(key: string): ToolDef | undefined {
+  async getByKey(key: string): Promise<ToolDef | undefined> {
     const row = this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ? AND key = ?`).get(this.tenantId, key) as ToolDefRow | undefined;
     return row ? rowToToolDef(row) : undefined;
   }
 
-  list(): ToolDef[] {
+  async list(): Promise<ToolDef[]> {
     const rows = this.db.prepare(`SELECT * FROM tool_defs WHERE tenant_id = ?`).all(this.tenantId) as ToolDefRow[];
     return rows.map(rowToToolDef);
   }
 
   /** Only ever called for type === 'http' rows — code tools have no admin lifecycle (enforced by the caller route, not here). */
-  delete(key: string): void {
+  async delete(key: string): Promise<void> {
     this.db.prepare(`DELETE FROM tool_defs WHERE tenant_id = ? AND key = ?`).run(this.tenantId, key);
   }
 }
@@ -175,7 +175,7 @@ export class ToolCallRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(entry: Omit<ToolCallRecord, "id">): void {
+  async record(entry: Omit<ToolCallRecord, "id">): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO tool_calls (id, tenant_id, run_id, tool_key, arguments, result, status, latency_ms, idempotency_key, created_at)
@@ -195,13 +195,13 @@ export class ToolCallRepository extends TenantScopedRepository {
       );
   }
 
-  listByRun(runId: string): ToolCallRecord[] {
+  async listByRun(runId: string): Promise<ToolCallRecord[]> {
     const rows = this.db.prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`).all(this.tenantId, runId) as ToolCallRow[];
     return rows.map(rowToToolCall);
   }
 
   /** FR-8.6: look up a prior completed attempt so a retry with the same key never double-executes. */
-  findByIdempotencyKey(toolKey: string, idempotencyKey: string): ToolCallRecord | undefined {
+  async findByIdempotencyKey(toolKey: string, idempotencyKey: string): Promise<ToolCallRecord | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM tool_calls WHERE tenant_id = ? AND tool_key = ? AND idempotency_key = ? ORDER BY created_at DESC LIMIT 1`)
       .get(this.tenantId, toolKey, idempotencyKey) as ToolCallRow | undefined;

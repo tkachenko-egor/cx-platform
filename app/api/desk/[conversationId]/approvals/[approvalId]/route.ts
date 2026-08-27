@@ -24,20 +24,20 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
   }
 
   const approvals = new ToolApprovalRepository(db, tenant);
-  const approval = approvals.get(approvalId);
+  const approval = await approvals.get(approvalId);
   if (!approval || approval.conversationId !== conversationId) return Response.json({ error: "Approval not found" }, { status: 404 });
   if (approval.status !== "pending") return Response.json({ error: `Already ${approval.status}` }, { status: 409 });
 
   const audit = new AuditLogRepository(db, tenant);
 
   if (body.decision === "deny") {
-    approvals.markDecided(approval.id, "denied", staffUser.id);
+    await approvals.markDecided(approval.id, "denied", staffUser.id);
     audit.record({ actorUserId: staffUser.id, action: "tool_approval_denied", target: approval.id, after: { toolKey: approval.toolKey } });
     return Response.json({ ok: true, status: "denied" });
   }
 
   const result = await executeApprovedTool(db, tenant, approval);
-  approvals.markDecided(approval.id, "approved", staffUser.id);
+  await approvals.markDecided(approval.id, "approved", staffUser.id);
   audit.record({ actorUserId: staffUser.id, action: "tool_approval_approved", target: approval.id, before: { toolKey: approval.toolKey }, after: { result } });
 
   return Response.json({ ok: true, status: "approved", result });

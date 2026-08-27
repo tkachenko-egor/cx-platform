@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminDashboardPage() {
   const { db, tenant } = await getPlatformContext();
 
-  const agentDefs = new AgentDefRepository(db, tenant).listAllPublished();
+  const agentDefs = await new AgentDefRepository(db, tenant).listAllPublished();
   const latestByKey = new Map<string, (typeof agentDefs)[number]>();
   for (const def of agentDefs) {
     const current = latestByKey.get(def.key);
@@ -23,7 +23,7 @@ export default async function AdminDashboardPage() {
   }
   const agents = [...latestByKey.values()].sort((a, b) => a.key.localeCompare(b.key));
 
-  const tools = new ToolDefRepository(db, tenant).list();
+  const tools = await new ToolDefRepository(db, tenant).list();
   const noCodeCount = tools.filter((t) => t.type === "http").length;
   const customCount = tools.filter((t) => t.type === "code").length;
 

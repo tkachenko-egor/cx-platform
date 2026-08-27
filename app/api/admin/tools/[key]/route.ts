@@ -18,11 +18,11 @@ export async function DELETE(_req: Request, context: RouteContext<"/api/admin/to
   }
 
   const toolDefs = new ToolDefRepository(db, tenant);
-  const existing = toolDefs.getByKey(key);
+  const existing = await toolDefs.getByKey(key);
   if (!existing) return Response.json({ error: "Tool not found" }, { status: 404 });
   if (existing.type !== "http") return Response.json({ error: "Code tools can't be deleted here" }, { status: 400 });
 
-  toolDefs.delete(key);
+  await toolDefs.delete(key);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

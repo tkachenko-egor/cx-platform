@@ -62,7 +62,7 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
     const payload = { key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co") + " v-requested", modelAlias: "support-main", agentStatus: "active" as const, environment: "production" as const };
-    const approval = approvals.create({
+    const approval = await approvals.create({
       agentKey: "billing-specialist",
       requestedVersion: 1,
       requestedBy: supervisor.id,
@@ -74,19 +74,19 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
     });
 
     // Queuing a request must never itself publish anything.
-    expect(agentDefs.getLatestPublished("billing-specialist")).toBeUndefined();
-    expect(approvals.listPending().map((a) => a.id)).toEqual([approval.id]);
+    expect(await agentDefs.getLatestPublished("billing-specialist")).toBeUndefined();
+    expect((await approvals.listPending()).map((a) => a.id)).toEqual([approval.id]);
 
     // Approving replays the requester's payload verbatim.
-    const published = agentDefs.publish(approvals.get(approval.id)!.payload as unknown as Parameters<typeof agentDefs.publish>[0]);
-    approvals.markDecided(approval.id, "approved", admin.id);
+    const published = await agentDefs.publish((await approvals.get(approval.id))!.payload as unknown as Parameters<typeof agentDefs.publish>[0]);
+    await approvals.markDecided(approval.id, "approved", admin.id);
 
     expect(published.systemPrompt).toBe(payload.systemPrompt);
     expect(published.agentStatus).toBe("active");
     expect(published.environment).toBe("production");
-    expect(agentDefs.getLatestPublished("billing-specialist")?.version).toBe(1);
-    expect(approvals.listPending()).toHaveLength(0);
-    expect(approvals.get(approval.id)?.status).toBe("approved");
+    expect((await agentDefs.getLatestPublished("billing-specialist"))?.version).toBe(1);
+    expect(await approvals.listPending()).toHaveLength(0);
+    expect((await approvals.get(approval.id))?.status).toBe("approved");
   });
 
   it("a rejected request never gets published and stays out of the pending list", async () => {
@@ -97,7 +97,7 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
     const agentDefs = new AgentDefRepository(db, tenant);
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
-    const approval = approvals.create({
+    const approval = await approvals.create({
       agentKey: "technical-specialist",
       requestedVersion: 1,
       requestedBy: supervisor.id,
@@ -108,11 +108,11 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
       toEnvironment: "production",
     });
 
-    approvals.markDecided(approval.id, "rejected", admin.id);
+    await approvals.markDecided(approval.id, "rejected", admin.id);
 
-    expect(agentDefs.getLatestPublished("technical-specialist")).toBeUndefined();
-    expect(approvals.listPending()).toHaveLength(0);
-    expect(approvals.get(approval.id)?.status).toBe("rejected");
+    expect(await agentDefs.getLatestPublished("technical-specialist")).toBeUndefined();
+    expect(await approvals.listPending()).toHaveLength(0);
+    expect((await approvals.get(approval.id))?.status).toBe("rejected");
   });
 });
 

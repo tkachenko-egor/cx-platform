@@ -59,14 +59,14 @@ export class ToolApprovalRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: {
+  async create(input: {
     runId: string;
     conversationId: string;
     toolKey: string;
     arguments: Record<string, unknown>;
     idempotencyKey: string;
     policy: Exclude<ApprovalPolicy, "auto">;
-  }): ToolApproval {
+  }): Promise<ToolApproval> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -75,26 +75,26 @@ export class ToolApprovalRepository extends TenantScopedRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       )
       .run(id, this.tenantId, input.runId, input.conversationId, input.toolKey, JSON.stringify(input.arguments), input.idempotencyKey, input.policy, now);
-    return this.get(id)!;
+    return (await this.get(id))!;
   }
 
-  get(id: string): ToolApproval | undefined {
+  async get(id: string): Promise<ToolApproval | undefined> {
     const row = this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ToolApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
-  getByIdempotencyKey(idempotencyKey: string): ToolApproval | undefined {
+  async getByIdempotencyKey(idempotencyKey: string): Promise<ToolApproval | undefined> {
     const row = this.db.prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND idempotency_key = ?`).get(this.tenantId, idempotencyKey) as ToolApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
-  markDecided(id: string, status: "approved" | "denied", decidedBy: string | null): void {
+  async markDecided(id: string, status: "approved" | "denied", decidedBy: string | null): Promise<void> {
     this.db
       .prepare(`UPDATE tool_approvals SET status = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, decidedBy, new Date().toISOString(), this.tenantId, id);
   }
 
-  listPendingByConversation(conversationId: string): ToolApproval[] {
+  async listPendingByConversation(conversationId: string): Promise<ToolApproval[]> {
     const rows = this.db
       .prepare(`SELECT * FROM tool_approvals WHERE tenant_id = ? AND conversation_id = ? AND status = 'pending' ORDER BY created_at ASC`)
       .all(this.tenantId, conversationId) as ToolApprovalRow[];

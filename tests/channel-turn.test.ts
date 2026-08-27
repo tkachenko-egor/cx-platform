@@ -56,7 +56,7 @@ async function setup(providerScript: ChatResponse[]) {
   await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider(providerScript) } });
 
-  new AgentDefRepository(db, tenant).publish({
+  await new AgentDefRepository(db, tenant).publish({
     key: DEFAULT_AGENT_KEY,
     systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
@@ -77,7 +77,7 @@ const OK_RESPONSE: ChatResponse = {
 describe("processInboundTurn (channel-agnostic core)", () => {
   it("creates a conversation via ensureConversation, then runs a normal turn end to end", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi there" });
 
@@ -101,14 +101,14 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     const embeddings = new StubEmbeddingProvider();
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE]) } });
-    new AgentDefRepository(db, tenant).publish({
+    await new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       kbScope: { audience: ["customer"] },
     });
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi there" });
 
     expect(result.state).toBe("bot_active");
@@ -131,18 +131,18 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE, OK_RESPONSE]) } });
 
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v1", modelAlias: "support-main", toolIds: [] }); // v1
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v2", modelAlias: "support-main", toolIds: [] }); // v2
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v1", modelAlias: "support-main", toolIds: [] }); // v1
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co") + " v2", modelAlias: "support-main", toolIds: [] }); // v2
 
     const experiments = new AgentExperimentRepository(db, tenant);
-    const experiment = experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 0 }); // always A (v1) at creation time
+    const experiment = await experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 0 }); // always A (v1) at creation time
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "first message" });
 
     // Flip the experiment to always-B after the conversation was already assigned — a re-evaluation would now pick v2.
-    experiments.stop(experiment.id);
-    experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 1 });
+    await experiments.stop(experiment.id);
+    await experiments.create({ agentKey: DEFAULT_AGENT_KEY, variantAVersion: 1, variantBVersion: 2, trafficSplit: 1 });
 
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "second message" });
 
@@ -154,7 +154,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     const { db, tenant, gateway, embeddings } = await setup([
       { content: "Please stop using the product and see a doctor.", toolCalls: [], stopReason: "end_turn", usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 } },
     ]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "My lips are swelling after using this" });
 
@@ -171,7 +171,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
   it("does not run the agent while a human is handling the conversation — just records the message for continuity", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     new ConversationRepository(db, tenant).setState(conversation.id, "human_active");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "still there?" });
@@ -187,7 +187,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
   it("hands off to a human once the per-conversation turn cap is hit, without calling the model", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     getOrCreateSession(conversation.id).turnCount = 60; // MAX_TURNS_PER_CONVERSATION in src/channel/rate-limit.ts
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "one more thing" });
@@ -203,7 +203,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
   it("threads channelMessageId onto the persisted inbound message when the caller supplies one", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "email");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "email");
 
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "email body", channelMessageId: "<abc@example.com>" });
 

@@ -12,10 +12,10 @@ export default async function AgentWidgetPage(props: PageProps<"/admin/agents/[k
   const { key } = await props.params;
   const { db, tenant } = await getPlatformContext();
 
-  const agentDef = new AgentDefRepository(db, tenant).getLatestPublished(key);
+  const agentDef = await new AgentDefRepository(db, tenant).getLatestPublished(key);
   if (!agentDef) notFound();
 
-  const config = new WidgetConfigRepository(db, tenant).getByAgentKey(key);
+  const config = await new WidgetConfigRepository(db, tenant).getByAgentKey(key);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

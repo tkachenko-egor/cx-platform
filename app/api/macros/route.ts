@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
   const query = new URL(req.url).searchParams.get("q");
   const macros = new MacroRepository(db, tenant);
-  return Response.json({ macros: query ? macros.search(query) : macros.list() });
+  return Response.json({ macros: query ? await macros.search(query) : await macros.list() });
 }
 
 /** Phase 2 M8: create a macro — same reply_as_human bar as sending a reply (app/api/desk/[conversationId]/reply/route.ts). */
@@ -35,6 +35,6 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const macro = new MacroRepository(db, tenant).create({ name, body: text, tags: body.tags, createdBy: staffUser.id });
+  const macro = await new MacroRepository(db, tenant).create({ name, body: text, tags: body.tags, createdBy: staffUser.id });
   return Response.json({ ok: true, macro });
 }

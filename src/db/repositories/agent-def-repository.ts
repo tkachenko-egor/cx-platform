@@ -248,8 +248,8 @@ export class AgentDefRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  publish(input: AgentDefWriteInput): AgentDef {
-    const nextVersion = this.latestVersion(input.key) + 1;
+  async publish(input: AgentDefWriteInput): Promise<AgentDef> {
+    const nextVersion = (await this.latestVersion(input.key)) + 1;
     const id = randomUUID();
     const now = new Date().toISOString();
     const displayName = input.displayName ?? "";
@@ -364,7 +364,7 @@ export class AgentDefRepository extends TenantScopedRepository {
    * relies on. Never appears in getLatestPublished()/listAllPublished()
    * (both filter status = 'published'), so this is purely additive.
    */
-  saveDraft(input: AgentDefWriteInput): AgentDef {
+  async saveDraft(input: AgentDefWriteInput): Promise<AgentDef> {
     const id = randomUUID();
     const now = new Date().toISOString();
     const displayName = input.displayName ?? "";
@@ -445,27 +445,27 @@ export class AgentDefRepository extends TenantScopedRepository {
         now,
       );
 
-    return this.getDraft(input.key)!;
+    return (await this.getDraft(input.key))!;
   }
 
-  getDraft(key: string): AgentDef | undefined {
+  async getDraft(key: string): Promise<AgentDef | undefined> {
     const row = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).get(this.tenantId, key) as AgentDefRow | undefined;
     return row ? rowToAgentDef(row) : undefined;
   }
 
-  clearDraft(key: string): void {
+  async clearDraft(key: string): Promise<void> {
     this.db.prepare(`DELETE FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = 0 AND status = 'draft'`).run(this.tenantId, key);
   }
 
   /** A running conversation pins the version it started with (FR-6.3) — call with an explicit version to pin. */
-  getVersion(key: string, version: number): AgentDef | undefined {
+  async getVersion(key: string, version: number): Promise<AgentDef | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND version = ?`)
       .get(this.tenantId, key, version) as AgentDefRow | undefined;
     return row ? rowToAgentDef(row) : undefined;
   }
 
-  getLatestPublished(key: string): AgentDef | undefined {
+  async getLatestPublished(key: string): Promise<AgentDef | undefined> {
     const row = this.db
       .prepare(
         `SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND status = 'published'
@@ -484,30 +484,30 @@ export class AgentDefRepository extends TenantScopedRepository {
    * tenants without one). With an experiment: hash(conversationId + agentKey)
    * against trafficSplit picks A or B, deterministically and stably.
    */
-  getForTraffic(key: string, conversationId: string): AgentDef | undefined {
-    const experiment = new AgentExperimentRepository(this.db, { tenantId: this.tenantId }).getActive(key);
-    if (!experiment) return this.getLatestPublished(key);
+  async getForTraffic(key: string, conversationId: string): Promise<AgentDef | undefined> {
+    const experiment = await new AgentExperimentRepository(this.db, { tenantId: this.tenantId }).getActive(key);
+    if (!experiment) return await this.getLatestPublished(key);
 
     const bucket = hashToUnitInterval(`${conversationId}:${key}`);
     const variantVersion = bucket < experiment.trafficSplit ? experiment.variantBVersion : experiment.variantAVersion;
-    return this.getVersion(key, variantVersion) ?? this.getLatestPublished(key);
+    return await this.getVersion(key, variantVersion) ?? await this.getLatestPublished(key);
   }
 
   /** Phase 2 M6a admin UI: every published version of every agent, for building a "pick a variant" form. */
-  listAllPublished(): AgentDef[] {
+  async listAllPublished(): Promise<AgentDef[]> {
     const rows = this.db.prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND status = 'published' ORDER BY key, version`).all(this.tenantId) as AgentDefRow[];
     return rows.map(rowToAgentDef);
   }
 
   /** Phase 6 M4: every published version of one agent, newest first — powers the Prompt card's version history dropdown. */
-  listVersions(key: string): AgentDef[] {
+  async listVersions(key: string): Promise<AgentDef[]> {
     const rows = this.db
       .prepare(`SELECT * FROM agent_defs WHERE tenant_id = ? AND key = ? AND status = 'published' ORDER BY version DESC`)
       .all(this.tenantId, key) as AgentDefRow[];
     return rows.map(rowToAgentDef);
   }
 
-  private latestVersion(key: string): number {
+  private async latestVersion(key: string): Promise<number> {
     const row = this.db
       .prepare(`SELECT MAX(version) as maxVersion FROM agent_defs WHERE tenant_id = ? AND key = ?`)
       .get(this.tenantId, key) as { maxVersion: number | null };

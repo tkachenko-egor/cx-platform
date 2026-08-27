@@ -57,7 +57,7 @@ async function setup(script: ChatResponse[]) {
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
   const agents = new AgentDefRepository(db, tenant);
-  agents.publish({
+  await agents.publish({
     key: "support-generalist",
     systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
@@ -65,7 +65,7 @@ async function setup(script: ChatResponse[]) {
     kbScope: { audience: ["customer"] },
     handoffTargets: ["billing-specialist", "technical-specialist"],
   });
-  agents.publish({
+  await agents.publish({
     key: "billing-specialist",
     systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
@@ -73,7 +73,7 @@ async function setup(script: ChatResponse[]) {
     kbScope: { audience: ["customer"] },
     handoffTargets: ["technical-specialist", "support-generalist"],
   });
-  agents.publish({
+  await agents.publish({
     key: "technical-specialist",
     systemPrompt: buildCorePrompt("Fixture Retail Co"),
     modelAlias: "support-main",
@@ -98,7 +98,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
       HANDOFF_TO_BILLING,
       { content: "I can see the double charge — let me fix that.", toolCalls: [], stopReason: "end_turn", usage: usage() },
     ]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "Why was I charged twice?" });
 
@@ -134,7 +134,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
       },
       { content: "Sorry about the crash — what device and OS are you on?", toolCalls: [], stopReason: "end_turn", usage: usage() },
     ]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "My app crashes at checkout, also I think I was overcharged" });
 
@@ -156,7 +156,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
       { content: "", toolCalls: [{ id: "h1", name: "handoff_to_agent", arguments: { target: "technical-specialist", reason: "r1", summary: "s1" } }], stopReason: "tool_use", usage: usage() },
       { content: "", toolCalls: [{ id: "h2", name: "handoff_to_agent", arguments: { target: "billing-specialist", reason: "r2", summary: "s2" } }], stopReason: "tool_use", usage: usage() },
     ]);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "Confusing multi-part question" });
 
@@ -174,7 +174,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
     const provider = new ScriptedProvider([{ content: "Happy to help.", toolCalls: [], stopReason: "end_turn", usage: usage() }]);
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: provider } });
-    new AgentDefRepository(db, tenant).publish({
+    await new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
@@ -182,7 +182,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
       kbScope: { audience: ["customer"] },
     });
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "Hi" });
 
     expect(result.assistantText).toBe("Happy to help.");

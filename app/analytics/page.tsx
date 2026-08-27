@@ -30,7 +30,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const containment = getContainmentRate(db, tenant, options);
   const escalationReasons = getEscalationReasonBreakdown(db, tenant, options);
   const latency = getLatencyPercentiles(db, tenant, options);
-  const agentKeys = [...new Set(new AgentDefRepository(db, tenant).listAllPublished().map((a) => a.key))];
+  const agentKeys = [...new Set((await new AgentDefRepository(db, tenant).listAllPublished()).map((a) => a.key))];
   const versionPerformance = (agentKey ? [agentKey] : agentKeys)
     .map((key) => ({ key, versions: getAgentVersionPerformance(db, tenant, key) }))
     .filter((v) => v.versions.length > 0);

@@ -44,7 +44,7 @@ export class MacroRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { name: string; body: string; tags?: string[]; createdBy?: string }): Macro {
+  async create(input: { name: string; body: string; tags?: string[]; createdBy?: string }): Promise<Macro> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -53,21 +53,21 @@ export class MacroRepository extends TenantScopedRepository {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(id, this.tenantId, input.name, input.body, JSON.stringify(input.tags ?? []), input.createdBy ?? null, now, now);
-    return this.get(id)!;
+    return (await this.get(id))!;
   }
 
-  get(id: string): Macro | undefined {
+  async get(id: string): Promise<Macro | undefined> {
     const row = this.db.prepare(`SELECT * FROM macros WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as MacroRow | undefined;
     return row ? rowToMacro(row) : undefined;
   }
 
-  list(): Macro[] {
+  async list(): Promise<Macro[]> {
     const rows = this.db.prepare(`SELECT * FROM macros WHERE tenant_id = ? ORDER BY name ASC`).all(this.tenantId) as MacroRow[];
     return rows.map(rowToMacro);
   }
 
   /** Substring match over name/body — the picker's typeahead filter, small enough at this scale for a LIKE scan. */
-  search(query: string): Macro[] {
+  async search(query: string): Promise<Macro[]> {
     const needle = `%${query}%`;
     const rows = this.db
       .prepare(`SELECT * FROM macros WHERE tenant_id = ? AND (name LIKE ? OR body LIKE ?) ORDER BY name ASC`)
@@ -75,15 +75,15 @@ export class MacroRepository extends TenantScopedRepository {
     return rows.map(rowToMacro);
   }
 
-  update(id: string, patch: { name?: string; body?: string; tags?: string[] }): void {
-    const current = this.get(id);
+  async update(id: string, patch: { name?: string; body?: string; tags?: string[] }): Promise<void> {
+    const current = await this.get(id);
     if (!current) return;
     this.db
       .prepare(`UPDATE macros SET name = ?, body = ?, tags = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(patch.name ?? current.name, patch.body ?? current.body, JSON.stringify(patch.tags ?? current.tags), new Date().toISOString(), this.tenantId, id);
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     this.db.prepare(`DELETE FROM macros WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
   }
 }

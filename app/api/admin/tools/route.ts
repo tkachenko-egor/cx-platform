@@ -18,7 +18,7 @@ export async function GET() {
     throw err;
   }
 
-  const tools = new ToolDefRepository(db, tenant).list();
+  const tools = await new ToolDefRepository(db, tenant).list();
   return Response.json({ tools });
 }
 
@@ -69,15 +69,15 @@ export async function POST(req: Request) {
   }
 
   const toolDefs = new ToolDefRepository(db, tenant);
-  const existing = suppliedKey ? toolDefs.getByKey(suppliedKey) : undefined;
+  const existing = suppliedKey ? await toolDefs.getByKey(suppliedKey) : undefined;
   if (existing && existing.type !== "http") {
     return Response.json({ error: `"${existing.key}" is a code tool and can't be edited here` }, { status: 400 });
   }
 
   // Update keeps the existing key; create derives one from the name.
-  const key = existing ? existing.key : toolDefs.generateUniqueKey(displayName ?? suppliedKey ?? "");
+  const key = existing ? existing.key : await toolDefs.generateUniqueKey(displayName ?? suppliedKey ?? "");
 
-  const tool = toolDefs.upsert({
+  const tool = await toolDefs.upsert({
     key,
     displayName: displayName || existing?.displayName || key,
     description: body.description.trim(),

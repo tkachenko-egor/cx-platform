@@ -24,20 +24,20 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
   }
 
   const approvals = new AgentPublishApprovalRepository(db, tenant);
-  const approval = approvals.get(id);
+  const approval = await approvals.get(id);
   if (!approval) return Response.json({ error: "Approval request not found" }, { status: 404 });
   if (approval.status !== "pending") return Response.json({ error: `Already ${approval.status}` }, { status: 409 });
 
   if (body.decision === "rejected") {
-    approvals.markDecided(approval.id, "rejected", actor.id);
+    await approvals.markDecided(approval.id, "rejected", actor.id);
     new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_rejected", target: approval.agentKey, before: { approvalId: approval.id } });
     return Response.json({ ok: true, status: "rejected" });
   }
 
   // Replays the requester's payload verbatim — the approver isn't re-deriving
   // it from whatever the editor happens to show now, which may have moved on.
-  const published = new AgentDefRepository(db, tenant).publish(approval.payload as unknown as Parameters<AgentDefRepository["publish"]>[0]);
-  approvals.markDecided(approval.id, "approved", actor.id);
+  const published = await new AgentDefRepository(db, tenant).publish(approval.payload as unknown as Parameters<AgentDefRepository["publish"]>[0]);
+  await approvals.markDecided(approval.id, "approved", actor.id);
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_publish_approved",

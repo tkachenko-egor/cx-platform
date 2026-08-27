@@ -25,11 +25,11 @@ export async function DELETE(_req: Request, props: { params: Promise<{ key: stri
   }
 
   const agentDefs = new AgentDefRepository(db, tenant);
-  const current = agentDefs.getLatestPublished(key);
+  const current = await agentDefs.getLatestPublished(key);
   if (!current) return Response.json({ error: `No published agent def found for key "${key}"` }, { status: 404 });
 
-  const archived = agentDefs.publish({ ...current, agentStatus: "archived", changeNotes: "Archived" });
-  agentDefs.clearDraft(key);
+  const archived = await agentDefs.publish({ ...current, agentStatus: "archived", changeNotes: "Archived" });
+  await agentDefs.clearDraft(key);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

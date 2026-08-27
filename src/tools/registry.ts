@@ -95,16 +95,16 @@ function buildHttpToolSpec(def: ToolDef): ToolSpec {
 }
 
 /** REGISTRY (code tools) first, then a DB lookup for admin-authored 'http' tools — so a new HTTP tool needs no code change or redeploy. */
-function resolveToolSpec(db: Database.Database, tenant: TenantContext, toolKey: string): ToolSpec | undefined {
+async function resolveToolSpec(db: Database.Database, tenant: TenantContext, toolKey: string): Promise<ToolSpec | undefined> {
   const staticSpec = REGISTRY[toolKey];
   if (staticSpec) return staticSpec;
-  const def = new ToolDefRepository(db, tenant).getByKey(toolKey);
+  const def = await new ToolDefRepository(db, tenant).getByKey(toolKey);
   if (!def || def.type !== "http") return undefined;
   return buildHttpToolSpec(def);
 }
 
 /** Converts an agent's tool_ids allowlist into the gateway's canonical ToolDefinition shape. Unknown keys (a stale reference to a deleted tool) are silently dropped, same as a removed REGISTRY entry always has been. */
-export function toGatewayToolDefinitions(db: Database.Database, tenant: TenantContext, toolKeys: string[]): ToolDefinition[] {
+export async function toGatewayToolDefinitions(db: Database.Database, tenant: TenantContext, toolKeys: string[]): Promise<ToolDefinition[]> {
   const toolDefs = new ToolDefRepository(db, tenant);
   const defs: ToolDefinition[] = [];
   for (const key of toolKeys) {
@@ -113,7 +113,7 @@ export function toGatewayToolDefinitions(db: Database.Database, tenant: TenantCo
       defs.push({ name: staticSpec.key, description: staticSpec.description, parameters: staticSpec.inputSchema });
       continue;
     }
-    const def = toolDefs.getByKey(key);
+    const def = await toolDefs.getByKey(key);
     if (def) defs.push({ name: def.key, description: def.description, parameters: def.inputSchema });
   }
   return defs;
@@ -139,13 +139,13 @@ function computeIdempotencyKey(conversationId: string, args: unknown): string {
   return createHash("sha256").update(`${conversationId}:${canonicalize(args)}`).digest("hex");
 }
 
-function logToolCall(
+async function logToolCall(
   db: Database.Database,
   tenant: TenantContext,
   input: { runId: string; toolKey: string; arguments: unknown; result: Record<string, unknown>; status: "ok" | "error"; latencyMs: number; idempotencyKey?: string },
-): void {
+): Promise<void> {
   try {
-    new ToolCallRepository(db, tenant).record({
+    await new ToolCallRepository(db, tenant).record({
       runId: input.runId,
       toolKey: input.toolKey,
       arguments: (input.arguments ?? {}) as Record<string, unknown>,
@@ -183,7 +183,7 @@ async function runAndLog(
     status = "error";
   }
 
-  logToolCall(db, tenant, { ...logInput, result, status, latencyMs: Date.now() - start });
+  await logToolCall(db, tenant, { ...logInput, result, status, latencyMs: Date.now() - start });
   return result;
 }
 
@@ -202,13 +202,13 @@ export async function executeTool(
   args: unknown,
   opts?: { sandbox?: boolean; toolSettings?: AgentToolSettings },
 ): Promise<Record<string, unknown>> {
-  const spec = resolveToolSpec(db, tenant, toolKey);
+  const spec = await resolveToolSpec(db, tenant, toolKey);
   // Per-tool slice of the running agent's tool_settings; each tool applies
   // its own defaults when the agent hasn't configured anything.
   const settings = opts?.toolSettings?.[toolKey];
   if (!spec) {
     const result = { ok: false, error: `Unknown tool: ${toolKey}` };
-    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
+    await logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
     return result;
   }
 
@@ -217,7 +217,7 @@ export async function executeTool(
     parsedArgs = spec.parse(args);
   } catch (err) {
     const result = { ok: false, error: err instanceof Error ? err.message : String(err) };
-    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
+    await logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "error", latencyMs: 0 });
     return result;
   }
 
@@ -230,7 +230,7 @@ export async function executeTool(
   // no tool_approvals row is ever created for a sandbox agent's write calls.
   if (opts?.sandbox) {
     const result = { ok: true, dryRun: true, message: "This is a sandbox agent — the write action was simulated, nothing was actually changed." };
-    logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "ok", latencyMs: 0 });
+    await logToolCall(db, tenant, { runId, toolKey, arguments: args, result, status: "ok", latencyMs: 0 });
     return result;
   }
 
@@ -238,19 +238,19 @@ export async function executeTool(
   const idempotencyKey = computeIdempotencyKey(conversationId, parsedArgs);
   const toolCalls = new ToolCallRepository(db, tenant);
 
-  const prior = toolCalls.findByIdempotencyKey(toolKey, idempotencyKey);
+  const prior = await toolCalls.findByIdempotencyKey(toolKey, idempotencyKey);
   if (prior && prior.status === "ok") {
     return prior.result; // never double-execute a retry of the same logical request
   }
 
-  const approvalPolicy = new ToolDefRepository(db, tenant).getByKey(toolKey)?.approvalPolicy ?? "auto";
+  const approvalPolicy = (await new ToolDefRepository(db, tenant).getByKey(toolKey))?.approvalPolicy ?? "auto";
 
   if (approvalPolicy === "auto") {
     return runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey }, settings);
   }
 
   const approvals = new ToolApprovalRepository(db, tenant);
-  const existing = approvals.getByIdempotencyKey(idempotencyKey);
+  const existing = await approvals.getByIdempotencyKey(idempotencyKey);
 
   if (approvalPolicy === "confirm_with_customer") {
     // Only a *later* turn re-issuing the same request counts as the
@@ -258,11 +258,11 @@ export async function executeTool(
     // model looping on its own, with no new customer input) must not.
     if (existing?.status === "pending" && existing.runId !== runId) {
       const result = await runAndLog(db, tenant, spec, parsedArgs, { runId, toolKey, arguments: args, idempotencyKey }, settings);
-      approvals.markDecided(existing.id, "approved", null);
+      await approvals.markDecided(existing.id, "approved", null);
       return result;
     }
     if (!existing) {
-      approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "confirm_with_customer" });
+      await approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "confirm_with_customer" });
     }
     return { ok: false, needsConfirmation: true, message: "This needs the customer's explicit go-ahead before it happens — ask them, and only call this again once they've said yes." };
   }
@@ -272,7 +272,7 @@ export async function executeTool(
     return { ok: false, denied: true, message: "A colleague reviewed this and did not approve it." };
   }
   if (!existing) {
-    approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "require_human_approval" });
+    await approvals.create({ runId, conversationId, toolKey, arguments: parsedArgs as Record<string, unknown>, idempotencyKey, policy: "require_human_approval" });
   }
   return { ok: false, needsApproval: true, message: "A colleague needs to approve this before it can happen. Let the customer know you've flagged it for review." };
 }
@@ -284,7 +284,7 @@ export async function executeTool(
  * agent_defs.tool_settings slice to resolve here.
  */
 export async function executeApprovedTool(db: Database.Database, tenant: TenantContext, approval: ToolApproval): Promise<Record<string, unknown>> {
-  const spec = resolveToolSpec(db, tenant, approval.toolKey);
+  const spec = await resolveToolSpec(db, tenant, approval.toolKey);
   if (!spec) return { ok: false, error: `Unknown tool: ${approval.toolKey}` };
   return runAndLog(db, tenant, spec, approval.arguments, { runId: approval.runId, toolKey: approval.toolKey, arguments: approval.arguments, idempotencyKey: approval.idempotencyKey });
 }

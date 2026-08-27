@@ -15,6 +15,6 @@ export async function PATCH(_req: Request, context: RouteContext<"/api/admin/exp
     throw err;
   }
 
-  new AgentExperimentRepository(db, tenant).stop(id);
+  await new AgentExperimentRepository(db, tenant).stop(id);
   return Response.json({ ok: true });
 }

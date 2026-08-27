@@ -65,7 +65,7 @@ export class AgentPublishApprovalRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: {
+  async create(input: {
     agentKey: string;
     requestedVersion: number;
     requestedBy: string;
@@ -74,7 +74,7 @@ export class AgentPublishApprovalRepository extends TenantScopedRepository {
     toStatus: string;
     fromEnvironment: string;
     toEnvironment: string;
-  }): AgentPublishApproval {
+  }): Promise<AgentPublishApproval> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -97,22 +97,22 @@ export class AgentPublishApprovalRepository extends TenantScopedRepository {
         input.toEnvironment,
         now,
       );
-    return this.get(id)!;
+    return (await this.get(id))!;
   }
 
-  get(id: string): AgentPublishApproval | undefined {
+  async get(id: string): Promise<AgentPublishApproval | undefined> {
     const row = this.db.prepare(`SELECT * FROM agent_publish_approvals WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as AgentPublishApprovalRow | undefined;
     return row ? rowToApproval(row) : undefined;
   }
 
-  listPending(): AgentPublishApproval[] {
+  async listPending(): Promise<AgentPublishApproval[]> {
     const rows = this.db
       .prepare(`SELECT * FROM agent_publish_approvals WHERE tenant_id = ? AND status = 'pending' ORDER BY created_at ASC`)
       .all(this.tenantId) as AgentPublishApprovalRow[];
     return rows.map(rowToApproval);
   }
 
-  markDecided(id: string, status: "approved" | "rejected", decidedBy: string): void {
+  async markDecided(id: string, status: "approved" | "rejected", decidedBy: string): Promise<void> {
     this.db
       .prepare(`UPDATE agent_publish_approvals SET status = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, decidedBy, new Date().toISOString(), this.tenantId, id);

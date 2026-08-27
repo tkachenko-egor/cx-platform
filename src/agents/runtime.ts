@@ -235,7 +235,7 @@ export async function runAgentTurn(
     const scope = scopeBlock(agent.conversationConfig);
     const renderedSystemPrompt = renderTemplate(agent.systemPrompt, { TENANT_NAME: tenantName, AGENT_NAME: agent.displayName || agent.key, TODAY: today(), ...agent.conversationConfig.variables });
 
-    const toolDefinitions = toGatewayToolDefinitions(deps.db, tenant, agent.toolIds);
+    const toolDefinitions = await toGatewayToolDefinitions(deps.db, tenant, agent.toolIds);
     if (agent.handoffTargets.length > 0) {
       toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
     }

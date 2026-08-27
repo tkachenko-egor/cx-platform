@@ -112,7 +112,7 @@ export async function POST(req: Request) {
   }
 
   const agentDefs = new AgentDefRepository(db, tenant);
-  const current = agentDefs.getLatestPublished(body.key);
+  const current = await agentDefs.getLatestPublished(body.key);
 
   if (body.isCreate) {
     if (current) return Response.json({ error: `An agent with key "${body.key}" already exists` }, { status: 400 });
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
     };
 
     if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
-      const approval = new AgentPublishApprovalRepository(db, tenant).create({
+      const approval = await new AgentPublishApprovalRepository(db, tenant).create({
         agentKey: body.key,
         requestedVersion: 1,
         requestedBy: actor.id,
@@ -166,7 +166,7 @@ export async function POST(req: Request) {
       return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
     }
 
-    const created = agentDefs.publish(publishInput);
+    const created = await agentDefs.publish(publishInput);
 
     new AuditLogRepository(db, tenant).record({
       actorUserId: actor.id,
@@ -216,7 +216,7 @@ export async function POST(req: Request) {
   };
 
   if (requiresApprovalGate(actor, publishInput.agentStatus, publishInput.environment)) {
-    const approval = new AgentPublishApprovalRepository(db, tenant).create({
+    const approval = await new AgentPublishApprovalRepository(db, tenant).create({
       agentKey: body.key,
       requestedVersion: current.version + 1,
       requestedBy: actor.id,
@@ -230,7 +230,7 @@ export async function POST(req: Request) {
     return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
   }
 
-  const published = agentDefs.publish(publishInput);
+  const published = await agentDefs.publish(publishInput);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

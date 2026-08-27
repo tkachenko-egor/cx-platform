@@ -100,11 +100,11 @@ const OK_RESPONSE: ChatResponse = { content: "Happy to help with that.", toolCal
 describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
   it("keeps a previously-set agent-key tag (setTags) alongside a keyword-matched tag (addTags)", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE]);
-    new AgentDefRepository(db, tenant).publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main" });
+    await new AgentDefRepository(db, tenant).publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main" });
     new AutoTagRuleRepository(db, tenant).create({ tag: "billing", keywords: ["invoice"] });
 
     const conversations = new ConversationRepository(db, tenant);
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     // Simulates what src/channel/turn.ts's entry-turn bookkeeping already does
     // via setTags — a full handoff setup isn't needed to prove the regression
     // this guards against: addTags below must not stomp this.
@@ -135,14 +135,14 @@ describe("memory scope 'recent' trims the model's replay context (Phase 9 M2)", 
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE, OK_RESPONSE, OK_RESPONSE], (request) => {
       lastNonSystemCount = request.messages.filter((m) => m.role !== "system").length;
     });
-    new AgentDefRepository(db, tenant).publish({
+    await new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       conversationConfig: { memoryScope: "recent", recentTurnLimit: 2 },
     });
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "first" });
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "second" });
     // Without trimming this 3rd turn would send 5 non-system messages

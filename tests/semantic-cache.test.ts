@@ -102,7 +102,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider(providerScript) } });
 
-    const agent = new AgentDefRepository(db, tenant).publish({
+    const agent = await new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
@@ -147,7 +147,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
       usage: usage(),
     };
     const { db, tenant, gateway, embeddings } = await setup([toolResponse, OK_RESPONSE], true);
-    const agentWithTool = new AgentDefRepository(db, tenant).publish({
+    const agentWithTool = await new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",

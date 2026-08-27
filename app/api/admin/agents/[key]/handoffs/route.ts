@@ -23,10 +23,10 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
   }
 
   const agentDefs = new AgentDefRepository(db, tenant);
-  const current = agentDefs.getLatestPublished(key);
+  const current = await agentDefs.getLatestPublished(key);
   if (!current) return Response.json({ error: `No published agent def found for key "${key}"` }, { status: 404 });
 
-  const published = agentDefs.publish({
+  const published = await agentDefs.publish({
     key: current.key,
     systemPrompt: current.systemPrompt,
     modelAlias: current.modelAlias,

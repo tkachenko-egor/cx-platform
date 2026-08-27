@@ -27,7 +27,7 @@ const READ_ONLY_SCHEMA = { type: "object", properties: { order_id: { type: "stri
 describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row (no REGISTRY entry)", () => {
   it("executes a GET request and returns { ok: true, data } from the response", async () => {
     const { db, tenant } = await seededTenant();
-    new ToolDefRepository(db, tenant).upsert({
+    await new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
       inputSchema: READ_ONLY_SCHEMA,
@@ -48,14 +48,14 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
     expect(calledUrl.toString()).toContain("order_id=ORD-1");
 
     // FR-8.10: every call is logged, same as a code tool.
-    const logged = new ToolCallRepository(db, tenant).listByRun("run-1");
+    const logged = await new ToolCallRepository(db, tenant).listByRun("run-1");
     expect(logged).toHaveLength(1);
     expect(logged[0].status).toBe("ok");
   });
 
   it("returns { ok: false } instead of throwing when the endpoint errors, and still logs it", async () => {
     const { db, tenant } = await seededTenant();
-    new ToolDefRepository(db, tenant).upsert({
+    await new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
       inputSchema: READ_ONLY_SCHEMA,
@@ -70,7 +70,7 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
     const result = await executeTool(db, tenant, "CONV-1", "run-1", "check_shipping_status", { order_id: "ORD-1" });
     expect(result.ok).toBe(false);
 
-    const logged = new ToolCallRepository(db, tenant).listByRun("run-1");
+    const logged = await new ToolCallRepository(db, tenant).listByRun("run-1");
     expect(logged[0].status).toBe("error");
   });
 
@@ -78,7 +78,7 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
     const { db, tenant } = await seededTenant();
     const owner = await new UserRepository(db, tenant).create({ email: "owner@demo.test", passwordHash: "x", role: "owner" });
     const credential = await new ProviderCredentialRepository(db, tenant).createToolCredential({ provider: "carrier", label: "Carrier key", plaintextKey: "carrier-secret-token", ownerUserId: owner.id });
-    new ToolDefRepository(db, tenant).upsert({
+    await new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
       inputSchema: READ_ONLY_SCHEMA,
@@ -101,7 +101,7 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
 describe("http tools — write-flag + approval-policy gate applies unchanged (invariant #7)", () => {
   it("a write-flagged HTTP tool with confirm_with_customer defers instead of calling fetch", async () => {
     const { db, tenant } = await seededTenant();
-    new ToolDefRepository(db, tenant).upsert({
+    await new ToolDefRepository(db, tenant).upsert({
       key: "cancel_shipment",
       description: "Cancels a shipment",
       inputSchema: READ_ONLY_SCHEMA,
@@ -119,14 +119,14 @@ describe("http tools — write-flag + approval-policy gate applies unchanged (in
     expect(result).toMatchObject({ ok: false, needsConfirmation: true });
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const pending = new ToolApprovalRepository(db, tenant).listPendingByConversation("CONV-2");
+    const pending = await new ToolApprovalRepository(db, tenant).listPendingByConversation("CONV-2");
     expect(pending).toHaveLength(1);
     expect(pending[0].toolKey).toBe("cancel_shipment");
   });
 
   it("executes once the same request is re-issued in a later turn, same as a code write tool", async () => {
     const { db, tenant } = await seededTenant();
-    new ToolDefRepository(db, tenant).upsert({
+    await new ToolDefRepository(db, tenant).upsert({
       key: "cancel_shipment",
       description: "Cancels a shipment",
       inputSchema: READ_ONLY_SCHEMA,

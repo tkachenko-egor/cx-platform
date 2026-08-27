@@ -71,13 +71,13 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  getByAgentKey(agentKey: string): WidgetConfig | undefined {
+  async getByAgentKey(agentKey: string): Promise<WidgetConfig | undefined> {
     const row = this.db.prepare(`SELECT * FROM widget_configs WHERE tenant_id = ? AND agent_key = ?`).get(this.tenantId, agentKey) as WidgetConfigRow | undefined;
     return row ? rowToConfig(row) : undefined;
   }
 
   /** Creates on first save for an agent that has none yet; updates (never rotates the public_key) otherwise. */
-  upsert(input: {
+  async upsert(input: {
     agentKey: string;
     title: string;
     greetingText: string;
@@ -88,8 +88,8 @@ export class WidgetConfigRepository extends TenantScopedRepository {
     userBubbleColor: string;
     botBubbleColor: string;
     audienceRules?: AudienceRules;
-  }): WidgetConfig {
-    const existing = this.getByAgentKey(input.agentKey);
+  }): Promise<WidgetConfig> {
+    const existing = await this.getByAgentKey(input.agentKey);
     const now = new Date().toISOString();
     const audienceRules = input.audienceRules ?? existing?.audienceRules ?? {};
     if (existing) {
@@ -143,8 +143,8 @@ export class WidgetConfigRepository extends TenantScopedRepository {
   }
 
   /** Invalidates a leaked/scraped key — the old one 404s from then on, the agent keeps its config under a fresh key. */
-  rotateKey(agentKey: string): WidgetConfig | undefined {
-    const existing = this.getByAgentKey(agentKey);
+  async rotateKey(agentKey: string): Promise<WidgetConfig | undefined> {
+    const existing = await this.getByAgentKey(agentKey);
     if (!existing) return undefined;
     const publicKey = mintPublicKey();
     this.db.prepare(`UPDATE widget_configs SET public_key = ?, updated_at = ? WHERE id = ? AND tenant_id = ?`).run(publicKey, new Date().toISOString(), existing.id, this.tenantId);

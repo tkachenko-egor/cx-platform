@@ -62,7 +62,7 @@ export async function POST(req: Request) {
 
   let conversation;
   try {
-    conversation = ensureConversation({ db }, tenant, existing, "email", { subjectHash: normalizedSubjectHash(subject), from, subject });
+    conversation = await ensureConversation({ db }, tenant, existing, "email", { subjectHash: normalizedSubjectHash(subject), from, subject });
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }

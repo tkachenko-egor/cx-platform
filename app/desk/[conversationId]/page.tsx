@@ -33,14 +33,16 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
   const llmCalls = new LlmCallRepository(db, tenant);
   const toolCalls = new ToolCallRepository(db, tenant);
 
-  const trace = runs.map((run) => ({
-    run,
-    llmCalls: llmCalls.listByRun(run.id),
-    toolCalls: toolCalls.listByRun(run.id),
-  }));
+  const trace = await Promise.all(
+    runs.map(async (run) => ({
+      run,
+      llmCalls: llmCalls.listByRun(run.id),
+      toolCalls: await toolCalls.listByRun(run.id),
+    })),
+  );
 
   const escalationReasons = events.filter((e) => e.type === "escalated").flatMap((e) => (e.payload.reasons as string[] | undefined) ?? []);
-  const pendingApprovals = new ToolApprovalRepository(db, tenant).listPendingByConversation(conversationId);
+  const pendingApprovals = await new ToolApprovalRepository(db, tenant).listPendingByConversation(conversationId);
   const agentPath = (conversation.metadata.agentPath as string[] | undefined) ?? [];
   const handoffs = events
     .filter((e) => e.type === "handoff")

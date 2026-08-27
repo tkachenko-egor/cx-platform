@@ -48,7 +48,7 @@ export class AgentExperimentRepository extends TenantScopedRepository {
   }
 
   /** Throws on SQLite's own uniqueness violation if an active experiment already exists for this agent_key (idx_agent_experiments_one_active). */
-  create(input: { agentKey: string; variantAVersion: number; variantBVersion: number; trafficSplit: number }): AgentExperiment {
+  async create(input: { agentKey: string; variantAVersion: number; variantBVersion: number; trafficSplit: number }): Promise<AgentExperiment> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -60,18 +60,18 @@ export class AgentExperimentRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, agentKey: input.agentKey, variantAVersion: input.variantAVersion, variantBVersion: input.variantBVersion, trafficSplit: input.trafficSplit, status: "active", createdAt: now };
   }
 
-  getActive(agentKey: string): AgentExperiment | undefined {
+  async getActive(agentKey: string): Promise<AgentExperiment | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM agent_experiments WHERE tenant_id = ? AND agent_key = ? AND status = 'active'`)
       .get(this.tenantId, agentKey) as AgentExperimentRow | undefined;
     return row ? rowToExperiment(row) : undefined;
   }
 
-  stop(id: string): void {
+  async stop(id: string): Promise<void> {
     this.db.prepare(`UPDATE agent_experiments SET status = 'stopped' WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
   }
 
-  list(): AgentExperiment[] {
+  async list(): Promise<AgentExperiment[]> {
     const rows = this.db.prepare(`SELECT * FROM agent_experiments WHERE tenant_id = ? ORDER BY created_at DESC`).all(this.tenantId) as AgentExperimentRow[];
     return rows.map(rowToExperiment);
   }

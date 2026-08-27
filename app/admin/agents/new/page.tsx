@@ -39,16 +39,16 @@ export default async function NewAgentPage(props: { searchParams: Promise<{ clon
   const { db, tenant } = await getPlatformContext();
   const { cloneFrom, template } = await props.searchParams;
 
-  const availableTools = new ToolDefRepository(db, tenant)
-    .list()
+  const availableTools = (await new ToolDefRepository(db, tenant)
+    .list())
     .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = (await new ModelAliasRepository(db, tenant).list()).map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
   const availableOwners = (await new UserRepository(db, tenant).list()).map((u) => ({ id: u.id, email: u.email }));
   const agentDefs = new AgentDefRepository(db, tenant);
-  const existingAgents = [...new Set(agentDefs.listAllPublished().map((a) => a.key))].sort();
+  const existingAgents = [...new Set((await agentDefs.listAllPublished()).map((a) => a.key))].sort();
 
-  const cloneSource = cloneFrom ? agentDefs.getLatestPublished(cloneFrom) : undefined;
+  const cloneSource = cloneFrom ? await agentDefs.getLatestPublished(cloneFrom) : undefined;
   const chosenTemplate = !cloneSource && template ? TEMPLATES[template] : undefined;
 
   const initial = cloneSource

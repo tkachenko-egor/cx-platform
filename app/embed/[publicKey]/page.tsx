@@ -17,7 +17,7 @@ export default async function EmbedPage(props: PageProps<"/embed/[publicKey]">) 
   if (!widget) notFound();
 
   const { title, greetingText, primaryColor, logoUrl, agentKey, fontFamily, userBubbleColor, botBubbleColor } = widget.widgetConfig;
-  const quickReplies = new AgentDefRepository(widget.db, widget.tenant).getLatestPublished(agentKey)?.quickReplies;
+  const quickReplies = (await new AgentDefRepository(widget.db, widget.tenant).getLatestPublished(agentKey))?.quickReplies;
   const font = WIDGET_FONTS[fontFamily] ?? WIDGET_FONTS.inter;
 
   return (

@@ -81,7 +81,7 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
     supportMain: { provider: "scripted", model: "scripted-1" },
   });
 
-  const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+  const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
   const conversations = new ConversationRepository(db, tenant);
   const runs = new RunRepository(db, tenant);
   const toolCalls = new ToolCallRepository(db, tenant);
@@ -96,7 +96,7 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: turn.userText });
 
     const newRuns = runs.listByConversation(conversation.id).slice(runsBefore);
-    const toolCallsMade = newRuns.flatMap((r) => toolCalls.listByRun(r.id).map((tc) => tc.toolKey));
+    const toolCallsMade = (await Promise.all(newRuns.map((r) => toolCalls.listByRun(r.id)))).flat().map((tc) => tc.toolKey);
     const conv = conversations.get(conversation.id);
 
     const outcome: TurnOutcome = {

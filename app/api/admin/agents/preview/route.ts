@@ -85,15 +85,16 @@ export async function POST(req: Request) {
 
   const toolDefs = new ToolDefRepository(db, tenant);
   let droppedWriteTools = 0;
-  const safeToolIds = draft.toolIds.filter((id) => {
-    const def = toolDefs.getByKey(id);
-    if (!def) return false;
+  const safeToolIds: string[] = [];
+  for (const id of draft.toolIds) {
+    const def = await toolDefs.getByKey(id);
+    if (!def) continue;
     if (def.writeFlag) {
       droppedWriteTools++;
-      return false;
+      continue;
     }
-    return true;
-  });
+    safeToolIds.push(id);
+  }
 
   const agent: AgentDef = {
     id: "preview",
@@ -178,8 +179,8 @@ export async function POST(req: Request) {
           }),
           { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 },
         );
-        const toolCalls = new ToolCallRepository(db, tenant)
-          .listByRun(run.id)
+        const toolCalls = (await new ToolCallRepository(db, tenant)
+          .listByRun(run.id))
           .map((c) => ({ toolKey: c.toolKey, status: c.status, latencyMs: c.latencyMs }));
 
         send({

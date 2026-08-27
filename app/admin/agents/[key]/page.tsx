@@ -15,18 +15,18 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
   const { db, tenant } = await getPlatformContext();
 
   const agentDefs = new AgentDefRepository(db, tenant);
-  const agentDef = agentDefs.getLatestPublished(key);
+  const agentDef = await agentDefs.getLatestPublished(key);
   if (!agentDef) notFound();
   // Milestone 5 (Save/Publish split): a saved-but-unpublished draft, if any,
   // takes precedence over the last published version as the form's starting
   // point — "resume editing" should pick up unsaved work. `version` stays
   // the real published version's (never the draft's sentinel 0) so the
   // header/version-picker keep referring to actual history.
-  const draft = agentDefs.getDraft(key);
+  const draft = await agentDefs.getDraft(key);
   const formSource = draft ?? agentDef;
 
-  const availableTools = new ToolDefRepository(db, tenant)
-    .list()
+  const availableTools = (await new ToolDefRepository(db, tenant)
+    .list())
     .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = (await new ModelAliasRepository(db, tenant).list()).map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
   const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
@@ -34,15 +34,15 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
 
   // Bot-level routing: every other published agent, so the "Hands off to"
   // card can offer them as handoff targets (see components/admin/AgentEditor.tsx).
-  const latestByKey = new Map<string, ReturnType<typeof agentDefs.listAllPublished>[number]>();
-  for (const def of agentDefs.listAllPublished()) {
+  const latestByKey = new Map<string, Awaited<ReturnType<typeof agentDefs.listAllPublished>>[number]>();
+  for (const def of await agentDefs.listAllPublished()) {
     const current = latestByKey.get(def.key);
     if (!current || def.version > current.version) latestByKey.set(def.key, def);
   }
   const availableHandoffTargets = [...latestByKey.values()]
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((a) => ({ key: a.key, displayName: a.displayName, handoffTargets: a.handoffTargets }));
-  const versions = agentDefs.listVersions(key).map((v) => ({
+  const versions = (await agentDefs.listVersions(key)).map((v) => ({
     key: v.key,
     version: v.version,
     systemPrompt: v.systemPrompt,

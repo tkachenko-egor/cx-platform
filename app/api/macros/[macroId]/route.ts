@@ -18,11 +18,11 @@ export async function PATCH(req: Request, context: RouteContext<"/api/macros/[ma
   }
 
   const macros = new MacroRepository(db, tenant);
-  const existing = macros.get(macroId);
+  const existing = await macros.get(macroId);
   if (!existing) return Response.json({ error: "Macro not found" }, { status: 404 });
 
-  macros.update(macroId, { name: body.name?.trim() || undefined, body: body.body?.trim() || undefined, tags: body.tags });
-  return Response.json({ ok: true, macro: macros.get(macroId) });
+  await macros.update(macroId, { name: body.name?.trim() || undefined, body: body.body?.trim() || undefined, tags: body.tags });
+  return Response.json({ ok: true, macro: await macros.get(macroId) });
 }
 
 /** Phase 2 M8: delete a macro. */
@@ -38,9 +38,9 @@ export async function DELETE(_req: Request, context: RouteContext<"/api/macros/[
   }
 
   const macros = new MacroRepository(db, tenant);
-  const existing = macros.get(macroId);
+  const existing = await macros.get(macroId);
   if (!existing) return Response.json({ error: "Macro not found" }, { status: 404 });
 
-  macros.delete(macroId);
+  await macros.delete(macroId);
   return Response.json({ ok: true });
 }

@@ -63,23 +63,23 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
   it("ensureConversation refuses to start a new conversation on a paused agent", async () => {
     const { db, tenant } = await baseSetup([OK_RESPONSE]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
 
-    expect(() => ensureConversation({ db }, tenant, undefined, "widget")).toThrow(/not active/);
+    await expect(ensureConversation({ db }, tenant, undefined, "widget")).rejects.toThrow(/not active/);
   });
 
   it("lets an already-running conversation keep going on its pinned version after the agent is later paused", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE, OK_RESPONSE]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active" }); // v1
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     const first = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi" });
     expect(first.state).toBe("bot_active");
 
     // Republish as paused — the conversation above is already pinned to v1.
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" }); // v2
 
     const second = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "still there?" });
     expect(second.state).toBe("bot_active");
@@ -91,10 +91,10 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
       { content: "", toolCalls: [{ id: "h1", name: "handoff_to_agent", arguments: { target: "billing-specialist", reason: "Billing", summary: "Billing question" } }], stopReason: "tool_use", usage: usage() },
     ]);
     const agentDefs = new AgentDefRepository(db, tenant);
-    agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active", handoffTargets: ["billing-specialist"] });
-    agentDefs.publish({ key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" });
+    await agentDefs.publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "active", handoffTargets: ["billing-specialist"] });
+    await agentDefs.publish({ key: "billing-specialist", systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main", agentStatus: "paused" });
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "billing question" });
 
     expect(result.state).toBe("awaiting_human");
@@ -105,14 +105,14 @@ describe("agent_status gates routing (Phase 7 M1)", () => {
 describe("per-conversation cost ceiling (Phase 7 M2)", () => {
   it("lets a turn that pushes spend over the ceiling finish, then escalates the next turn before calling the model again", async () => {
     const { db, tenant, gateway, embeddings, provider } = await baseSetup([{ ...OK_RESPONSE, usage: usage(10) }, OK_RESPONSE]);
-    new AgentDefRepository(db, tenant).publish({
+    await new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
       systemPrompt: buildCorePrompt("Fixture Retail Co"),
       modelAlias: "support-main",
       costCeilingUsd: 5,
     });
 
-    const conversation = ensureConversation({ db }, tenant, undefined, "widget");
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     const first = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "hi" });
     expect(first.state).toBe("bot_active");
     expect(provider.calls).toBe(1);

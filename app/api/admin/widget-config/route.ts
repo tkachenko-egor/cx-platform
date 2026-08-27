@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   const agentKey = new URL(req.url).searchParams.get("agentKey");
   if (!agentKey) return Response.json({ error: "agentKey is required" }, { status: 400 });
 
-  const config = new WidgetConfigRepository(db, tenant).getByAgentKey(agentKey);
+  const config = await new WidgetConfigRepository(db, tenant).getByAgentKey(agentKey);
   return Response.json({ config: config ?? null });
 }
 
@@ -66,13 +66,13 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  if (!new AgentDefRepository(db, tenant).getLatestPublished(body.agentKey)) {
+  if (!await new AgentDefRepository(db, tenant).getLatestPublished(body.agentKey)) {
     return Response.json({ error: `No published agent found for key "${body.agentKey}"` }, { status: 404 });
   }
 
   const widgetConfigs = new WidgetConfigRepository(db, tenant);
-  const existing = widgetConfigs.getByAgentKey(body.agentKey);
-  const config = widgetConfigs.upsert({
+  const existing = await widgetConfigs.getByAgentKey(body.agentKey);
+  const config = await widgetConfigs.upsert({
     agentKey: body.agentKey,
     title: body.title?.trim() || "Support",
     greetingText: body.greetingText ?? "",
@@ -108,7 +108,7 @@ export async function PATCH(req: Request) {
     throw err;
   }
 
-  const config = new WidgetConfigRepository(db, tenant).rotateKey(body.agentKey);
+  const config = await new WidgetConfigRepository(db, tenant).rotateKey(body.agentKey);
   if (!config) return Response.json({ error: `No widget found for agent "${body.agentKey}"` }, { status: 404 });
 
   new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "widget_config_key_rotated", target: body.agentKey });

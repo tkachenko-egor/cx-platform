@@ -90,7 +90,7 @@ export async function processInboundTurn(
     // Phase 7 M3 (canned handoff message) + Phase 8 M1 (per-agent turn-count
     // cap override) both need a best-effort lookup of the pinned agent —
     // falls back silently if the key/version is somehow gone.
-    const pinnedAgent = agentDefs.getVersion(
+    const pinnedAgent = await agentDefs.getVersion(
       conversation.currentAgentId ?? DEFAULT_AGENT_KEY,
       (conversation.metadata.agentVersion as number | undefined) ?? 1,
     );
@@ -155,7 +155,7 @@ export async function processInboundTurn(
     let entryAgentBusinessHours: typeof tenant.businessHours | undefined;
 
     for (let hops = 0; ; hops++) {
-      const agent = agentDefs.getVersion(currentAgentKey, currentAgentVersion) ?? agentDefs.getLatestPublished(currentAgentKey);
+      const agent = (await agentDefs.getVersion(currentAgentKey, currentAgentVersion)) ?? (await agentDefs.getLatestPublished(currentAgentKey));
       if (!agent) throw new Error(`No agent definition available for "${currentAgentKey}"`);
       if (hops === 0) {
         entryAgentDisclosure = (agent.guardrails as { output?: { aiDisclosureMessage?: string } } | undefined)?.output?.aiDisclosureMessage;
@@ -197,7 +197,7 @@ export async function processInboundTurn(
       if (hops >= MAX_HOPS_PER_REQUEST) return escalateAndReturn("handoff_cycle_detected");
 
       const { target, package: pkg } = result.handoffRequested;
-      const nextAgent = target ? agentDefs.getForTraffic(target, input.conversationId) : undefined;
+      const nextAgent = target ? await agentDefs.getForTraffic(target, input.conversationId) : undefined;
       if (!nextAgent || detectCycle(agentPath, target)) return escalateAndReturn("handoff_cycle_detected");
       if (nextAgent.agentStatus !== "active") return escalateAndReturn("target_agent_unavailable");
 
@@ -260,7 +260,7 @@ export async function processInboundTurn(
 }
 
 /** Finds-or-creates the conversation a channel adapter should hand to processInboundTurn. */
-export function ensureConversation(
+export async function ensureConversation(
   deps: { db: RuntimeDeps["db"] },
   tenant: Tenant,
   existing: Conversation | undefined,
@@ -268,14 +268,14 @@ export function ensureConversation(
   metadata?: Record<string, unknown>,
   /** Phase 4 M4: an embedded widget is pinned to one specific agent (widget_configs.agent_key), not the tenant-wide default. */
   agentKey: string = DEFAULT_AGENT_KEY,
-): Conversation {
+): Promise<Conversation> {
   if (existing) return existing;
 
   const agentDefs = new AgentDefRepository(deps.db, tenant);
   // Phase 2 M6a: generated up front so getForTraffic's deterministic hash
   // has a conversation id to bucket on before the row itself exists.
   const conversationId = `CONV-${randomUUID()}`;
-  const published = agentDefs.getForTraffic(agentKey, conversationId);
+  const published = await agentDefs.getForTraffic(agentKey, conversationId);
   if (!published) throw new Error("No published agent — run `npm run seed` first.");
   // Phase 7 M1: a draft/paused/archived agent can't start a brand-new
   // conversation — only an already-running one is grandfathered in.

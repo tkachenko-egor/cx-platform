@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const experiment = new AgentExperimentRepository(db, tenant).create({
+    const experiment = await new AgentExperimentRepository(db, tenant).create({
       agentKey: body.agentKey,
       variantAVersion: body.variantAVersion,
       variantBVersion: body.variantBVersion,

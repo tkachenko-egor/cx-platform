@@ -15,7 +15,7 @@ export default async function AgentsPage(props: { searchParams: Promise<{ archiv
   const { archived } = await props.searchParams;
   const showArchived = archived === "1";
   const { db, tenant } = await getPlatformContext();
-  const defs = new AgentDefRepository(db, tenant).listAllPublished();
+  const defs = await new AgentDefRepository(db, tenant).listAllPublished();
   const aliasLookup = new Map((await new ModelAliasRepository(db, tenant).list()).map((a) => [a.alias, a]));
 
   const latestByKey = new Map<string, (typeof defs)[number]>();

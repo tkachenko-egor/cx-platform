@@ -26,7 +26,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const draft = new AgentDefRepository(db, tenant).saveDraft(body);
+  const draft = await new AgentDefRepository(db, tenant).saveDraft(body);
   return Response.json({ ok: true, agentDef: draft });
 }
 
@@ -42,6 +42,6 @@ export async function DELETE(req: Request) {
     throw err;
   }
 
-  new AgentDefRepository(db, tenant).clearDraft(key);
+  await new AgentDefRepository(db, tenant).clearDraft(key);
   return Response.json({ ok: true });
 }

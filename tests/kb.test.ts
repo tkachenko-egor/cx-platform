@@ -235,7 +235,7 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
 
     await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([{ content: "Here's what I found.", toolCalls: [], stopReason: "end_turn", usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 } }]) } });
-    const agent = new AgentDefRepository(db, tenant).publish({
+    const agent = await new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
       systemPrompt: buildCorePrompt("Demo"),
       modelAlias: "support-main",
