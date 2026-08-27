@@ -1,0 +1,28 @@
+# All-in-one: Postgres + the app in a single container.
+#   docker compose -f docker-compose.app.yml up --build
+# then open http://localhost:3000  (demo tenant "fixture-retail").
+#
+# docker-compose.yml (the bare `db` service) is a separate thing — it's the
+# Postgres that `npm test` / `npm run seed` need during local development.
+services:
+  cx-platform:
+    build: .
+    image: cx-platform
+    ports:
+      - "3000:3000"
+    environment:
+      # Base hostname the app resolves tenants under. `localhost` →
+      # http://localhost:3000 is the demo tenant; platform.localhost:3000 is
+      # platform-admin. Set to your real domain in a deployment.
+      APP_DOMAIN: localhost
+      # Optional — real model + embeddings. Unset → deterministic stubs.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Optional — pin the seeded logins (otherwise printed once at first boot).
+      SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:-}
+      SEED_TENANT_OWNER_PASSWORD: ${SEED_TENANT_OWNER_PASSWORD:-}
+    volumes:
+      - cx-app-data:/var/lib/postgresql/data
+
+volumes:
+  cx-app-data:

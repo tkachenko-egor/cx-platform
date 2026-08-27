@@ -158,3 +158,32 @@ Without API keys, the app still runs end-to-end: the model gateway falls
 back to its zero-network stub provider, and KB retrieval falls back to
 stub (non-semantic) embeddings — structurally complete, just not
 meaningfully "smart," per NFR-9.5's zero-cloud-dependency local dev.
+
+### One container (Postgres + app)
+
+For a demo / self-host, everything runs in a single image — Postgres
+(pgvector) and the Next server together, migrations and seed on first boot:
+
+```bash
+docker compose -f docker-compose.app.yml up --build
+# → http://localhost:3000        demo tenant "fixture-retail"
+# → http://platform.localhost:3000   platform-admin
+```
+
+Or without compose:
+
+```bash
+docker build -t cx-platform .
+docker run -p 3000:3000 -v cx-data:/var/lib/postgresql/data cx-platform
+```
+
+The seeded logins are printed once on first boot (pin them with
+`SEED_OWNER_PASSWORD` / `SEED_TENANT_OWNER_PASSWORD`). `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` are optional — unset means the same stub fallbacks as local
+dev. The Postgres data lives on the mounted volume; it's the disposable,
+durability-off configuration this project already uses (see
+`docker-compose.yml`, which is the separate dev/test DB).
+
+This is a convenience container, not a production topology — for that, use
+managed Postgres and run the app as a stateless image (`next start`,
+`DATABASE_URL` pointing at the managed instance).
