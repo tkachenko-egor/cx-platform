@@ -48,7 +48,7 @@ export class KbRetrievalLogRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(input: { conversationId: string; runId: string; queryText: string; bestScore: number; retrievedDocIds: string[]; reranked?: boolean }): void {
+  async record(input: { conversationId: string; runId: string; queryText: string; bestScore: number; retrievedDocIds: string[]; reranked?: boolean }): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO kb_retrieval_log (id, tenant_id, conversation_id, run_id, query_text, best_score, retrieved_doc_ids, reranked, created_at)
@@ -58,7 +58,7 @@ export class KbRetrievalLogRepository extends TenantScopedRepository {
   }
 
   /** Excludes 'test_harness' conversations (agent-builder live-preview turns) — coverage gaps should reflect real traffic, not draft testing. */
-  listLowConfidence(thresholdScore: number, since?: string): KbRetrievalLogEntry[] {
+  async listLowConfidence(thresholdScore: number, since?: string): Promise<KbRetrievalLogEntry[]> {
     const previewExclusion = `NOT EXISTS (SELECT 1 FROM conversations c WHERE c.id = kb_retrieval_log.conversation_id AND c.channel = 'test_harness')`;
     const rows = since
       ? (this.db

@@ -18,10 +18,10 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/kb-col
   }
 
   const collections = new KbCollectionRepository(db, tenant);
-  const existing = collections.getById(id);
+  const existing = await collections.getById(id);
   if (!existing) return Response.json({ error: "Knowledge Base not found" }, { status: 404 });
 
-  const result = collections.delete(id);
+  const result = await collections.delete(id);
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
 
   new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_deleted", target: id, before: { name: existing.name } });

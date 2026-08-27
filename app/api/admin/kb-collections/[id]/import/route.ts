@@ -37,7 +37,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/admin/kb-collec
     throw err;
   }
 
-  if (!new KbCollectionRepository(db, tenant).getById(collectionId)) {
+  if (!await new KbCollectionRepository(db, tenant).getById(collectionId)) {
     return Response.json({ error: "Knowledge Base not found" }, { status: 404 });
   }
 
@@ -86,12 +86,12 @@ export async function POST(req: Request, ctx: RouteContext<"/api/admin/kb-collec
   if (!docId) return Response.json({ error: "Could not derive a doc id from the filename" }, { status: 400 });
 
   const articles = new KbArticleRepository(db, tenant);
-  if (articles.getByDocId(docId)) {
+  if (await articles.getByDocId(docId)) {
     return Response.json({ error: `An article with doc id "${docId}" already exists` }, { status: 400 });
   }
 
   const contentHash = createHash("sha256").update(bodyText).digest("hex");
-  const article = articles.upsert({ docId, title, audience, effective, contentHash, body: bodyText, collectionId });
+  const article = await articles.upsert({ docId, title, audience, effective, contentHash, body: bodyText, collectionId });
   await chunkAndEmbedArticle(new KbChunkRepository(db, tenant), embeddings, article.id, bodyText);
 
   new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_article_imported", target: article.docId, after: { title, source: ext } });

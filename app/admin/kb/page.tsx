@@ -11,7 +11,7 @@ export default async function KbCollectionsPage() {
   await requireAdminPage(db, tenant);
 
   const collections = new KbCollectionRepository(db, tenant);
-  const rows = collections.list().map((c) => ({ ...c, articleCount: collections.countArticles(c.id) }));
+  const rows = await Promise.all((await collections.list()).map(async (c) => ({ ...c, articleCount: await collections.countArticles(c.id) })));
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">

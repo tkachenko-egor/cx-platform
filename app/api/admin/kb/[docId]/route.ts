@@ -31,11 +31,11 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/kb/[docI
   }
 
   const articles = new KbArticleRepository(db, tenant);
-  const existing = articles.getByDocId(docId);
+  const existing = await articles.getByDocId(docId);
   if (!existing) return Response.json({ error: `No article found for doc id "${docId}"` }, { status: 404 });
 
   const contentHash = createHash("sha256").update(body.body).digest("hex");
-  const article = articles.upsert({
+  const article = await articles.upsert({
     docId,
     title: body.title.trim(),
     audience: body.audience?.trim() || "customer",
@@ -49,7 +49,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/kb/[docI
   }
 
   if (article.collectionId) {
-    const collection = new KbCollectionRepository(db, tenant).getById(article.collectionId);
+    const collection = await new KbCollectionRepository(db, tenant).getById(article.collectionId);
     if (collection?.openaiVectorStoreId) {
       await syncArticleToVectorStore(db, tenant, collection.openaiVectorStoreId, article).catch((err) => console.error(`File Search sync failed for article "${article.docId}":`, err));
     }
@@ -78,18 +78,18 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/kb/[do
   }
 
   const articles = new KbArticleRepository(db, tenant);
-  const existing = articles.getByDocId(docId);
+  const existing = await articles.getByDocId(docId);
   if (!existing) return Response.json({ error: `No article found for doc id "${docId}"` }, { status: 404 });
 
   if (existing.collectionId && existing.openaiFileId) {
-    const collection = new KbCollectionRepository(db, tenant).getById(existing.collectionId);
+    const collection = await new KbCollectionRepository(db, tenant).getById(existing.collectionId);
     if (collection?.openaiVectorStoreId) {
       await removeArticleFromVectorStore(db, tenant, collection.openaiVectorStoreId, existing.openaiFileId).catch((err) => console.error(`File Search removal failed for article "${docId}":`, err));
     }
   }
 
-  new KbChunkRepository(db, tenant).replaceForArticle(existing.id, []);
-  articles.delete(docId);
+  await new KbChunkRepository(db, tenant).replaceForArticle(existing.id, []);
+  await articles.delete(docId);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

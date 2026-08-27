@@ -27,7 +27,7 @@ export default async function AdminDashboardPage() {
   const noCodeCount = tools.filter((t) => t.type === "http").length;
   const customCount = tools.filter((t) => t.type === "code").length;
 
-  const collectionsCount = new KbCollectionRepository(db, tenant).list().length;
+  const collectionsCount = (await new KbCollectionRepository(db, tenant).list()).length;
 
   const containment = getContainmentRate(db, tenant);
   const volume = getAgentVolume(db, tenant);

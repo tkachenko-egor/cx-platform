@@ -23,7 +23,7 @@ async function getApiKey(db: Database.Database, tenant: TenantContext): Promise<
 /** Creates the collection's vector store on first use and backfills its existing articles. Returns the vector store id, or undefined if no OpenAI credential is configured. Already-provisioned collections just return their existing id. */
 export async function ensureVectorStore(db: Database.Database, tenant: TenantContext, collectionId: string): Promise<string | undefined> {
   const collections = new KbCollectionRepository(db, tenant);
-  const collection = collections.getById(collectionId);
+  const collection = await collections.getById(collectionId);
   if (!collection) return undefined;
   if (collection.openaiVectorStoreId) return collection.openaiVectorStoreId;
 
@@ -37,9 +37,9 @@ export async function ensureVectorStore(db: Database.Database, tenant: TenantCon
   });
   if (!res.ok) throw new Error(`Could not create OpenAI vector store: ${await res.text().catch(() => res.statusText)}`);
   const body = (await res.json()) as { id: string };
-  collections.setOpenAiVectorStoreId(collectionId, body.id);
+  await collections.setOpenAiVectorStoreId(collectionId, body.id);
 
-  const articles = new KbArticleRepository(db, tenant).list({ collectionId });
+  const articles = await new KbArticleRepository(db, tenant).list({ collectionId });
   for (const article of articles) {
     await syncArticleToVectorStore(db, tenant, body.id, article);
   }
@@ -72,7 +72,7 @@ export async function syncArticleToVectorStore(db: Database.Database, tenant: Te
   });
   if (!attachRes.ok) throw new Error(`Could not attach KB article "${article.docId}" to its vector store: ${await attachRes.text().catch(() => attachRes.statusText)}`);
 
-  new KbArticleRepository(db, tenant).setOpenAiFileId(article.docId, file.id);
+  await new KbArticleRepository(db, tenant).setOpenAiFileId(article.docId, file.id);
 }
 
 /** Detaches + deletes a previously-uploaded article file. Best-effort — failures here shouldn't block the admin action that triggered them. */

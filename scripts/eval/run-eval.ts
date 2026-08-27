@@ -96,7 +96,7 @@ async function runCase(golden: GoldenCase): Promise<CaseResult> {
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: turn.userText });
 
     const newRuns = runs.listByConversation(conversation.id).slice(runsBefore);
-    const toolCallsMade = (await Promise.all(newRuns.map((r) => toolCalls.listByRun(r.id)))).flat().map((tc) => tc.toolKey);
+    const toolCallsMade = (await Promise.all(newRuns.map(async (r) => toolCalls.listByRun(r.id)))).flat().map((tc) => tc.toolKey);
     const conv = conversations.get(conversation.id);
 
     const outcome: TurnOutcome = {

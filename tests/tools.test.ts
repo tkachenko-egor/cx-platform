@@ -45,7 +45,7 @@ describe("check_return_eligibility — the centerpiece extended-window override"
     const { db, tenant } = await seededTenant();
     // Delivered 52 days before the pinned date: past the 30-day standard
     // window and opened, so only the extended-window override can approve it.
-    const result = runCheckReturnEligibility(db, tenant, {
+    const result = await runCheckReturnEligibility(db, tenant, {
       order_id: "ORD-100001",
       line_id: "LINE-5001",
       reason_code: "SAFETY_CONCERN",
@@ -59,7 +59,7 @@ describe("check_return_eligibility — the centerpiece extended-window override"
 
   it("honours a per-agent tool_settings override of the extended window", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runCheckReturnEligibility(
+    const result = await runCheckReturnEligibility(
       db,
       tenant,
       { order_id: "ORD-100001", line_id: "LINE-5001", reason_code: "SAFETY_CONCERN" },
@@ -72,7 +72,7 @@ describe("check_return_eligibility — the centerpiece extended-window override"
     const { db, tenant } = await seededTenant();
     // LINE-5001 is_opened=Yes per the seed data — any reason outside the
     // override list should hit the opened/not-resellable refusal.
-    const result = runCheckReturnEligibility(db, tenant, {
+    const result = await runCheckReturnEligibility(db, tenant, {
       order_id: "ORD-100001",
       line_id: "LINE-5001",
       reason_code: "SEALED_UNWANTED",
@@ -86,7 +86,7 @@ describe("check_return_eligibility — the centerpiece extended-window override"
 
   it("refuses a promotional item outright", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runCheckReturnEligibility(db, tenant, { order_id: "ORD-100007", line_id: "LINE-5010", reason_code: "SEALED_UNWANTED" });
+    const result = await runCheckReturnEligibility(db, tenant, { order_id: "ORD-100007", line_id: "LINE-5010", reason_code: "SEALED_UNWANTED" });
     if ("verdict" in result && result.verdict === "NOT_ELIGIBLE") expect(result.rule).toBe("PROMOTIONAL_ITEM");
   });
 });

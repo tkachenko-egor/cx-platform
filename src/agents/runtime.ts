@@ -240,7 +240,7 @@ export async function runAgentTurn(
       toolDefinitions.push(handoffToolDefinition(agent.handoffTargets));
     }
 
-    const nativeTools = buildNativeTools(deps.db, tenant, agent);
+    const nativeTools = await buildNativeTools(deps.db, tenant, agent);
     const sandbox = agent.environment === "sandbox";
 
     while (round < ROUND_CAP) {
@@ -383,7 +383,7 @@ export async function runAgentTurn(
  * silently drops "file_search"/"mcp" — harmless to compute unconditionally
  * either way, since each adapter decides what it actually supports.
  */
-function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: AgentDef): NativeToolConfig[] {
+async function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: AgentDef): Promise<NativeToolConfig[]> {
   const config = agent.nativeTools;
   const tools: NativeToolConfig[] = [];
   if (config.webSearch) tools.push({ type: "web_search" });
@@ -391,7 +391,9 @@ function buildNativeTools(db: Database.Database, tenant: TenantContext, agent: A
   if (config.fileSearch) {
     const collectionIds = Array.isArray((agent.kbScope as { collectionIds?: unknown })?.collectionIds) ? ((agent.kbScope as { collectionIds: string[] }).collectionIds ?? []) : [];
     const collections = new KbCollectionRepository(db, tenant);
-    const vectorStoreIds = collectionIds.map((id) => collections.getById(id)?.openaiVectorStoreId).filter((id): id is string => Boolean(id));
+    const vectorStoreIds = (await Promise.all(collectionIds.map((id) => collections.getById(id))))
+      .map((c) => c?.openaiVectorStoreId)
+      .filter((id): id is string => Boolean(id));
     if (vectorStoreIds.length > 0) tools.push({ type: "file_search", vectorStoreIds });
   }
 

@@ -244,7 +244,7 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
 
     await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agent, [], "returns and refunds");
 
-    const logged = new KbRetrievalLogRepository(db, tenant).listLowConfidence(1); // 1 is above any real RRF score, so this returns everything
+    const logged = await new KbRetrievalLogRepository(db, tenant).listLowConfidence(1); // 1 is above any real RRF score, so this returns everything
     expect(logged).toHaveLength(1);
     expect(logged[0].queryText).toBe("returns and refunds");
     expect(logged[0].bestScore).toBeGreaterThan(0);
@@ -255,10 +255,10 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Demo", "demo");
     const repo = new KbRetrievalLogRepository(db, tenant);
-    repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "a well-matched question", bestScore: 0.05, retrievedDocIds: ["doc-a"] });
-    repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "a poorly-matched question", bestScore: 0.0, retrievedDocIds: [] });
+    await repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "a well-matched question", bestScore: 0.05, retrievedDocIds: ["doc-a"] });
+    await repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "a poorly-matched question", bestScore: 0.0, retrievedDocIds: [] });
 
-    const gaps = getCoverageGaps(db, tenant, { thresholdScore: 0.01 });
+    const gaps = await getCoverageGaps(db, tenant, { thresholdScore: 0.01 });
     expect(gaps).toHaveLength(1);
     expect(gaps[0].queryText).toBe("a poorly-matched question");
   });
@@ -267,10 +267,10 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Demo", "demo");
     const repo = new KbRetrievalLogRepository(db, tenant);
-    repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "with rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"], reranked: true });
-    repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "without rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"] });
+    await repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "with rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"], reranked: true });
+    await repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "without rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"] });
 
-    const byQuery = new Map(repo.listLowConfidence(1).map((e) => [e.queryText, e.reranked]));
+    const byQuery = new Map((await repo.listLowConfidence(1)).map((e) => [e.queryText, e.reranked]));
     expect(byQuery.get("with rerank")).toBe(true);
     expect(byQuery.get("without rerank")).toBe(false);
   });

@@ -27,7 +27,7 @@ export async function GET(req: Request) {
   }
 
   const collectionId = new URL(req.url).searchParams.get("collectionId") ?? undefined;
-  const articles = new KbArticleRepository(db, tenant).list(collectionId ? { collectionId } : undefined);
+  const articles = await new KbArticleRepository(db, tenant).list(collectionId ? { collectionId } : undefined);
   return Response.json({ articles });
 }
 
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const collection = new KbCollectionRepository(db, tenant).getById(body.collectionId);
+  const collection = await new KbCollectionRepository(db, tenant).getById(body.collectionId);
   if (!collection) {
     return Response.json({ error: `No Knowledge Base found for id "${body.collectionId}"` }, { status: 404 });
   }
@@ -62,12 +62,12 @@ export async function POST(req: Request) {
   const articles = new KbArticleRepository(db, tenant);
   const docId = body.docId?.trim() || slugify(body.title);
   if (!docId) return Response.json({ error: "Could not derive a doc id from the title — set one explicitly" }, { status: 400 });
-  if (articles.getByDocId(docId)) {
+  if (await articles.getByDocId(docId)) {
     return Response.json({ error: `An article with doc id "${docId}" already exists` }, { status: 400 });
   }
 
   const contentHash = createHash("sha256").update(body.body).digest("hex");
-  const article = articles.upsert({
+  const article = await articles.upsert({
     docId,
     title: body.title.trim(),
     audience: body.audience?.trim() || "customer",

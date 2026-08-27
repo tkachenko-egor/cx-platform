@@ -30,7 +30,7 @@ export class KbCollectionRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { name: string; description?: string }): KbCollection {
+  async create(input: { name: string; description?: string }): Promise<KbCollection> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -39,37 +39,37 @@ export class KbCollectionRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, name: input.name, description: input.description ?? "", openaiVectorStoreId: null };
   }
 
-  getById(id: string): KbCollection | undefined {
+  async getById(id: string): Promise<KbCollection | undefined> {
     const row = this.db.prepare(`SELECT * FROM kb_collections WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as KbCollectionRow | undefined;
     return row ? rowToCollection(row) : undefined;
   }
 
-  list(): KbCollection[] {
+  async list(): Promise<KbCollection[]> {
     const rows = this.db.prepare(`SELECT * FROM kb_collections WHERE tenant_id = ? ORDER BY name`).all(this.tenantId) as KbCollectionRow[];
     return rows.map(rowToCollection);
   }
 
-  countArticles(id: string): number {
+  async countArticles(id: string): Promise<number> {
     const row = this.db.prepare(`SELECT COUNT(*) as n FROM kb_articles WHERE tenant_id = ? AND collection_id = ?`).get(this.tenantId, id) as { n: number };
     return row.n;
   }
 
   /** Blocked if non-empty — no cascade/reassign UI this round, simplest safe rule. */
-  delete(id: string): { ok: true } | { ok: false; error: string } {
-    if (this.countArticles(id) > 0) return { ok: false, error: "Move or delete its articles first" };
+  async delete(id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+    if (await this.countArticles(id) > 0) return { ok: false, error: "Move or delete its articles first" };
     this.db.prepare(`DELETE FROM kb_collections WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
     return { ok: true };
   }
 
   /** Phase 6 M3: called once by ensureVectorStore() after provisioning — never overwrites an already-set id. */
-  setOpenAiVectorStoreId(id: string, vectorStoreId: string): void {
+  async setOpenAiVectorStoreId(id: string, vectorStoreId: string): Promise<void> {
     this.db.prepare(`UPDATE kb_collections SET openai_vector_store_id = ? WHERE tenant_id = ? AND id = ?`).run(vectorStoreId, this.tenantId, id);
   }
 
   /** Covers fresh installs: migration 018's backfill only catches articles that existed at migration time, so scripts/ingest-kb.ts (run after seeding on an empty DB) needs somewhere to put new file-sourced articles too. */
-  ensureDefault(): KbCollection {
+  async ensureDefault(): Promise<KbCollection> {
     const row = this.db.prepare(`SELECT * FROM kb_collections WHERE tenant_id = ? AND name = 'General' ORDER BY created_at ASC LIMIT 1`).get(this.tenantId) as KbCollectionRow | undefined;
     if (row) return rowToCollection(row);
-    return this.create({ name: "General", description: "Default collection for articles that existed before Knowledge Bases were introduced." });
+    return await this.create({ name: "General", description: "Default collection for articles that existed before Knowledge Bases were introduced." });
   }
 }

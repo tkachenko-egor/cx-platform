@@ -83,7 +83,7 @@ export async function hybridSearch(
   const articleRepo = new KbArticleRepository(db, tenant);
   const chunkRepo = new KbChunkRepository(db, tenant);
 
-  const articlesById = new Map(articleRepo.list().map((a) => [a.id, a]));
+  const articlesById = new Map((await articleRepo.list()).map((a) => [a.id, a]));
 
   // KB-01: `collectionIds` present-but-empty means the admin deliberately
   // deselected every KB — that must retrieve nothing, not fall back to the
@@ -95,7 +95,7 @@ export async function hybridSearch(
   const allowedCollectionIds = new Set(kbScope.collectionIds ?? []);
   const allowedAudiences = new Set(kbScope.audience ?? ["customer"]);
 
-  const candidateChunks = chunkRepo.listByTenant().filter((c) => {
+  const candidateChunks = (await chunkRepo.listByTenant()).filter((c) => {
     const article = articlesById.get(c.articleId);
     if (!article) return false;
     return useCollections ? Boolean(article.collectionId && allowedCollectionIds.has(article.collectionId)) : allowedAudiences.has(article.audience);
@@ -112,7 +112,7 @@ export async function hybridSearch(
   const denseRanked = [...candidateChunks].sort((a, b) => cosineSimilarity(b.embedding, queryVector) - cosineSimilarity(a.embedding, queryVector)).slice(0, poolSize);
 
   const ftsQuery = toFtsQuery(query);
-  const keywordIds = ftsQuery ? chunkRepo.searchKeyword(ftsQuery, poolSize) : [];
+  const keywordIds = ftsQuery ? await chunkRepo.searchKeyword(ftsQuery, poolSize) : [];
   const allowedChunkIds = new Set(candidateChunks.map((c) => c.id));
   const keywordRanked = keywordIds.filter((id) => allowedChunkIds.has(id));
 

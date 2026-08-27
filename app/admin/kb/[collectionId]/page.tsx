@@ -15,11 +15,11 @@ export default async function KbCollectionPage(props: PageProps<"/admin/kb/[coll
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const collection = new KbCollectionRepository(db, tenant).getById(collectionId);
+  const collection = await new KbCollectionRepository(db, tenant).getById(collectionId);
   if (!collection) notFound();
 
-  const articleRows = new KbArticleRepository(db, tenant).list({ collectionId });
-  const chunkCounts = new KbChunkRepository(db, tenant).countByArticleIds(articleRows.map((a) => a.id));
+  const articleRows = await new KbArticleRepository(db, tenant).list({ collectionId });
+  const chunkCounts = await new KbChunkRepository(db, tenant).countByArticleIds(articleRows.map((a) => a.id));
   const articles = articleRows.map((a) => ({
     docId: a.docId,
     title: a.title,

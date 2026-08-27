@@ -29,7 +29,7 @@ export default async function AgentEditorPage(props: PageProps<"/admin/agents/[k
     .list())
     .map((t) => ({ key: t.key, displayName: t.displayName, description: t.description, type: t.type, writeFlag: t.writeFlag, approvalPolicy: t.approvalPolicy, handlerConfig: t.handlerConfig }));
   const availableModels = (await new ModelAliasRepository(db, tenant).list()).map((m) => ({ alias: m.alias, provider: m.provider, model: m.model }));
-  const availableCollections = new KbCollectionRepository(db, tenant).list().map((c) => ({ id: c.id, name: c.name }));
+  const availableCollections = (await new KbCollectionRepository(db, tenant).list()).map((c) => ({ id: c.id, name: c.name }));
   const availableOwners = (await new UserRepository(db, tenant).list()).map((u) => ({ id: u.id, email: u.email }));
 
   // Bot-level routing: every other published agent, so the "Hands off to"

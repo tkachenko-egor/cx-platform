@@ -43,7 +43,7 @@ const ALTERNATIVE_ACTION_MAP: Record<string, string> = {
   SUPERVISOR_REVIEW: "request_review",
 };
 
-export function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
+export async function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
   const policy = resolveReturnPolicy(settings);
   const repo = new CommerceRepo(db, tenant);
   const order = repo.findOrder(input.order_id);
@@ -80,7 +80,7 @@ export function runCheckReturnEligibility(db: Database.Database, tenant: TenantC
   if (result.verdict === "ELIGIBLE") return { ...result, escalate: { reason: "eligible_return" as const } };
   if (result.verdict !== "NOT_ELIGIBLE") return result;
 
-  const doc = new KbArticleRepository(db, tenant).getByDocId(result.policy_doc);
+  const doc = await new KbArticleRepository(db, tenant).getByDocId(result.policy_doc);
   const card: RefusalCard = {
     refusal_reason: result.refusal_reason,
     policy_doc: result.policy_doc,

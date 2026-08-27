@@ -15,7 +15,7 @@ export async function GET() {
   }
 
   const collections = new KbCollectionRepository(db, tenant);
-  const withCounts = collections.list().map((c) => ({ ...c, articleCount: collections.countArticles(c.id) }));
+  const withCounts = await Promise.all((await collections.list()).map(async (c) => ({ ...c, articleCount: await collections.countArticles(c.id) })));
   return Response.json({ collections: withCounts });
 }
 
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const collection = new KbCollectionRepository(db, tenant).create({ name: body.name.trim(), description: body.description?.trim() });
+  const collection = await new KbCollectionRepository(db, tenant).create({ name: body.name.trim(), description: body.description?.trim() });
 
   new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_created", target: collection.id, after: { name: collection.name } });
 

@@ -67,7 +67,7 @@ export async function chunkAndEmbedArticle(
 ): Promise<void> {
   const raw = chunkMarkdown(body);
   const vectors = await embeddings.embed(raw.map((c) => c.text));
-  chunks.replaceForArticle(
+  await chunks.replaceForArticle(
     articleId,
     raw.map((c, i) => ({
       ordinal: i,
@@ -103,7 +103,7 @@ export async function ingestKnowledgeBase(
 
   for (const doc of docs) {
     const contentHash = createHash("sha256").update(doc.raw).digest("hex");
-    const existing = articles.getByDocId(doc.docId);
+    const existing = await articles.getByDocId(doc.docId);
     if (existing && existing.contentHash === contentHash) {
       skipped.push(doc.docId);
       continue;
@@ -113,10 +113,10 @@ export async function ingestKnowledgeBase(
     // so a brand-new file-sourced article (post-seed) still needs somewhere to land. Only resolved
     // lazily/once — most ingest runs touch zero new articles (FR-7.2's skip-unchanged path above).
     if (!existing?.collectionId && !defaultCollectionId) {
-      defaultCollectionId = collections.ensureDefault().id;
+      defaultCollectionId = (await collections.ensureDefault()).id;
     }
 
-    const article = articles.upsert({
+    const article = await articles.upsert({
       docId: doc.docId,
       title: doc.title,
       audience: doc.audience,

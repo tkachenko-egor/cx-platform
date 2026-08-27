@@ -344,9 +344,9 @@ describe("runAgentTurn — input guardrails", () => {
 
     const articles = new KbArticleRepository(db, tenant);
     const chunks = new KbChunkRepository(db, tenant);
-    const article = articles.upsert({ docId: "poisoned-doc", title: "Poisoned Article", audience: "customer", effective: null, contentHash: "poisoned-hash" });
+    const article = await articles.upsert({ docId: "poisoned-doc", title: "Poisoned Article", audience: "customer", effective: null, contentHash: "poisoned-hash" });
     const [embedding] = await embeddings.embed(["poisoned"]);
-    chunks.replaceForArticle(article.id, [
+    await chunks.replaceForArticle(article.id, [
       {
         ordinal: 0,
         heading: null,

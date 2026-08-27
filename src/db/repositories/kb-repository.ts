@@ -53,8 +53,8 @@ export class KbArticleRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  upsert(input: { docId: string; title: string; audience: string; effective: string | null; contentHash: string; body?: string; collectionId?: string | null }): KbArticle {
-    const existing = this.getByDocId(input.docId);
+  async upsert(input: { docId: string; title: string; audience: string; effective: string | null; contentHash: string; body?: string; collectionId?: string | null }): Promise<KbArticle> {
+    const existing = await this.getByDocId(input.docId);
     const now = new Date().toISOString();
     const body = input.body ?? existing?.body ?? "";
     const collectionId = input.collectionId !== undefined ? input.collectionId : (existing?.collectionId ?? null);
@@ -78,18 +78,18 @@ export class KbArticleRepository extends TenantScopedRepository {
   }
 
   /** Phase 6 M3: called by the vector-store sync helpers after uploading/re-uploading this article's file. */
-  setOpenAiFileId(docId: string, fileId: string | null): void {
+  async setOpenAiFileId(docId: string, fileId: string | null): Promise<void> {
     this.db.prepare(`UPDATE kb_articles SET openai_file_id = ? WHERE tenant_id = ? AND doc_id = ?`).run(fileId, this.tenantId, docId);
   }
 
-  getByDocId(docId: string): KbArticle | undefined {
+  async getByDocId(docId: string): Promise<KbArticle | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM kb_articles WHERE tenant_id = ? AND doc_id = ?`)
       .get(this.tenantId, docId) as KbArticleRow | undefined;
     return row ? rowToArticle(row) : undefined;
   }
 
-  list(filter?: { collectionId?: string }): KbArticle[] {
+  async list(filter?: { collectionId?: string }): Promise<KbArticle[]> {
     const rows = filter?.collectionId
       ? (this.db.prepare(`SELECT * FROM kb_articles WHERE tenant_id = ? AND collection_id = ?`).all(this.tenantId, filter.collectionId) as KbArticleRow[])
       : (this.db.prepare(`SELECT * FROM kb_articles WHERE tenant_id = ?`).all(this.tenantId) as KbArticleRow[]);
@@ -97,7 +97,7 @@ export class KbArticleRepository extends TenantScopedRepository {
   }
 
   /** Phase 4 M3 admin UI: deleting an article's row; its chunks are cleaned up by the caller via KbChunkRepository. */
-  delete(docId: string): void {
+  async delete(docId: string): Promise<void> {
     this.db.prepare(`DELETE FROM kb_articles WHERE tenant_id = ? AND doc_id = ?`).run(this.tenantId, docId);
   }
 }
@@ -146,7 +146,8 @@ export class KbChunkRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  replaceForArticle(articleId: string, chunks: Array<Omit<KbChunk, "id" | "tenantId" | "articleId">>): void {
+  async replaceForArticle(articleId: string, chunks: Array<Omit<KbChunk, "id" | "tenantId" | "articleId">>): Promise<void> {
+    // B1: real async tx, pinned pooled client — sync better-sqlite3 tx for now.
     const deleteExisting = this.db.transaction(() => {
       const existingIds = (
         this.db.prepare(`SELECT id FROM kb_chunks WHERE tenant_id = ? AND article_id = ?`).all(this.tenantId, articleId) as {
@@ -172,13 +173,13 @@ export class KbChunkRepository extends TenantScopedRepository {
     deleteExisting();
   }
 
-  listByTenant(): KbChunk[] {
+  async listByTenant(): Promise<KbChunk[]> {
     const rows = this.db.prepare(`SELECT * FROM kb_chunks WHERE tenant_id = ?`).all(this.tenantId) as KbChunkRow[];
     return rows.map(rowToChunk);
   }
 
   /** KB-04: the admin article list had no way to tell "is this article actually retrievable yet?" short of guessing questions at the test pane — surfaces the chunk count computed at import/save time instead. */
-  countByArticleIds(articleIds: string[]): Map<string, number> {
+  async countByArticleIds(articleIds: string[]): Promise<Map<string, number>> {
     if (articleIds.length === 0) return new Map();
     const placeholders = articleIds.map(() => "?").join(",");
     const rows = this.db
@@ -187,7 +188,7 @@ export class KbChunkRepository extends TenantScopedRepository {
     return new Map(rows.map((r) => [r.article_id, r.count]));
   }
 
-  getByIds(ids: string[]): KbChunk[] {
+  async getByIds(ids: string[]): Promise<KbChunk[]> {
     if (ids.length === 0) return [];
     const placeholders = ids.map(() => "?").join(",");
     const rows = this.db
@@ -196,7 +197,7 @@ export class KbChunkRepository extends TenantScopedRepository {
     return rows.map(rowToChunk);
   }
 
-  searchKeyword(query: string, limit: number): string[] {
+  async searchKeyword(query: string, limit: number): Promise<string[]> {
     const rows = this.db
       .prepare(`SELECT chunk_id FROM kb_chunks_fts WHERE tenant_id = ? AND kb_chunks_fts MATCH ? ORDER BY rank LIMIT ?`)
       .all(this.tenantId, query, limit) as { chunk_id: string }[];

@@ -14,7 +14,7 @@ export default async function CoverageGapsPage() {
   const user = await getSessionUser(db, tenant);
   if (!user) redirect(await loginRedirectPath());
 
-  const gaps = getCoverageGaps(db, tenant);
+  const gaps = await getCoverageGaps(db, tenant);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
