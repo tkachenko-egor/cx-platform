@@ -2,7 +2,7 @@ import { getPlatformContext } from "../../../../../src/platform/context";
 import { ConversationRepository } from "../../../../../src/db/repositories/conversation-repository";
 import { MessageRepository } from "../../../../../src/db/repositories/message-repository";
 import { EventRepository } from "../../../../../src/db/repositories/event-repository";
-import { getOrCreateSession } from "../../../../../src/agents/sessions-store";
+import { getOrCreateSession, saveSessionHistory } from "../../../../../src/agents/sessions-store";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { setConversationState } from "../../../../../src/core/state-transition";
 import { clearSlaClock } from "../../../../../src/core/sla";
@@ -37,8 +37,9 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
 
   // Keep the model's own continuity in sync in case the conversation is
   // later handed back to the bot mid-thread.
-  const session = getOrCreateSession(conversationId);
+  const session = await getOrCreateSession(db, tenant, conversationId);
   session.history.push({ role: "assistant", content: text });
+  await saveSessionHistory(db, tenant, conversationId, session);
 
   return Response.json({ ok: true });
 }

@@ -16,7 +16,8 @@ import { ModelGateway } from "../src/gateway/gateway";
 import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/types";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { processInboundTurn, ensureConversation, DEFAULT_AGENT_KEY } from "../src/channel/turn";
-import { getOrCreateSession } from "../src/agents/sessions-store";
+import { saveSessionHistory } from "../src/agents/sessions-store";
+import { AgentSessionRepository } from "../src/db/repositories/agent-session-repository";
 
 beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
@@ -88,6 +89,28 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
     const messages = await new MessageRepository(db, tenant).listByConversation(conversation.id);
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
+  });
+
+  it("B6: model-continuity history is persisted to agent_sessions, so a fresh load sees prior turns", async () => {
+    const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE, OK_RESPONSE]);
+    const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
+
+    await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "first question" });
+
+    // a brand-new repository instance (stands in for a second process) reads the persisted state
+    const afterFirst = await new AgentSessionRepository(db, tenant).load(conversation.id);
+    expect(afterFirst.turnCount).toBe(1);
+    expect(afterFirst.history.some((m) => m.role === "user" && m.content === "first question")).toBe(true);
+    expect(afterFirst.history.some((m) => m.role === "assistant")).toBe(true);
+
+    await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "second question" });
+    const afterSecond = await new AgentSessionRepository(db, tenant).load(conversation.id);
+    expect(afterSecond.turnCount).toBe(2);
+    expect(afterSecond.history.filter((m) => m.role === "user")).toHaveLength(2);
+
+    // RLS/tenant scoping: another tenant's repo sees nothing for the same conversation id
+    const other = await new TenantRepository(db).create("Other Co", "other-b6");
+    expect((await new AgentSessionRepository(db, other).load(conversation.id)).turnCount).toBe(0);
   });
 
   it("enqueues a review-queue item on a low-confidence retrieval, without escalating or touching conversation state (Phase 2 M5)", async () => {
@@ -188,7 +211,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
   it("hands off to a human once the per-conversation turn cap is hit, without calling the model", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
     const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
-    getOrCreateSession(conversation.id).turnCount = 60; // MAX_TURNS_PER_CONVERSATION in src/channel/rate-limit.ts
+    await saveSessionHistory(db, tenant, conversation.id, { history: [], turnCount: 60 }); // MAX_TURNS_PER_CONVERSATION in src/channel/rate-limit.ts
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "one more thing" });
 

@@ -80,11 +80,16 @@ mode, cost tracking, tracing). Full requirements:
    (`escalate: {reason}` on the tool result, a generic convention any tool
    can use) rather than claiming a return was completed — no
    `create_return` tool exists yet.
-8. **The in-memory session store is a known, deliberate simplification**
-   (`src/agents/sessions-store.ts`) — full gateway-shape turn history
-   (tool_use/tool_result blocks) lives in-process, not the DB. Fine for a
-   single-process Phase 1 deployment; revisit before any multi-instance
-   deploy (NFR-3.1).
+8. **The model-continuity session store is in the DB** (`agent_sessions`, via
+   `src/agents/sessions-store.ts` → `AgentSessionRepository`, B6). Full
+   gateway-shape replay history (tool_use/tool_result blocks) + the
+   per-conversation counters, tenant-scoped. `getOrCreateSession(db, tenant,
+   conversationId)` loads a plain object; the caller mutates it and calls the
+   matching `saveSession*` helper — the channel turn persists
+   `history`/`turnCount`, the agent runtime persists the tool-failure counter,
+   as independent column upserts so they don't clobber. Retention:
+   `npm run prune-sessions` (default 30d). The customer/desk transcript is
+   still a separate concern (`MessageRepository`).
 
 ## Before committing
 

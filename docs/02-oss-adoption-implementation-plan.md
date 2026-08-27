@@ -103,7 +103,16 @@ a `SqlDatabase.forTenant()` handle that runs every query in a tx with
 `SET LOCAL ROLE cx_tenant` (non-superuser — `cx` is a superuser and would
 bypass RLS) + `set_config('app.tenant_id', …)`. Unscoped paths stay on the
 root superuser handle (the deliberate exemption). Migration `003`. Gate green:
-`npm test` 271, `eval` 15/15. **B6 (optional) is next / last.**
+`npm test` 271, `eval` 15/15.
+
+**Phase B — B6: done** on branch `b6-durable-session-store` (stacked on B5).
+In-process session `Map` → `agent_sessions` table (migration `004`, RLS'd).
+`getOrCreateSession` is async now; the channel turn / desk reply route
+persist history, the agent runtime persists the tool-failure counter, as
+independent column upserts. Retention: `npm run prune-sessions` (30d).
+Invariant #8 rewritten. Gate green: `npm test` 272, `eval` 15/15.
+
+**Phase B is complete** (B0 → B1 → B2 → B3 → B5 → B6; B4 folded into B1).
 
 Where the implementation diverged from the plan below:
 
@@ -698,21 +707,50 @@ COMMIT`. Fine for a Phase-1 single-instance deployment on local/CI Postgres.
 `cx_tenant` is `rolsuper=f`, 34 tables `rowsecurity`, a non-matching
 `app.tenant_id` under `cx_tenant` sees 0 rows).
 
-## B6 — Durable session store *(optional)*
+## B6 — Durable session store → **DONE**
 
-**Files:** `src/agents/sessions-store.ts`, schema/migration.
+**What shipped** (branch `b6-durable-session-store`, stacked on B5):
 
-**Steps:** the in-memory `Map` in `sessions-store.ts` → a
-`agent_sessions` table, full gateway-shape turn history
-(`tool_use`/`tool_result` blocks) in `jsonb`, tenant-scoped. **Keep the
-`getOrCreateSession` interface** so `src/agents/runtime.ts` doesn't change
-(it may need to become async — check). Add a retention/cleanup job — this
-table grows unbounded otherwise.
+1. **Migration `004-agent-sessions.ts`** — `agent_sessions (tenant_id,
+   conversation_id) PK`, `history jsonb`, `turn_count`,
+   `consecutive_tool_failures`, `updated_at`. All payload columns have
+   defaults (see #3). RLS policy + `cx_tenant` grant added inline — migration
+   003's `information_schema` loop had already run, so a new tenant table
+   carries its own.
+2. **`AgentSessionRepository`** (`src/db/repositories/`) — `load` (returns a
+   zero-value entry when absent, **never writes** so a draft/preview turn
+   creates no row), `saveHistory`, `saveToolFailures`, `pruneOlderThan`.
+   Tenant-scoped → B5 RLS applies.
+3. **Two independent writers, no clobber.** The channel turn owns
+   `history` / `turn_count`; the agent runtime owns
+   `consecutive_tool_failures`. Each `save*` is a column-targeted
+   `ON CONFLICT DO UPDATE` touching only its own columns, so the two can't
+   overwrite each other within a turn.
+4. **`sessions-store.ts`** keeps `getOrCreateSession` but it is now
+   `async (db, tenant, conversationId)` returning a plain object; callers
+   mutate it and call `saveSessionHistory` / `saveSessionToolFailures`.
+   `runtime.ts`: one `await` on load + a save *only when the counter moved*
+   (skips the write on the common no-tool turn). `turn.ts`: load inside the
+   conversation lock, persist once in a `finally` (survives a thrown turn).
+   Desk `reply` route persists; `draft` route only reads.
+5. **Retention:** `npm run prune-sessions` (`scripts/prune-agent-sessions.ts`,
+   `AGENT_SESSION_RETENTION_DAYS` default 30) — per-tenant
+   `DELETE … WHERE updated_at < cutoff`.
+6. **`CLAUDE.md` invariant #8** rewritten from "known simplification" to
+   "session store is in the DB".
 
-**Acceptance:** two processes against one DB serve alternating turns of one
-conversation. Remove invariant #8 from `CLAUDE.md`.
+**Divergence from the plan:** it listed only `sessions-store.ts` +
+schema/migration and hoped `getOrCreateSession` wouldn't leak. It does — the
+old return value was a *live mutable object* callers relied on for implicit
+persistence. So `runtime.ts`, `channel/turn.ts`, both desk routes, and one
+test also changed (all mechanical: load → mutate → save). `getOrCreateSession`
+became async, as the plan's "check" anticipated.
 
-**Effort:** M.
+**Gate:** `npm test` 272/272, `typecheck`, `lint` (0 errors), `npm run eval`
+15/15 (zero movement), `npm run seed` + `npm run prune-sessions` (migration
+`004` verified on the dev DB: `agent_sessions` `rowsecurity`/`force` on,
+`cx_tenant` has DML, a cross-tenant `INSERT` under `cx_tenant` is rejected by
+`WITH CHECK`).
 
 ---
 
