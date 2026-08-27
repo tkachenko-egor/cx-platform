@@ -48,7 +48,7 @@ export class UserInviteRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { email: string; role: Role; tokenHash: string; invitedBy: string | null; expiresAt: string }): UserInvite {
+  async create(input: { email: string; role: Role; tokenHash: string; invitedBy: string | null; expiresAt: string }): Promise<UserInvite> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -60,16 +60,16 @@ export class UserInviteRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, email: input.email, role: input.role, tokenHash: input.tokenHash, invitedBy: input.invitedBy, expiresAt: input.expiresAt, acceptedAt: null, createdAt: now };
   }
 
-  getByTokenHash(tokenHash: string): UserInvite | undefined {
+  async getByTokenHash(tokenHash: string): Promise<UserInvite | undefined> {
     const row = this.db.prepare(`SELECT * FROM user_invites WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as UserInviteRow | undefined;
     return row ? rowToInvite(row) : undefined;
   }
 
-  markAccepted(id: string): void {
+  async markAccepted(id: string): Promise<void> {
     this.db.prepare(`UPDATE user_invites SET accepted_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
   }
 
-  listPending(): UserInvite[] {
+  async listPending(): Promise<UserInvite[]> {
     const rows = this.db
       .prepare(`SELECT * FROM user_invites WHERE tenant_id = ? AND accepted_at IS NULL ORDER BY created_at DESC`)
       .all(this.tenantId) as UserInviteRow[];

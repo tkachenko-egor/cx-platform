@@ -7,9 +7,9 @@ import { RunRepository } from "../src/db/repositories/run-repository";
 import { LlmCallRepository } from "../src/db/repositories/llm-call-repository";
 import { getAgentVolume, getContainmentRate, getEscalationReasonBreakdown, getLatencyPercentiles, getAgentVersionPerformance } from "../src/analytics/agent-performance";
 
-function setup() {
+async function setup() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   return { db, tenant };
 }
 
@@ -31,8 +31,8 @@ function llmCall(runId: string, overrides: Partial<{ costUsd: number; latencyMs:
 }
 
 describe("agent-performance analytics (Phase 2 M7a)", () => {
-  it("getAgentVolume counts runs grouped by agent key", () => {
-    const { db, tenant } = setup();
+  it("getAgentVolume counts runs grouped by agent key", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const runs = new RunRepository(db, tenant);
     const c1 = conversations.create({ channel: "widget", agentKey: "general" });
@@ -47,8 +47,8 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     ]);
   });
 
-  it("getContainmentRate treats never-escalated conversations as contained", () => {
-    const { db, tenant } = setup();
+  it("getContainmentRate treats never-escalated conversations as contained", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const events = new EventRepository(db, tenant);
     const contained = conversations.create({ channel: "widget", agentKey: "general" });
@@ -60,8 +60,8 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     expect(contained.id).not.toBe(escalated.id);
   });
 
-  it("getEscalationReasonBreakdown tallies reasons across escalated events", () => {
-    const { db, tenant } = setup();
+  it("getEscalationReasonBreakdown tallies reasons across escalated events", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const events = new EventRepository(db, tenant);
     const c1 = conversations.create({ channel: "widget", agentKey: "general" });
@@ -76,8 +76,8 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     ]);
   });
 
-  it("getLatencyPercentiles sorts latencies and picks p50/p95, optionally scoped to one agent", () => {
-    const { db, tenant } = setup();
+  it("getLatencyPercentiles sorts latencies and picks p50/p95, optionally scoped to one agent", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const runs = new RunRepository(db, tenant);
     const llmCalls = new LlmCallRepository(db, tenant);
@@ -95,8 +95,8 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     expect(generalOnly).toEqual({ p50: 300, p95: 500, count: 5 });
   });
 
-  it("getAgentVersionPerformance aggregates cost/latency/escalation rate per version", () => {
-    const { db, tenant } = setup();
+  it("getAgentVersionPerformance aggregates cost/latency/escalation rate per version", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const events = new EventRepository(db, tenant);
     const runs = new RunRepository(db, tenant);

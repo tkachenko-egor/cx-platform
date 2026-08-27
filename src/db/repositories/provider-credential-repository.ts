@@ -60,7 +60,8 @@ export class ProviderCredentialRepository extends TenantScopedRepository {
   }
 
   /** Deactivates any prior active row for (tenant, provider), then inserts the new one as active — "setting a new key" replaces whose key is in effect. */
-  setActiveLlmKey(input: { provider: "anthropic" | "openai"; label: string; plaintextKey: string; ownerUserId: string }): ProviderCredentialMeta {
+  async setActiveLlmKey(input: { provider: "anthropic" | "openai"; label: string; plaintextKey: string; ownerUserId: string }): Promise<ProviderCredentialMeta> {
+    // B1: real async tx, pinned pooled client — sync better-sqlite3 tx for now.
     const insert = this.db.transaction(() => {
       this.db
         .prepare(`UPDATE provider_credentials SET is_active = 0 WHERE tenant_id = ? AND kind = 'llm_provider' AND provider = ? AND is_active = 1`)
@@ -83,7 +84,7 @@ export class ProviderCredentialRepository extends TenantScopedRepository {
   }
 
   /** buildContext()'s read path — the only place besides credential-crypto.ts that sees plaintext. */
-  getActiveLlmKey(provider: string): { decryptedKey: string; ownerUserId: string; credentialId: string } | undefined {
+  async getActiveLlmKey(provider: string): Promise<{ decryptedKey: string; ownerUserId: string; credentialId: string } | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM provider_credentials WHERE tenant_id = ? AND kind = 'llm_provider' AND provider = ? AND is_active = 1`)
       .get(this.tenantId, provider) as ProviderCredentialRow | undefined;
@@ -92,7 +93,7 @@ export class ProviderCredentialRepository extends TenantScopedRepository {
   }
 
   /** HTTP-tool integration secrets — independent named credentials, no "one active" constraint. */
-  createToolCredential(input: { provider: string; label: string; plaintextKey: string; ownerUserId: string }): ProviderCredentialMeta {
+  async createToolCredential(input: { provider: string; label: string; plaintextKey: string; ownerUserId: string }): Promise<ProviderCredentialMeta> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -104,7 +105,7 @@ export class ProviderCredentialRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, kind: "tool_integration", provider: input.provider, label: input.label, keyLast4: last4(input.plaintextKey), ownerUserId: input.ownerUserId, isActive: true, createdAt: now, rotatedAt: null };
   }
 
-  getToolCredential(id: string): { decryptedKey: string } | undefined {
+  async getToolCredential(id: string): Promise<{ decryptedKey: string } | undefined> {
     const row = this.db
       .prepare(`SELECT * FROM provider_credentials WHERE tenant_id = ? AND id = ? AND kind = 'tool_integration' AND is_active = 1`)
       .get(this.tenantId, id) as ProviderCredentialRow | undefined;
@@ -112,12 +113,12 @@ export class ProviderCredentialRepository extends TenantScopedRepository {
     return { decryptedKey: decryptSecret(row.encrypted_key) };
   }
 
-  deactivate(id: string): void {
+  async deactivate(id: string): Promise<void> {
     this.db.prepare(`UPDATE provider_credentials SET is_active = 0, rotated_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
   }
 
   /** Metadata only — never the decrypted key. The only thing the admin UI ever sees. */
-  list(): ProviderCredentialMeta[] {
+  async list(): Promise<ProviderCredentialMeta[]> {
     const rows = this.db.prepare(`SELECT * FROM provider_credentials WHERE tenant_id = ? ORDER BY created_at DESC`).all(this.tenantId) as ProviderCredentialRow[];
     return rows.map(rowToMeta);
   }

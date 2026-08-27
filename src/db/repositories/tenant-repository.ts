@@ -66,7 +66,7 @@ function rowToTenant(row: TenantRow): Tenant {
 export class TenantRepository {
   constructor(private readonly db: Database.Database) {}
 
-  create(name: string, slug: string): Tenant {
+  async create(name: string, slug: string): Promise<Tenant> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -75,23 +75,23 @@ export class TenantRepository {
     return { id, tenantId: id, name, slug, timezone: "UTC", businessHours: {}, alertThresholds: {} };
   }
 
-  getBySlug(slug: string): Tenant | undefined {
+  async getBySlug(slug: string): Promise<Tenant | undefined> {
     const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE slug = ?`).get(slug) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
-  getById(id: string): Tenant | undefined {
+  async getById(id: string): Promise<Tenant | undefined> {
     const row = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants WHERE id = ?`).get(id) as TenantRow | undefined;
     return row ? rowToTenant(row) : undefined;
   }
 
-  list(): Tenant[] {
+  async list(): Promise<Tenant[]> {
     const rows = this.db.prepare(`SELECT ${TENANT_COLUMNS} FROM tenants ORDER BY name`).all() as TenantRow[];
     return rows.map(rowToTenant);
   }
 
-  update(id: string, input: { name?: string; slug?: string }): Tenant {
-    const existing = this.getById(id);
+  async update(id: string, input: { name?: string; slug?: string }): Promise<Tenant> {
+    const existing = await this.getById(id);
     if (!existing) throw new Error(`Tenant ${id} not found`);
     const name = input.name ?? existing.name;
     const slug = input.slug ?? existing.slug;
@@ -100,12 +100,12 @@ export class TenantRepository {
   }
 
   /** Phase 9: admin-facing business-hours editor (app/admin/business-hours/page.tsx). */
-  updateBusinessHours(id: string, config: BusinessHoursConfig): void {
+  async updateBusinessHours(id: string, config: BusinessHoursConfig): Promise<void> {
     this.db.prepare(`UPDATE tenants SET business_hours = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
   }
 
   /** Phase 9: admin-facing alert-threshold editor on /analytics. */
-  updateAlertThresholds(id: string, config: AlertThresholdsConfig): void {
+  async updateAlertThresholds(id: string, config: AlertThresholdsConfig): Promise<void> {
     this.db.prepare(`UPDATE tenants SET alert_thresholds = ?, updated_at = ? WHERE id = ?`).run(JSON.stringify(config), new Date().toISOString(), id);
   }
 }

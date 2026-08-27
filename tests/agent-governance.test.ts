@@ -41,23 +41,23 @@ function usage() {
   return { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 };
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
-function seededTenant() {
+async function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   return { db, tenant };
 }
 
 describe("agent_publish_approvals (Phase 8 M3)", () => {
-  it("round-trips a pending request, then approving it publishes the exact requested config and removes it from the pending list", () => {
-    const { db, tenant } = seededTenant();
+  it("round-trips a pending request, then approving it publishes the exact requested config and removes it from the pending list", async () => {
+    const { db, tenant } = await seededTenant();
     const users = new UserRepository(db, tenant);
-    const supervisor = users.create({ email: "supervisor@example.com", passwordHash: "x", role: "supervisor" });
-    const admin = users.create({ email: "admin@example.com", passwordHash: "x", role: "admin" });
+    const supervisor = await users.create({ email: "supervisor@example.com", passwordHash: "x", role: "supervisor" });
+    const admin = await users.create({ email: "admin@example.com", passwordHash: "x", role: "admin" });
     const agentDefs = new AgentDefRepository(db, tenant);
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
@@ -89,11 +89,11 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
     expect(approvals.get(approval.id)?.status).toBe("approved");
   });
 
-  it("a rejected request never gets published and stays out of the pending list", () => {
-    const { db, tenant } = seededTenant();
+  it("a rejected request never gets published and stays out of the pending list", async () => {
+    const { db, tenant } = await seededTenant();
     const users = new UserRepository(db, tenant);
-    const supervisor = users.create({ email: "supervisor2@example.com", passwordHash: "x", role: "supervisor" });
-    const admin = users.create({ email: "admin2@example.com", passwordHash: "x", role: "admin" });
+    const supervisor = await users.create({ email: "supervisor2@example.com", passwordHash: "x", role: "supervisor" });
+    const admin = await users.create({ email: "admin2@example.com", passwordHash: "x", role: "admin" });
     const agentDefs = new AgentDefRepository(db, tenant);
     const approvals = new AgentPublishApprovalRepository(db, tenant);
 
@@ -117,7 +117,7 @@ describe("agent_publish_approvals (Phase 8 M3)", () => {
 });
 
 describe("per-agent escalation keyword extension (Phase 8 M1)", () => {
-  it("scans hit on an admin-added keyword the built-in list doesn't have, without disturbing the built-in defaults", () => {
+  it("scans hit on an admin-added keyword the built-in list doesn't have, without disturbing the built-in defaults", async () => {
     const withoutExtra = scanForSevereSymptoms("my custom-brand-reaction is happening");
     expect(withoutExtra.hit).toBe(false);
 
@@ -133,9 +133,9 @@ describe("per-agent escalation keyword extension (Phase 8 M1)", () => {
 describe("N failed attempts escalation (Phase 8 M1)", () => {
   it("escalates once consecutive tool-call errors reach the configured threshold, without waiting for ROUND_CAP", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     seedCommerceBusinessData(db, tenant.id);
-    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
 
     // cancel_order on a Delivered order returns ok:false (a legitimate business "no" —
     // this codebase doesn't distinguish that from a real execution error, see runtime.ts's
@@ -194,20 +194,20 @@ describe("N failed attempts escalation (Phase 8 M1)", () => {
 describe("PII redaction only takes effect in blockingMode (Phase 8 M2)", () => {
   const TOOL_RESULTS = "";
 
-  it("mode 'block' (default) blocks the whole reply, same as before this phase", () => {
+  it("mode 'block' (default) blocks the whole reply, same as before this phase", async () => {
     const result = checkPiiLeakage("Reach me at someone@example.com", TOOL_RESULTS);
     expect(result).toEqual({ blocked: true, reasons: ["unattributed_pii:email"] });
     expect(result.redactedText).toBeUndefined();
   });
 
-  it("mode 'redact' masks the PII and returns unblocked with the redacted text", () => {
+  it("mode 'redact' masks the PII and returns unblocked with the redacted text", async () => {
     const result = checkPiiLeakage("Reach me at someone@example.com, thanks!", TOOL_RESULTS, "redact");
     expect(result.blocked).toBe(false);
     expect(result.reasons).toEqual(["unattributed_pii:email"]);
     expect(result.redactedText).toBe("Reach me at [redacted], thanks!");
   });
 
-  it("PII sourced from this turn's own tool results is never flagged, in either mode", () => {
+  it("PII sourced from this turn's own tool results is never flagged, in either mode", async () => {
     const toolResults = JSON.stringify({ email: "someone@example.com" });
     expect(checkPiiLeakage("Your order confirmation went to someone@example.com", toolResults, "block").blocked).toBe(false);
     expect(checkPiiLeakage("Your order confirmation went to someone@example.com", toolResults, "redact").blocked).toBe(false);

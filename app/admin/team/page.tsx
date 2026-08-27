@@ -13,8 +13,8 @@ export default async function TeamPage() {
   await requireAdminPage(db, tenant);
   const currentUser = (await getSessionUser(db, tenant))!;
 
-  const users = new UserRepository(db, tenant).list().map((u) => ({ id: u.id, email: u.email, role: u.role, status: u.status }));
-  const invites = new UserInviteRepository(db, tenant).listPending().map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAtFormatted: new Date(i.expiresAt).toLocaleDateString() }));
+  const users = (await new UserRepository(db, tenant).list()).map((u) => ({ id: u.id, email: u.email, role: u.role, status: u.status }));
+  const invites = (await new UserInviteRepository(db, tenant).listPending()).map((i) => ({ id: i.id, email: i.email, role: i.role, expiresAtFormatted: new Date(i.expiresAt).toLocaleDateString() }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

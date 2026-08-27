@@ -14,7 +14,7 @@ export async function GET() {
     throw err;
   }
 
-  const aliases = new ModelAliasRepository(db, tenant).list();
+  const aliases = await new ModelAliasRepository(db, tenant).list();
   return Response.json({ aliases });
 }
 
@@ -40,12 +40,12 @@ export async function POST(req: Request) {
   }
 
   const modelAliases = new ModelAliasRepository(db, tenant);
-  const existing = modelAliases.getByAlias(body.alias.trim());
+  const existing = await modelAliases.getByAlias(body.alias.trim());
   // Phase 7 M2 fix: an edit that doesn't touch the fallback chain must not
   // silently wipe one set elsewhere — carry the existing chain forward when
   // the request body omits the field entirely.
   const fallbackChain = body.fallbackChain ?? existing?.fallbackChain ?? [];
-  const alias = modelAliases.upsert({ alias: body.alias.trim(), provider: body.provider.trim(), model: body.model.trim(), fallbackChain });
+  const alias = await modelAliases.upsert({ alias: body.alias.trim(), provider: body.provider.trim(), model: body.model.trim(), fallbackChain });
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

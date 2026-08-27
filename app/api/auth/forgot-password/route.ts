@@ -17,12 +17,12 @@ export async function POST(req: Request) {
   if (!email) return Response.json({ error: "email is required" }, { status: 400 });
 
   const { db, tenant } = await getPlatformContext();
-  const user = new UserRepository(db, tenant).getByEmail(email);
+  const user = await new UserRepository(db, tenant).getByEmail(email);
 
   if (user && user.status === "active") {
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + RESET_TTL_MS).toISOString();
-    new PasswordResetRepository(db, tenant).create({ userId: user.id, tokenHash: hashToken(token), expiresAt });
+    await new PasswordResetRepository(db, tenant).create({ userId: user.id, tokenHash: hashToken(token), expiresAt });
 
     const resetUrl = `${req.headers.get("origin") ?? ""}/reset-password/${token}`;
     await sendPasswordResetEmail(selectEmailProvider(), { to: email, resetUrl });

@@ -29,10 +29,10 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/user
   }
 
   const users = new UserRepository(db, tenant);
-  const before = users.get(id);
+  const before = await users.get(id);
   if (!before) return Response.json({ error: "User not found" }, { status: 404 });
 
-  const updated = users.update(id, { role: body.role as Role | undefined, status: body.status as "active" | "disabled" | undefined });
+  const updated = await users.update(id, { role: body.role as Role | undefined, status: body.status as "active" | "disabled" | undefined });
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

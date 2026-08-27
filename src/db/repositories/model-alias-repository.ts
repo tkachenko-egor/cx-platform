@@ -46,15 +46,15 @@ export class ModelAliasRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  upsert(input: {
+  async upsert(input: {
     alias: string;
     provider: string;
     model: string;
     fallbackChain?: FallbackTarget[];
-  }): ModelAlias {
+  }): Promise<ModelAlias> {
     const fallbackChain = input.fallbackChain ?? [];
     const now = new Date().toISOString();
-    const existing = this.getByAlias(input.alias);
+    const existing = await this.getByAlias(input.alias);
 
     if (existing) {
       this.db
@@ -76,7 +76,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, alias: input.alias, provider: input.provider, model: input.model, fallbackChain };
   }
 
-  getByAlias(alias: string): ModelAlias | undefined {
+  async getByAlias(alias: string): Promise<ModelAlias | undefined> {
     const row = this.db
       .prepare(
         `SELECT id, tenant_id, alias, provider, model, fallback_chain FROM model_aliases
@@ -87,7 +87,7 @@ export class ModelAliasRepository extends TenantScopedRepository {
   }
 
   /** Phase 4 M1 admin UI: every alias a tenant has defined, for a "pick a model" dropdown. */
-  list(): ModelAlias[] {
+  async list(): Promise<ModelAlias[]> {
     const rows = this.db
       .prepare(`SELECT id, tenant_id, alias, provider, model, fallback_chain FROM model_aliases WHERE tenant_id = ? ORDER BY alias`)
       .all(this.tenantId) as ModelAliasRow[];

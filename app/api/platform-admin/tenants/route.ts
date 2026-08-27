@@ -14,7 +14,7 @@ export async function GET() {
   if (!found) return Response.json({ error: "Authentication required" }, { status: 401 });
 
   // The reserved "platform" tenant holds the platform owner account itself — infrastructure, not a company to manage.
-  const tenants = new TenantRepository(db).list().filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
+  const tenants = (await new TenantRepository(db).list()).filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
   return Response.json({ tenants });
 }
 
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   if (!found) return Response.json({ error: "Authentication required" }, { status: 401 });
 
   try {
-    const tenant = new TenantRepository(db).create(name, slug);
+    const tenant = await new TenantRepository(db).create(name, slug);
     new AuditLogRepository(db, found.tenant).record({ actorUserId: found.user.id, action: "tenant_created", target: tenant.id, after: { name, slug } });
     return Response.json({ ok: true, tenant });
   } catch {

@@ -17,15 +17,15 @@ import { SESSION_COOKIE } from "./session";
  * other cross-tenant-shaped need in this codebase should go through
  * TenantScopedRepository as normal.
  */
-export function findPlatformAdminUserByEmail(db: Database.Database, email: string): { user: User; tenant: Tenant } | undefined {
+export async function findPlatformAdminUserByEmail(db: Database.Database, email: string): Promise<{ user: User; tenant: Tenant } | undefined> {
   const row = db.prepare(`SELECT * FROM users WHERE email = ? AND is_platform_admin = 1`).get(email) as UserRow | undefined;
   if (!row) return undefined;
   const user = rowToUser(row);
-  const tenant = new TenantRepository(db).getById(user.tenantId);
+  const tenant = await new TenantRepository(db).getById(user.tenantId);
   return tenant ? { user, tenant } : undefined;
 }
 
-export function findPlatformAdminSessionByTokenHash(db: Database.Database, tokenHash: string): { user: User; tenant: Tenant } | undefined {
+export async function findPlatformAdminSessionByTokenHash(db: Database.Database, tokenHash: string): Promise<{ user: User; tenant: Tenant } | undefined> {
   const session = db.prepare(`SELECT user_id, tenant_id, expires_at FROM sessions WHERE token_hash = ?`).get(tokenHash) as
     | { user_id: string; tenant_id: string; expires_at: string }
     | undefined;
@@ -36,7 +36,7 @@ export function findPlatformAdminSessionByTokenHash(db: Database.Database, token
   const user = rowToUser(row);
   if (user.status !== "active") return undefined;
 
-  const tenant = new TenantRepository(db).getById(user.tenantId);
+  const tenant = await new TenantRepository(db).getById(user.tenantId);
   return tenant ? { user, tenant } : undefined;
 }
 
@@ -45,5 +45,5 @@ export async function getPlatformAdminSessionUser(db: Database.Database): Promis
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return undefined;
-  return findPlatformAdminSessionByTokenHash(db, hashToken(token));
+  return await findPlatformAdminSessionByTokenHash(db, hashToken(token));
 }

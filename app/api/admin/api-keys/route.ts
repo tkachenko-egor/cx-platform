@@ -16,7 +16,7 @@ export async function GET() {
     throw err;
   }
 
-  const credentials = new ProviderCredentialRepository(db, tenant).list();
+  const credentials = await new ProviderCredentialRepository(db, tenant).list();
   return Response.json({ credentials });
 }
 
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const credential = new ProviderCredentialRepository(db, tenant).setActiveLlmKey({
+  const credential = await new ProviderCredentialRepository(db, tenant).setActiveLlmKey({
     provider: body.provider as "anthropic" | "openai",
     label: body.label.trim(),
     plaintextKey: body.plaintextKey.trim(),

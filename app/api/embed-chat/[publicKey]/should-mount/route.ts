@@ -22,7 +22,7 @@ export async function OPTIONS() {
  */
 export async function GET(req: Request, ctx: RouteContext<"/api/embed-chat/[publicKey]/should-mount">) {
   const { publicKey } = await ctx.params;
-  const widget = getWidgetContext(publicKey);
+  const widget = await getWidgetContext(publicKey);
   if (!widget) {
     return Response.json({ allowed: false }, { status: 404, headers: CORS_HEADERS });
   }

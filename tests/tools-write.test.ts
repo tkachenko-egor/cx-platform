@@ -9,7 +9,7 @@ import { runCancelOrder, cancelOrderToolDef } from "../src/tools/commerce/cancel
 import { CommerceRepo } from "../src/tools/commerce/repo";
 import { executeTool, executeApprovedTool } from "../src/tools/registry";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -17,30 +17,30 @@ const PROCESSING_ORDER = "ORD-100005"; // Processing per data/orders.csv
 const DELIVERED_ORDER = "ORD-100001"; // Delivered — cannot be cancelled
 const IN_TRANSIT_ORDER = "ORD-100002"; // InTransit — cancellable only if an agent widens mutableStatuses
 
-function seededTenant() {
+async function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
   return { db, tenant };
 }
 
 describe("runCancelOrder", () => {
-  it("cancels an order still in Processing status", () => {
-    const { db, tenant } = seededTenant();
+  it("cancels an order still in Processing status", async () => {
+    const { db, tenant } = await seededTenant();
     const result = runCancelOrder(db, tenant, { order_id: PROCESSING_ORDER });
     expect(result).toEqual({ ok: true, order_id: PROCESSING_ORDER, status: "Cancelled" });
     expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Cancelled");
   });
 
-  it("refuses to cancel an order that has already shipped/delivered", () => {
-    const { db, tenant } = seededTenant();
+  it("refuses to cancel an order that has already shipped/delivered", async () => {
+    const { db, tenant } = await seededTenant();
     const result = runCancelOrder(db, tenant, { order_id: DELIVERED_ORDER });
     expect(result.ok).toBe(false);
     expect(new CommerceRepo(db, tenant).findOrder(DELIVERED_ORDER)?.status).toBe("Delivered");
   });
 
-  it("takes its cancellable statuses from per-agent tool settings", () => {
-    const { db, tenant } = seededTenant();
+  it("takes its cancellable statuses from per-agent tool settings", async () => {
+    const { db, tenant } = await seededTenant();
     expect(runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER }).ok).toBe(false);
 
     const widened = runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER }, { mutableStatuses: ["Processing", "InTransit"] });
@@ -51,7 +51,7 @@ describe("runCancelOrder", () => {
 
 describe("executeTool — write-tool idempotency (FR-8.6)", () => {
   it("never re-executes a retry with the same conversation + arguments once the first attempt succeeded", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     // Default approval_policy is 'auto' when no tool_defs row exists.
     const first = await executeTool(db, tenant, "CONV-1", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(first.ok).toBe(true);
@@ -67,7 +67,7 @@ describe("executeTool — write-tool idempotency (FR-8.6)", () => {
 
 describe("executeTool — sandbox environment (Phase 7 M2)", () => {
   it("simulates a write tool without mutating anything or ever creating an approval row, regardless of approval_policy", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     new ToolDefRepository(db, tenant).upsert({
       key: cancelOrderToolDef.key,
       description: cancelOrderToolDef.description,
@@ -90,12 +90,12 @@ describe("executeTool — sandbox environment (Phase 7 M2)", () => {
 });
 
 describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () => {
-  function withConfirmPolicy(db: ReturnType<typeof seededTenant>["db"], tenant: ReturnType<typeof seededTenant>["tenant"]) {
+  function withConfirmPolicy(db: Awaited<ReturnType<typeof seededTenant>>["db"], tenant: Awaited<ReturnType<typeof seededTenant>>["tenant"]) {
     new ToolDefRepository(db, tenant).upsert({ key: cancelOrderToolDef.key, description: cancelOrderToolDef.description, inputSchema: cancelOrderToolDef.inputSchema, writeFlag: true, approvalPolicy: "confirm_with_customer" });
   }
 
   it("defers on the first attempt without mutating anything", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withConfirmPolicy(db, tenant);
 
     const result = await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
@@ -104,7 +104,7 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
   });
 
   it("still defers on a same-turn retry — the model looping is not the customer confirming", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withConfirmPolicy(db, tenant);
 
     await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
@@ -115,7 +115,7 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
   });
 
   it("executes once the same request is re-issued in a later turn (the customer's confirmation)", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withConfirmPolicy(db, tenant);
     const approvals = new ToolApprovalRepository(db, tenant);
 
@@ -135,12 +135,12 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
 });
 
 describe("executeTool — require_human_approval approval policy (FR-8.5)", () => {
-  function withHumanApprovalPolicy(db: ReturnType<typeof seededTenant>["db"], tenant: ReturnType<typeof seededTenant>["tenant"]) {
+  function withHumanApprovalPolicy(db: Awaited<ReturnType<typeof seededTenant>>["db"], tenant: Awaited<ReturnType<typeof seededTenant>>["tenant"]) {
     new ToolDefRepository(db, tenant).upsert({ key: cancelOrderToolDef.key, description: cancelOrderToolDef.description, inputSchema: cancelOrderToolDef.inputSchema, writeFlag: true, approvalPolicy: "require_human_approval" });
   }
 
   it("parks the call for a human instead of executing or asking the customer", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withHumanApprovalPolicy(db, tenant);
 
     const result = await executeTool(db, tenant, "CONV-3", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
@@ -153,9 +153,9 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
   });
 
   it("executes exactly once when staff approve it, and a subsequent executeTool retry returns the cached result", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withHumanApprovalPolicy(db, tenant);
-    const staff = new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
+    const staff = await new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
 
     await executeTool(db, tenant, "CONV-4", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     const approvals = new ToolApprovalRepository(db, tenant);
@@ -173,9 +173,9 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
   });
 
   it("tells the model the request was denied, without executing it", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     withHumanApprovalPolicy(db, tenant);
-    const staff = new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
+    const staff = await new UserRepository(db, tenant).create({ email: "agent@tenant.demo", passwordHash: "x", role: "agent" });
 
     await executeTool(db, tenant, "CONV-5", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     const approvals = new ToolApprovalRepository(db, tenant);

@@ -58,19 +58,19 @@ async function main() {
   // the one seedFixtures just built — that tenant is sample business data,
   // not an identity home for whoever administers the whole platform.
   const tenants = new TenantRepository(db);
-  const platformTenant = tenants.getBySlug("platform") ?? tenants.create("Platform", "platform");
+  const platformTenant = (await tenants.getBySlug("platform")) ?? (await tenants.create("Platform", "platform"));
 
   const platformUsers = new UserRepository(db, platformTenant);
   const ownerEmail = process.env.SEED_OWNER_EMAIL ?? "owner@example.com";
-  const existingOwner = platformUsers.getByEmail(ownerEmail);
+  const existingOwner = await platformUsers.getByEmail(ownerEmail);
   if (!existingOwner) {
     const password = process.env.SEED_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
     const passwordHash = await hashPassword(password);
-    const owner = platformUsers.create({ email: ownerEmail, passwordHash, role: "owner" });
-    platformUsers.setPlatformAdmin(owner.id, true);
+    const owner = await platformUsers.create({ email: ownerEmail, passwordHash, role: "owner" });
+    await platformUsers.setPlatformAdmin(owner.id, true);
     console.log(`Seeded platform owner "${ownerEmail}" in the platform tenant — password: ${password} (set SEED_OWNER_PASSWORD to pin this)`);
   } else {
-    if (!existingOwner.isPlatformAdmin) platformUsers.setPlatformAdmin(existingOwner.id, true);
+    if (!existingOwner.isPlatformAdmin) await platformUsers.setPlatformAdmin(existingOwner.id, true);
     console.log(`Platform owner "${ownerEmail}" already exists`);
   }
 
@@ -81,10 +81,10 @@ async function main() {
   // wouldn't get you into this tenant's own /admin UI.
   const tenantUsers = new UserRepository(db, tenant);
   const tenantOwnerEmail = process.env.SEED_TENANT_OWNER_EMAIL ?? "admin@fixture-retail.demo";
-  if (!tenantUsers.getByEmail(tenantOwnerEmail)) {
+  if (!(await tenantUsers.getByEmail(tenantOwnerEmail))) {
     const password = process.env.SEED_TENANT_OWNER_PASSWORD ?? randomBytes(9).toString("base64url");
     const passwordHash = await hashPassword(password);
-    tenantUsers.create({ email: tenantOwnerEmail, passwordHash, role: "owner" });
+    await tenantUsers.create({ email: tenantOwnerEmail, passwordHash, role: "owner" });
     console.log(`Seeded "${tenant.slug}" tenant owner "${tenantOwnerEmail}" — password: ${password} (set SEED_TENANT_OWNER_PASSWORD to pin this)`);
   } else {
     console.log(`Tenant owner "${tenantOwnerEmail}" already exists`);

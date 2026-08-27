@@ -11,7 +11,7 @@ import { runAgentTurn } from "../src/agents/runtime";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import type { AgentDef } from "../src/db/repositories/agent-def-repository";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -40,13 +40,13 @@ class ScriptedProvider implements ProviderAdapter {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider(providerScript) } });
 
   const agent: AgentDef = {

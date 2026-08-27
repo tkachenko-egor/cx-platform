@@ -45,7 +45,7 @@ export class ModelGateway {
     const modelAliases = new ModelAliasRepository(this.deps.db, tenant);
     const llmCalls = new LlmCallRepository(this.deps.db, tenant);
 
-    const alias = modelAliases.getByAlias(aliasName);
+    const alias = await modelAliases.getByAlias(aliasName);
     if (!alias) {
       throw new GatewayError("InvalidRequest", `Unknown model alias "${aliasName}" for tenant ${tenant.tenantId}`);
     }

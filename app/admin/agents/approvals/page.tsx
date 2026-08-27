@@ -11,7 +11,7 @@ export default async function AgentApprovalsPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const usersById = new Map(new UserRepository(db, tenant).list().map((u) => [u.id, u.email]));
+  const usersById = new Map((await new UserRepository(db, tenant).list()).map((u) => [u.id, u.email]));
   const items = new AgentPublishApprovalRepository(db, tenant)
     .listPending()
     .map((a) => ({

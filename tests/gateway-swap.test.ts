@@ -15,18 +15,18 @@ import { GatewayError } from "../src/gateway/types";
 describe("model gateway — swap-by-config exit criterion", () => {
   it("routes to whatever model the alias currently points to, with zero code changes between calls", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const modelAliases = new ModelAliasRepository(db, tenant);
     const gateway = new ModelGateway({ db, providers: { stub: new StubProvider() } });
 
-    modelAliases.upsert({ alias: "support-main", provider: "stub", model: "stub-a" });
+    await modelAliases.upsert({ alias: "support-main", provider: "stub", model: "stub-a" });
     const first = await gateway.chat(tenant, "support-main", "run-1", {
       messages: [{ role: "user", content: "hello" }],
     });
     expect(first.content).toContain("stub:stub-a");
 
     // The only thing that changes between these two calls is a DB row.
-    modelAliases.upsert({ alias: "support-main", provider: "stub", model: "stub-b" });
+    await modelAliases.upsert({ alias: "support-main", provider: "stub", model: "stub-b" });
     const second = await gateway.chat(tenant, "support-main", "run-2", {
       messages: [{ role: "user", content: "hello" }],
     });
@@ -35,7 +35,7 @@ describe("model gateway — swap-by-config exit criterion", () => {
 
   it("falls back to the next target in the chain on a retryable error, and records the fallback", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const modelAliases = new ModelAliasRepository(db, tenant);
 
     const flaky = {
@@ -46,7 +46,7 @@ describe("model gateway — swap-by-config exit criterion", () => {
     };
     const gateway = new ModelGateway({ db, providers: { flaky, stub: new StubProvider() } });
 
-    modelAliases.upsert({
+    await modelAliases.upsert({
       alias: "support-main",
       provider: "flaky",
       model: "flaky-1",
@@ -61,7 +61,7 @@ describe("model gateway — swap-by-config exit criterion", () => {
 
   it("throws immediately on a non-retryable error without exhausting the fallback chain", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const modelAliases = new ModelAliasRepository(db, tenant);
 
     const stubThatShouldNeverRun = new StubProvider();
@@ -76,7 +76,7 @@ describe("model gateway — swap-by-config exit criterion", () => {
       providers: { invalid, stub: stubThatShouldNeverRun },
     });
 
-    modelAliases.upsert({
+    await modelAliases.upsert({
       alias: "support-main",
       provider: "invalid",
       model: "invalid-1",

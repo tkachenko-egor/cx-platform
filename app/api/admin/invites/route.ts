@@ -21,7 +21,7 @@ export async function GET() {
     throw err;
   }
 
-  const invites = new UserInviteRepository(db, tenant).listPending();
+  const invites = await new UserInviteRepository(db, tenant).listPending();
   return Response.json({ invites });
 }
 
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
-  const invite = new UserInviteRepository(db, tenant).create({ email, role, tokenHash: hashToken(token), invitedBy: inviter.id, expiresAt });
+  const invite = await new UserInviteRepository(db, tenant).create({ email, role, tokenHash: hashToken(token), invitedBy: inviter.id, expiresAt });
 
   const inviteUrl = `${req.headers.get("origin") ?? ""}/invite/${token}`;
   await sendInviteEmail(selectEmailProvider(), { to: email, tenantName: tenant.name, inviteUrl });

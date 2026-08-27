@@ -48,7 +48,7 @@ export default async function DeskPage({ searchParams }: { searchParams: Promise
     channelFiltered.map((c) => c.id),
   );
   const previews = new MessageRepository(db, tenant).latestByConversationIds(channelFiltered.map((c) => c.id));
-  const staffUsers = new UserRepository(db, tenant).list().filter((u) => u.status === "active");
+  const staffUsers = (await new UserRepository(db, tenant).list()).filter((u) => u.status === "active");
 
   const isBreaching = (c: { slaDueAt: string | null }) => Boolean(c.slaDueAt && c.slaDueAt < nowIso);
 

@@ -61,16 +61,16 @@ const cacheBySlug = new Map<string, PlatformContext>();
  * takes precedence once one exists.
  */
 /** Exported for src/platform/widget-context.ts — an embed resolves its tenant from a public widget key instead of the Host header, but needs the exact same gateway/embeddings construction once it has one. */
-export function buildContext(tenant: Tenant, db: Database.Database): PlatformContext {
+export async function buildContext(tenant: Tenant, db: Database.Database): Promise<PlatformContext> {
   const credentials = new ProviderCredentialRepository(db, tenant);
   const providers: Record<string, ProviderAdapter> = { stub: new StubProvider() };
 
-  const anthropicKey = credentials.getActiveLlmKey("anthropic")?.decryptedKey ?? process.env.ANTHROPIC_API_KEY;
+  const anthropicKey = (await credentials.getActiveLlmKey("anthropic"))?.decryptedKey ?? process.env.ANTHROPIC_API_KEY;
   if (anthropicKey) {
     providers.anthropic = new AnthropicProvider(anthropicKey);
   }
 
-  const openaiKey = credentials.getActiveLlmKey("openai")?.decryptedKey ?? process.env.OPENAI_API_KEY;
+  const openaiKey = (await credentials.getActiveLlmKey("openai"))?.decryptedKey ?? process.env.OPENAI_API_KEY;
   if (openaiKey) {
     providers.openai = new OpenAiProvider(openaiKey);
   }
@@ -97,12 +97,12 @@ export async function getPlatformContext(): Promise<PlatformContext> {
   if (cached) return cached;
 
   const db = getDb();
-  const tenant = new TenantRepository(db).getBySlug(slug);
+  const tenant = await new TenantRepository(db).getBySlug(slug);
   if (!tenant) {
     throw new TenantNotFoundError(slug);
   }
 
-  const context = buildContext(tenant, db);
+  const context = await buildContext(tenant, db);
   cacheBySlug.set(slug, context);
   return context;
 }

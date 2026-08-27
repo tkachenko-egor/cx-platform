@@ -108,7 +108,7 @@ export async function runHttpTool(db: Database.Database, tenant: TenantContext, 
   }
 
   if (config.credentialId && config.authStyle !== "none") {
-    const credential = new ProviderCredentialRepository(db, tenant).getToolCredential(config.credentialId);
+    const credential = await new ProviderCredentialRepository(db, tenant).getToolCredential(config.credentialId);
     if (!credential) {
       return { ok: false, error: "Configured tool credential is missing or inactive" };
     }

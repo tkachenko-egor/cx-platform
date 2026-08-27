@@ -55,15 +55,15 @@ interface WidgetConfigRow {
  * per-request cost of rebuilding a provider adapter (no network calls in
  * these constructors).
  */
-export function getWidgetContext(publicKey: string): WidgetContext | undefined {
+export async function getWidgetContext(publicKey: string): Promise<WidgetContext | undefined> {
   const db = getDb();
   const row = db.prepare(`SELECT * FROM widget_configs WHERE public_key = ?`).get(publicKey) as WidgetConfigRow | undefined;
   if (!row) return undefined;
 
-  const tenant = new TenantRepository(db).getById(row.tenant_id);
+  const tenant = await new TenantRepository(db).getById(row.tenant_id);
   if (!tenant) return undefined;
 
-  const context = buildContext(tenant, db);
+  const context = await buildContext(tenant, db);
   return {
     ...context,
     widgetConfig: {

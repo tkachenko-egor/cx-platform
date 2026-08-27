@@ -13,7 +13,7 @@ import { buildCorePrompt } from "../src/agents/system-prompt";
 import { runAgentTurn } from "../src/agents/runtime";
 import { lookupCache, writeCache } from "../src/kb/semantic-cache";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -46,7 +46,7 @@ function usage() {
 describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
   it("misses when the cache is empty", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     const hit = await lookupCache(db, tenant, "support-generalist", "Where is my order?", embeddings);
@@ -55,7 +55,7 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 
   it("hits on an identical query after a write, and records the hit", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     await writeCache(db, tenant, "support-generalist", "Where is my order?", "It shipped yesterday.", [{ docId: "doc-a", title: "Shipping" }], embeddings);
@@ -70,7 +70,7 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 
   it("misses for a dissimilar query even though the cache has entries", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     await writeCache(db, tenant, "support-generalist", "Where is my order?", "It shipped yesterday.", [], embeddings);
@@ -81,7 +81,7 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 
   it("scopes cache entries by agent key — an entry for one agent never hits for another", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     await writeCache(db, tenant, "billing-specialist", "Where is my order?", "It shipped yesterday.", [], embeddings);
@@ -94,12 +94,12 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
 describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
   async function setup(providerScript: ChatResponse[], semanticCacheEnabled: boolean) {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
-    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider(providerScript) } });
 
     const agent = new AgentDefRepository(db, tenant).publish({

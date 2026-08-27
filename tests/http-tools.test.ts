@@ -8,17 +8,17 @@ import { ProviderCredentialRepository } from "../src/db/repositories/provider-cr
 import { UserRepository } from "../src/db/repositories/user-repository";
 import { executeTool } from "../src/tools/registry";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.CREDENTIAL_ENCRYPTION_KEY = randomBytes(32).toString("base64");
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-function seededTenant() {
+async function seededTenant() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   return { db, tenant };
 }
 
@@ -26,7 +26,7 @@ const READ_ONLY_SCHEMA = { type: "object", properties: { order_id: { type: "stri
 
 describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row (no REGISTRY entry)", () => {
   it("executes a GET request and returns { ok: true, data } from the response", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
@@ -54,7 +54,7 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
   });
 
   it("returns { ok: false } instead of throwing when the endpoint errors, and still logs it", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
@@ -75,9 +75,9 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
   });
 
   it("injects a tool_integration credential as a bearer token", async () => {
-    const { db, tenant } = seededTenant();
-    const owner = new UserRepository(db, tenant).create({ email: "owner@demo.test", passwordHash: "x", role: "owner" });
-    const credential = new ProviderCredentialRepository(db, tenant).createToolCredential({ provider: "carrier", label: "Carrier key", plaintextKey: "carrier-secret-token", ownerUserId: owner.id });
+    const { db, tenant } = await seededTenant();
+    const owner = await new UserRepository(db, tenant).create({ email: "owner@demo.test", passwordHash: "x", role: "owner" });
+    const credential = await new ProviderCredentialRepository(db, tenant).createToolCredential({ provider: "carrier", label: "Carrier key", plaintextKey: "carrier-secret-token", ownerUserId: owner.id });
     new ToolDefRepository(db, tenant).upsert({
       key: "check_shipping_status",
       description: "Checks shipping status",
@@ -100,7 +100,7 @@ describe("http tools — resolveToolSpec finds a DB-defined 'http' tool_defs row
 
 describe("http tools — write-flag + approval-policy gate applies unchanged (invariant #7)", () => {
   it("a write-flagged HTTP tool with confirm_with_customer defers instead of calling fetch", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     new ToolDefRepository(db, tenant).upsert({
       key: "cancel_shipment",
       description: "Cancels a shipment",
@@ -125,7 +125,7 @@ describe("http tools — write-flag + approval-policy gate applies unchanged (in
   });
 
   it("executes once the same request is re-issued in a later turn, same as a code write tool", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     new ToolDefRepository(db, tenant).upsert({
       key: "cancel_shipment",
       description: "Cancels a shipment",
@@ -150,7 +150,7 @@ describe("http tools — write-flag + approval-policy gate applies unchanged (in
 
 describe("http tools — deleting a tool degrades like a removed REGISTRY entry, never a crash", () => {
   it("an unknown/deleted http tool key returns { ok: false } via the same 'Unknown tool' path", async () => {
-    const { db, tenant } = seededTenant();
+    const { db, tenant } = await seededTenant();
     const result = await executeTool(db, tenant, "CONV-1", "run-1", "never_created", { order_id: "ORD-1" });
     expect(result).toEqual({ ok: false, error: "Unknown tool: never_created" });
   });

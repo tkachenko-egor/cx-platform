@@ -18,10 +18,10 @@ export async function DELETE(_req: Request, context: RouteContext<"/api/admin/ap
   }
 
   const credentials = new ProviderCredentialRepository(db, tenant);
-  const existing = credentials.list().find((c) => c.id === id);
+  const existing = (await credentials.list()).find((c) => c.id === id);
   if (!existing) return Response.json({ error: "Credential not found" }, { status: 404 });
 
-  credentials.deactivate(id);
+  await credentials.deactivate(id);
 
   new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,

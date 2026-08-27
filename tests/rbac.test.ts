@@ -17,7 +17,7 @@ describe("staff passwords", () => {
 });
 
 describe("permission matrix (FR-2.2)", () => {
-  it("only owner/admin can manage users", () => {
+  it("only owner/admin can manage users", async () => {
     expect(can("owner", "manage_users")).toBe(true);
     expect(can("admin", "manage_users")).toBe(true);
     expect(can("supervisor", "manage_users")).toBe(false);
@@ -25,13 +25,13 @@ describe("permission matrix (FR-2.2)", () => {
     expect(can("viewer", "manage_users")).toBe(false);
   });
 
-  it("agent and above can reply as human, viewer cannot", () => {
+  it("agent and above can reply as human, viewer cannot", async () => {
     expect(can("agent", "reply_as_human")).toBe(true);
     expect(can("supervisor", "reply_as_human")).toBe(true);
     expect(can("viewer", "reply_as_human")).toBe(false);
   });
 
-  it("roleAtLeast respects the owner > admin > supervisor > agent > viewer hierarchy", () => {
+  it("roleAtLeast respects the owner > admin > supervisor > agent > viewer hierarchy", async () => {
     expect(roleAtLeast("owner", "agent")).toBe(true);
     expect(roleAtLeast("agent", "owner")).toBe(false);
     expect(roleAtLeast("agent", "agent")).toBe(true);
@@ -42,60 +42,60 @@ describe("permission matrix (FR-2.2)", () => {
 describe("users and sessions", () => {
   it("creates a staff user scoped to a tenant and finds it by email", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
     const users = new UserRepository(db, tenant);
 
-    const created = users.create({ email: "agent@tenant-a.demo", passwordHash: await hashPassword("hunter2"), role: "agent" });
-    expect(users.getByEmail("agent@tenant-a.demo")?.id).toBe(created.id);
-    expect(users.get(created.id)?.role).toBe("agent");
+    const created = await users.create({ email: "agent@tenant-a.demo", passwordHash: await hashPassword("hunter2"), role: "agent" });
+    expect((await users.getByEmail("agent@tenant-a.demo"))?.id).toBe(created.id);
+    expect((await users.get(created.id))?.role).toBe("agent");
   });
 
-  it("issues, looks up, and revokes a session by token hash — never storing the raw token", () => {
+  it("issues, looks up, and revokes a session by token hash — never storing the raw token", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
     const users = new UserRepository(db, tenant);
-    const user = users.create({ email: "owner@tenant-a.demo", passwordHash: "irrelevant-for-this-test", role: "owner" });
+    const user = await users.create({ email: "owner@tenant-a.demo", passwordHash: "irrelevant-for-this-test", role: "owner" });
 
     const sessions = new SessionRepository(db, tenant);
     const rawToken = "test-raw-session-token";
     const tokenHash = createHash("sha256").update(rawToken).digest("hex");
     const expiresAt = new Date(Date.now() + 60_000).toISOString();
 
-    sessions.create({ userId: user.id, tokenHash, expiresAt });
-    expect(sessions.getByTokenHash(tokenHash)?.userId).toBe(user.id);
+    await sessions.create({ userId: user.id, tokenHash, expiresAt });
+    expect((await sessions.getByTokenHash(tokenHash))?.userId).toBe(user.id);
 
-    sessions.deleteByTokenHash(tokenHash);
-    expect(sessions.getByTokenHash(tokenHash)).toBeUndefined();
+    await sessions.deleteByTokenHash(tokenHash);
+    expect(await sessions.getByTokenHash(tokenHash)).toBeUndefined();
   });
 
-  it("UserRepository.update() changes role/status but never crosses a tenant boundary", () => {
+  it("UserRepository.update() changes role/status but never crosses a tenant boundary", async () => {
     const db = createDb(":memory:");
     const tenants = new TenantRepository(db);
-    const tenantA = tenants.create("Tenant A", "tenant-a");
-    const tenantB = tenants.create("Tenant B", "tenant-b");
+    const tenantA = await tenants.create("Tenant A", "tenant-a");
+    const tenantB = await tenants.create("Tenant B", "tenant-b");
 
-    const userA = new UserRepository(db, tenantA).create({ email: "agent@tenant-a.demo", passwordHash: "x", role: "agent" });
+    const userA = await new UserRepository(db, tenantA).create({ email: "agent@tenant-a.demo", passwordHash: "x", role: "agent" });
 
-    const updated = new UserRepository(db, tenantA).update(userA.id, { role: "supervisor", status: "disabled" });
+    const updated = await new UserRepository(db, tenantA).update(userA.id, { role: "supervisor", status: "disabled" });
     expect(updated?.role).toBe("supervisor");
     expect(updated?.status).toBe("disabled");
-    expect(new UserRepository(db, tenantA).get(userA.id)?.role).toBe("supervisor");
+    expect((await new UserRepository(db, tenantA).get(userA.id))?.role).toBe("supervisor");
 
     // Tenant B can't touch tenant A's user, even by guessing its id.
-    expect(new UserRepository(db, tenantB).update(userA.id, { role: "owner" })).toBeUndefined();
-    expect(new UserRepository(db, tenantA).get(userA.id)?.role).toBe("supervisor");
+    expect(await new UserRepository(db, tenantB).update(userA.id, { role: "owner" })).toBeUndefined();
+    expect((await new UserRepository(db, tenantA).get(userA.id))?.role).toBe("supervisor");
   });
 
-  it("a session past its expiry is distinguishable from a live one (the check getSessionUser applies)", () => {
+  it("a session past its expiry is distinguishable from a live one (the check getSessionUser applies)", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
-    const user = new UserRepository(db, tenant).create({ email: "agent@tenant-a.demo", passwordHash: "x", role: "agent" });
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
+    const user = await new UserRepository(db, tenant).create({ email: "agent@tenant-a.demo", passwordHash: "x", role: "agent" });
     const sessions = new SessionRepository(db, tenant);
 
     const tokenHash = createHash("sha256").update("expired-token").digest("hex");
-    sessions.create({ userId: user.id, tokenHash, expiresAt: new Date(Date.now() - 60_000).toISOString() });
+    await sessions.create({ userId: user.id, tokenHash, expiresAt: new Date(Date.now() - 60_000).toISOString() });
 
-    const session = sessions.getByTokenHash(tokenHash);
+    const session = await sessions.getByTokenHash(tokenHash);
     expect(session).toBeDefined();
     expect(session!.expiresAt < new Date().toISOString()).toBe(true);
   });

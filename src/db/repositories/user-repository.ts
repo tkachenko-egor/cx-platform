@@ -54,7 +54,7 @@ export class UserRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { email: string; passwordHash: string; role: Role; skills?: string[] }): User {
+  async create(input: { email: string; passwordHash: string; role: Role; skills?: string[] }): Promise<User> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -66,29 +66,29 @@ export class UserRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, email: input.email, passwordHash: input.passwordHash, role: input.role, status: "active", skills: input.skills ?? [], isPlatformAdmin: false, createdAt: now, updatedAt: now };
   }
 
-  get(id: string): User | undefined {
+  async get(id: string): Promise<User | undefined> {
     const row = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as UserRow | undefined;
     return row ? rowToUser(row) : undefined;
   }
 
-  getByEmail(email: string): User | undefined {
+  async getByEmail(email: string): Promise<User | undefined> {
     const row = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? AND email = ?`).get(this.tenantId, email) as UserRow | undefined;
     return row ? rowToUser(row) : undefined;
   }
 
-  list(): User[] {
+  async list(): Promise<User[]> {
     const rows = this.db.prepare(`SELECT * FROM users WHERE tenant_id = ? ORDER BY created_at ASC`).all(this.tenantId) as UserRow[];
     return rows.map(rowToUser);
   }
 
   /** Phase 3 M2: password reset. */
-  setPasswordHash(id: string, passwordHash: string): void {
+  async setPasswordHash(id: string, passwordHash: string): Promise<void> {
     this.db.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(passwordHash, new Date().toISOString(), this.tenantId, id);
   }
 
   /** Phase 3 M3: team management — role reassignment / deactivation. WHERE tenant_id = ? AND id = ? throughout, matching get()'s scoping. */
-  update(id: string, input: { role?: Role; status?: "active" | "disabled"; skills?: string[] }): User | undefined {
-    const existing = this.get(id);
+  async update(id: string, input: { role?: Role; status?: "active" | "disabled"; skills?: string[] }): Promise<User | undefined> {
+    const existing = await this.get(id);
     if (!existing) return undefined;
     const role = input.role ?? existing.role;
     const status = input.status ?? existing.status;
@@ -101,7 +101,7 @@ export class UserRepository extends TenantScopedRepository {
   }
 
   /** Phase 3 M4: grant/revoke platform-admin (tenant management crossing tenant boundaries — see src/auth/platform-admin-lookup.ts). */
-  setPlatformAdmin(id: string, value: boolean): void {
+  async setPlatformAdmin(id: string, value: boolean): Promise<void> {
     this.db.prepare(`UPDATE users SET is_platform_admin = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(value ? 1 : 0, new Date().toISOString(), this.tenantId, id);
   }
 }

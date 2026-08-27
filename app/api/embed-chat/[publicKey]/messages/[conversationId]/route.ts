@@ -17,7 +17,7 @@ export async function OPTIONS() {
 /** Public, CORS-enabled sibling of app/api/conversations/[conversationId]/messages/route.ts — same polling-for-a-human-reply purpose, resolved via the widget's public key instead of the Host header. */
 export async function GET(_req: Request, ctx: RouteContext<"/api/embed-chat/[publicKey]/messages/[conversationId]">) {
   const { publicKey, conversationId } = await ctx.params;
-  const widget = getWidgetContext(publicKey);
+  const widget = await getWidgetContext(publicKey);
   if (!widget) return Response.json({ error: "Widget not found" }, { status: 404, headers: CORS_HEADERS });
 
   const conversation = new ConversationRepository(widget.db, widget.tenant).get(conversationId);

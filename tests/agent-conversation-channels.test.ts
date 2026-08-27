@@ -15,12 +15,12 @@ import { isWithinBusinessHours } from "../src/core/business-hours";
 import { matchesGlob } from "../src/core/url-glob";
 import { seedCommerceBusinessData } from "../src/tools/commerce/seed-data";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
 describe("pluckFields (Phase 9 M1)", () => {
-  it("plucks and renames nested fields, silently omitting missing paths", () => {
+  it("plucks and renames nested fields, silently omitting missing paths", async () => {
     const data = { customer: { email: "a@example.com", id: 5 }, status: "ok" };
     expect(pluckFields(data, [{ path: "customer.email", as: "email" }, { path: "status" }, { path: "customer.missing" }])).toEqual({
       email: "a@example.com",
@@ -28,18 +28,18 @@ describe("pluckFields (Phase 9 M1)", () => {
     });
   });
 
-  it("returns an empty object for an empty mapping — callers only apply this when outputFields is non-empty", () => {
+  it("returns an empty object for an empty mapping — callers only apply this when outputFields is non-empty", async () => {
     expect(pluckFields({ a: 1 }, [])).toEqual({});
   });
 });
 
 describe("isWithinBusinessHours (Phase 9 M3)", () => {
-  it("is always open when disabled or unconfigured", () => {
+  it("is always open when disabled or unconfigured", async () => {
     expect(isWithinBusinessHours({ enabled: false, weeklyHours: [{ day: 1, start: "09:00", end: "17:00" }] }, "2026-08-24T20:00:00.000Z", "UTC")).toBe(true);
     expect(isWithinBusinessHours({ enabled: true, weeklyHours: [] }, "2026-08-24T20:00:00.000Z", "UTC")).toBe(true);
   });
 
-  it("respects the configured weekly window in the given timezone", () => {
+  it("respects the configured weekly window in the given timezone", async () => {
     // 2026-08-24 is a Monday (day=1).
     const config = { enabled: true, weeklyHours: [{ day: 1, start: "09:00", end: "17:00" }] };
     expect(isWithinBusinessHours(config, "2026-08-24T12:00:00.000Z", "UTC")).toBe(true);
@@ -49,12 +49,12 @@ describe("isWithinBusinessHours (Phase 9 M3)", () => {
 });
 
 describe("matchesGlob (Phase 9 M3)", () => {
-  it("matches a literal path exactly and rejects everything else", () => {
+  it("matches a literal path exactly and rejects everything else", async () => {
     expect(matchesGlob("/support", "/support")).toBe(true);
     expect(matchesGlob("/support", "/support/foo")).toBe(false);
   });
 
-  it("treats * as a wildcard and escapes the rest of the pattern", () => {
+  it("treats * as a wildcard and escapes the rest of the pattern", async () => {
     expect(matchesGlob("/support/*", "/support/billing")).toBe(true);
     expect(matchesGlob("/support/*", "/other")).toBe(false);
     expect(matchesGlob("/a.b/*", "/aXb/anything")).toBe(false); // "." must be literal, not regex any-char
@@ -87,10 +87,10 @@ function usage() {
 
 async function baseSetup(script: ChatResponse[], onRequest?: (request: ChatRequest) => void) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: scriptedProvider(script, onRequest) } });
   return { db, tenant, gateway, embeddings };
 }
@@ -117,9 +117,9 @@ describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
     expect(tags).toContain("billing");
   });
 
-  it("addTags itself unions rather than replacing", () => {
+  it("addTags itself unions rather than replacing", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     const conversations = new ConversationRepository(db, tenant);
     const conversation = conversations.create({ channel: "widget", agentKey: DEFAULT_AGENT_KEY });
     conversations.setTags(conversation.id, ["support-generalist"]);
@@ -157,7 +157,7 @@ describe("HTTP tool fallback message (Phase 9 M1)", () => {
   it("shows the fallback message to the model while keeping the technical detail", async () => {
     const { parseHttpToolConfig, runHttpTool } = await import("../src/tools/http-tool-executor");
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     const config = parseHttpToolConfig({ url: "http://127.0.0.1:1/definitely-not-listening", method: "GET", fallbackMessage: "That lookup is temporarily unavailable." });
 
     const result = await runHttpTool(db, tenant, config, {});

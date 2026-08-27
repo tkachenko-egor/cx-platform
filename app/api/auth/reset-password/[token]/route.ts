@@ -15,18 +15,18 @@ export async function POST(req: Request, context: RouteContext<"/api/auth/reset-
 
   const { db, tenant } = await getPlatformContext();
   const resets = new PasswordResetRepository(db, tenant);
-  const reset = resets.getByTokenHash(hashToken(token));
+  const reset = await resets.getByTokenHash(hashToken(token));
   if (!reset || reset.usedAt || reset.expiresAt < new Date().toISOString()) {
     return Response.json({ error: "This reset link is invalid or has expired" }, { status: 400 });
   }
 
   const users = new UserRepository(db, tenant);
-  const user = users.get(reset.userId);
+  const user = await users.get(reset.userId);
   if (!user) return Response.json({ error: "This reset link is invalid or has expired" }, { status: 400 });
 
   const passwordHash = await hashPassword(body.password);
-  users.setPasswordHash(user.id, passwordHash);
-  resets.markUsed(reset.id);
+  await users.setPasswordHash(user.id, passwordHash);
+  await resets.markUsed(reset.id);
 
   return Response.json({ ok: true });
 }

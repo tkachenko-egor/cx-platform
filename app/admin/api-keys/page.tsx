@@ -12,18 +12,19 @@ export default async function ApiKeysPage() {
   await requireAdminPage(db, tenant);
   const users = new UserRepository(db, tenant);
 
-  const credentials = new ProviderCredentialRepository(db, tenant)
-    .list()
-    .filter((c) => c.kind === "llm_provider")
-    .map((c) => ({
-      id: c.id,
-      provider: c.provider,
-      label: c.label,
-      keyLast4: c.keyLast4,
-      ownerEmail: users.get(c.ownerUserId)?.email ?? "unknown",
-      isActive: c.isActive,
-      createdAtFormatted: new Date(c.createdAt).toLocaleString(),
-    }));
+  const credentials = await Promise.all(
+    (await new ProviderCredentialRepository(db, tenant).list())
+      .filter((c) => c.kind === "llm_provider")
+      .map(async (c) => ({
+        id: c.id,
+        provider: c.provider,
+        label: c.label,
+        keyLast4: c.keyLast4,
+        ownerEmail: (await users.get(c.ownerUserId))?.email ?? "unknown",
+        isActive: c.isActive,
+        createdAtFormatted: new Date(c.createdAt).toLocaleString(),
+      })),
+  );
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

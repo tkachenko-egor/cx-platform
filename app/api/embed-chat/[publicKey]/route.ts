@@ -39,7 +39,7 @@ export async function OPTIONS() {
  */
 export async function POST(req: Request, ctx: RouteContext<"/api/embed-chat/[publicKey]">) {
   const { publicKey } = await ctx.params;
-  const widget = getWidgetContext(publicKey);
+  const widget = await getWidgetContext(publicKey);
   if (!widget) {
     return Response.json({ error: "Widget not found" }, { status: 404, headers: CORS_HEADERS });
   }

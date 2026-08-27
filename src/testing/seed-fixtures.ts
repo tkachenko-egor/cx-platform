@@ -53,7 +53,7 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   const { db } = opts;
   const tenants = new TenantRepository(db);
   const slug = opts.tenantSlug ?? "fixture-retail";
-  const tenant = tenants.getBySlug(slug) ?? tenants.create(opts.tenantName ?? "Fixture Retail Co", slug);
+  const tenant = (await tenants.getBySlug(slug)) ?? (await tenants.create(opts.tenantName ?? "Fixture Retail Co", slug));
 
   seedCommerceBusinessData(db, tenant.id);
 
@@ -66,13 +66,13 @@ export async function seedFixtures(opts: SeedFixturesOptions): Promise<SeedFixtu
   // exactly as before — a test injecting a "scripted" provider still gets
   // an alias pointed at it, just named after whatever model id it passed.
   const supportMainAlias = supportMain.model;
-  modelAliases.upsert({ alias: supportMainAlias, provider: supportMain.provider, model: supportMain.model, fallbackChain: [DEFAULT_TARGET] });
+  await modelAliases.upsert({ alias: supportMainAlias, provider: supportMain.provider, model: supportMain.model, fallbackChain: [DEFAULT_TARGET] });
 
   // Every catalog model gets its own alias too, so a freshly seeded
   // tenant's Agent Editor has every known model to pick from without an
   // admin hand-authoring one first.
   for (const entry of MODEL_CATALOG) {
-    modelAliases.upsert({ alias: entry.model, provider: entry.provider, model: entry.model });
+    await modelAliases.upsert({ alias: entry.model, provider: entry.provider, model: entry.model });
   }
 
   const toolDefs = new ToolDefRepository(db, tenant);

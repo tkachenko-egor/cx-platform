@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Too many failed attempts — try again later" }, { status: 429, headers: { "Retry-After": String(attempt.retryAfterSeconds) } });
   }
 
-  const found = findPlatformAdminUserByEmail(db, email);
+  const found = await findPlatformAdminUserByEmail(db, email);
   if (!found || found.user.status !== "active" || !(await verifyPassword(password, found.user.passwordHash))) {
     recordFailedLogin(rateLimitKey);
     return Response.json({ error: "Invalid email or password" }, { status: 401 });

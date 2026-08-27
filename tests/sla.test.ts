@@ -5,37 +5,37 @@ import { ConversationRepository } from "../src/db/repositories/conversation-repo
 import { SlaPolicyRepository } from "../src/db/repositories/sla-policy-repository";
 import { computeDueAt, startSlaClock, clearSlaClock } from "../src/core/sla";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATETIME = "2026-08-21T10:00:00.000Z";
 });
 
-function setup() {
+async function setup() {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+  const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
   const conversation = new ConversationRepository(db, tenant).create({ channel: "widget", agentKey: "support-generalist" });
   return { db, tenant, conversation };
 }
 
 describe("computeDueAt (pure)", () => {
-  it("returns null when no policy is configured — an unconfigured tenant gets no SLA clock", () => {
+  it("returns null when no policy is configured — an unconfigured tenant gets no SLA clock", async () => {
     expect(computeDueAt(undefined)).toBeNull();
   });
 
-  it("adds target_minutes to the from-timestamp", () => {
+  it("adds target_minutes to the from-timestamp", async () => {
     const policy = { id: "p1", tenantId: "t1", priority: "normal" as const, targetMinutes: 30, appliesToChannel: null, createdAt: "2026-01-01T00:00:00.000Z" };
     const dueAt = computeDueAt(policy, "2026-08-21T10:00:00.000Z");
     expect(dueAt).toBe("2026-08-21T10:30:00.000Z");
   });
 
-  it("defaults fromTimestamp to now() when omitted", () => {
+  it("defaults fromTimestamp to now() when omitted", async () => {
     const policy = { id: "p1", tenantId: "t1", priority: "urgent" as const, targetMinutes: 15, appliesToChannel: null, createdAt: "2026-01-01T00:00:00.000Z" };
     expect(computeDueAt(policy)).toBe("2026-08-21T10:15:00.000Z"); // DEMO_DATETIME pinned above
   });
 });
 
 describe("SlaPolicyRepository.findForPriorityAndChannel", () => {
-  it("prefers a channel-specific policy over a channel-agnostic one", () => {
-    const { db, tenant } = setup();
+  it("prefers a channel-specific policy over a channel-agnostic one", async () => {
+    const { db, tenant } = await setup();
     const policies = new SlaPolicyRepository(db, tenant);
     policies.create({ priority: "normal", targetMinutes: 60 });
     policies.create({ priority: "normal", targetMinutes: 20, appliesToChannel: "widget" });
@@ -44,8 +44,8 @@ describe("SlaPolicyRepository.findForPriorityAndChannel", () => {
     expect(found?.targetMinutes).toBe(20);
   });
 
-  it("falls back to the channel-agnostic policy when no channel-specific one exists", () => {
-    const { db, tenant } = setup();
+  it("falls back to the channel-agnostic policy when no channel-specific one exists", async () => {
+    const { db, tenant } = await setup();
     const policies = new SlaPolicyRepository(db, tenant);
     policies.create({ priority: "urgent", targetMinutes: 10 });
 
@@ -53,16 +53,16 @@ describe("SlaPolicyRepository.findForPriorityAndChannel", () => {
     expect(found?.targetMinutes).toBe(10);
   });
 
-  it("returns undefined when nothing matches — the tenant simply has no SLA policy for this case", () => {
-    const { db, tenant } = setup();
+  it("returns undefined when nothing matches — the tenant simply has no SLA policy for this case", async () => {
+    const { db, tenant } = await setup();
     const found = new SlaPolicyRepository(db, tenant).findForPriorityAndChannel("low", "widget");
     expect(found).toBeUndefined();
   });
 });
 
 describe("startSlaClock / clearSlaClock", () => {
-  it("sets sla_due_at based on the matching policy, and clears it back to null", () => {
-    const { db, tenant, conversation } = setup();
+  it("sets sla_due_at based on the matching policy, and clears it back to null", async () => {
+    const { db, tenant, conversation } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const policies = new SlaPolicyRepository(db, tenant);
     policies.create({ priority: "normal", targetMinutes: 30 });
@@ -74,16 +74,16 @@ describe("startSlaClock / clearSlaClock", () => {
     expect(conversations.get(conversation.id)?.slaDueAt).toBeNull();
   });
 
-  it("leaves sla_due_at null when the tenant has no matching policy", () => {
-    const { db, tenant, conversation } = setup();
+  it("leaves sla_due_at null when the tenant has no matching policy", async () => {
+    const { db, tenant, conversation } = await setup();
     startSlaClock(new ConversationRepository(db, tenant), new SlaPolicyRepository(db, tenant), conversation.id, "normal", "widget");
     expect(new ConversationRepository(db, tenant).get(conversation.id)?.slaDueAt).toBeNull();
   });
 });
 
 describe("ConversationRepository.listSlaBreaching", () => {
-  it("surfaces only awaiting_human conversations whose sla_due_at has passed", () => {
-    const { db, tenant } = setup();
+  it("surfaces only awaiting_human conversations whose sla_due_at has passed", async () => {
+    const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
 
     const breaching = conversations.create({ channel: "widget", agentKey: "support-generalist" });

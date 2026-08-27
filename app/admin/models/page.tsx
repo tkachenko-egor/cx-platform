@@ -10,9 +10,12 @@ export default async function ModelsPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const aliases = new ModelAliasRepository(db, tenant)
-    .list()
-    .map((a) => ({ alias: a.alias, provider: a.provider, model: a.model, fallbackChain: a.fallbackChain }));
+  const aliases = (await new ModelAliasRepository(db, tenant).list()).map((a) => ({
+    alias: a.alias,
+    provider: a.provider,
+    model: a.model,
+    fallbackChain: a.fallbackChain,
+  }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

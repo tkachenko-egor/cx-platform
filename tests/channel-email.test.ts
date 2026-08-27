@@ -10,53 +10,53 @@ import { EmailChannelAdapter } from "../src/channel/email/adapter";
 import { StubEmailProvider } from "../src/channel/email/providers/stub";
 
 describe("stripQuotedContent (FR-3.13)", () => {
-  it("cuts off an 'On ... wrote:' quoted block", () => {
+  it("cuts off an 'On ... wrote:' quoted block", async () => {
     const body = "Thanks, that answers it!\n\nOn Mon, Jan 5, 2026 at 3:00 PM Jane <jane@example.com> wrote:\n> original question here";
     expect(stripQuotedContent(body)).toBe("Thanks, that answers it!");
   });
 
-  it("cuts off an Outlook-style '-----Original Message-----' block", () => {
+  it("cuts off an Outlook-style '-----Original Message-----' block", async () => {
     const body = "Sounds good.\n\n-----Original Message-----\nFrom: support@example.com\nSent: today\n\nHello!";
     expect(stripQuotedContent(body)).toBe("Sounds good.");
   });
 
-  it("strips a plain '-- ' signature delimiter and everything after it", () => {
+  it("strips a plain '-- ' signature delimiter and everything after it", async () => {
     const body = "See you then.\n-- \nJane Doe\nSenior Whatever";
     expect(stripQuotedContent(body)).toBe("See you then.");
   });
 
-  it("strips leading '>' quoted lines", () => {
+  it("strips leading '>' quoted lines", async () => {
     const body = "Agreed.\n> previous line one\n> previous line two";
     expect(stripQuotedContent(body)).toBe("Agreed.");
   });
 
-  it("leaves an ordinary reply with no quoting untouched", () => {
+  it("leaves an ordinary reply with no quoting untouched", async () => {
     expect(stripQuotedContent("Where is my order ORD-100001?")).toBe("Where is my order ORD-100001?");
   });
 });
 
 describe("isAutoResponse (FR-3.16)", () => {
-  it("detects Auto-Submitted: auto-replied", () => {
+  it("detects Auto-Submitted: auto-replied", async () => {
     expect(isAutoResponse({ "auto-submitted": "auto-replied" }, "Re: your ticket")).toBe(true);
   });
 
-  it("does not treat Auto-Submitted: no as an autoresponder", () => {
+  it("does not treat Auto-Submitted: no as an autoresponder", async () => {
     expect(isAutoResponse({ "auto-submitted": "no" }, "Where is my order?")).toBe(false);
   });
 
-  it("detects a vacation-style subject even with no special headers", () => {
+  it("detects a vacation-style subject even with no special headers", async () => {
     expect(isAutoResponse({}, "Automatic reply: Out of Office")).toBe(true);
   });
 
-  it("does not flag an ordinary customer subject", () => {
+  it("does not flag an ordinary customer subject", async () => {
     expect(isAutoResponse({}, "Question about my order")).toBe(false);
   });
 });
 
 describe("email threading (FR-3.12)", () => {
-  it("resolves an existing conversation via In-Reply-To against a stored channel_message_id", () => {
+  it("resolves an existing conversation via In-Reply-To against a stored channel_message_id", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
     const conversation = new ConversationRepository(db, tenant).create({ channel: "email", agentKey: "support-generalist" });
     new MessageRepository(db, tenant).append({ conversationId: conversation.id, role: "assistant", content: "reply", channelMessageId: "<first@example.com>" });
 
@@ -64,9 +64,9 @@ describe("email threading (FR-3.12)", () => {
     expect(resolved).toBe(conversation.id);
   });
 
-  it("falls back to a normalized subject hash when there is no header match", () => {
+  it("falls back to a normalized subject hash when there is no header match", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
     const conversation = new ConversationRepository(db, tenant).create({
       channel: "email",
       agentKey: "support-generalist",
@@ -78,15 +78,15 @@ describe("email threading (FR-3.12)", () => {
     expect(resolved).toBe(conversation.id);
   });
 
-  it("returns undefined for a genuinely new thread", () => {
+  it("returns undefined for a genuinely new thread", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Tenant A", "tenant-a");
+    const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
     expect(resolveEmailConversationId(db, tenant, { subject: "Brand new question" })).toBeUndefined();
   });
 });
 
 describe("EmailChannelAdapter", () => {
-  it("drops an autoresponder before it becomes a canonical message", () => {
+  it("drops an autoresponder before it becomes a canonical message", async () => {
     const adapter = new EmailChannelAdapter(new StubEmailProvider());
     const result = adapter.receive({
       messageId: "<auto@example.com>",
@@ -98,7 +98,7 @@ describe("EmailChannelAdapter", () => {
     expect(result).toBeNull();
   });
 
-  it("strips quoting and carries threading metadata through for an ordinary inbound email", () => {
+  it("strips quoting and carries threading metadata through for an ordinary inbound email", async () => {
     const adapter = new EmailChannelAdapter(new StubEmailProvider());
     const result = adapter.receive({
       messageId: "<msg-1@example.com>",

@@ -18,7 +18,7 @@ import { buildCorePrompt } from "../src/agents/system-prompt";
 import { processInboundTurn, ensureConversation, DEFAULT_AGENT_KEY } from "../src/channel/turn";
 import { getOrCreateSession } from "../src/agents/sessions-store";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -47,13 +47,13 @@ class ScriptedProvider implements ProviderAdapter {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
 
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider(providerScript) } });
 
   new AgentDefRepository(db, tenant).publish({
@@ -96,10 +96,10 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     // DEFAULT_LOW_CONFIDENCE_THRESHOLD), independent of RRF's rank-based
     // scoring quirks or any real KB content's incidental keyword overlap.
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
-    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE]) } });
     new AgentDefRepository(db, tenant).publish({
       key: DEFAULT_AGENT_KEY,
@@ -122,12 +122,12 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
   it("pins the version an A/B-tested conversation was assigned, surviving later turns and experiment changes (Phase 2 M6a)", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+    const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     seedCommerceBusinessData(db, tenant.id);
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings);
 
-    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([OK_RESPONSE, OK_RESPONSE]) } });
 
     const agentDefs = new AgentDefRepository(db, tenant);

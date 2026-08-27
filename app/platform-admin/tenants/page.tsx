@@ -16,7 +16,7 @@ export default async function PlatformAdminTenantsPage() {
 
   // The reserved "platform" tenant holds the platform owner account itself
   // (see scripts/seed.ts) — it's infrastructure, not a company to manage.
-  const tenants = new TenantRepository(db).list().filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
+  const tenants = (await new TenantRepository(db).list()).filter((t) => !RESERVED_SUBDOMAINS.has(t.slug));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

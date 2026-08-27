@@ -12,7 +12,7 @@ import type { ChatRequest, ChatResponse, ProviderAdapter } from "../src/gateway/
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { ensureConversation, processInboundTurn, DEFAULT_AGENT_KEY } from "../src/channel/turn";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -47,13 +47,13 @@ const OK_RESPONSE: ChatResponse = { content: "Happy to help with that.", toolCal
 
 async function baseSetup(script: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
   const provider = new ScriptedProvider(script);
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
   return { db, tenant, gateway, embeddings, provider };

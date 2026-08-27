@@ -22,11 +22,11 @@ export async function PATCH(req: Request, context: RouteContext<"/api/platform-a
   if (!found) return Response.json({ error: "Authentication required" }, { status: 401 });
 
   const tenants = new TenantRepository(db);
-  const before = tenants.getById(id);
+  const before = await tenants.getById(id);
   if (!before) return Response.json({ error: "Tenant not found" }, { status: 404 });
 
   try {
-    const updated = tenants.update(id, { name: name || undefined, slug: slug || undefined });
+    const updated = await tenants.update(id, { name: name || undefined, slug: slug || undefined });
     new AuditLogRepository(db, found.tenant).record({
       actorUserId: found.user.id,
       action: "tenant_updated",

@@ -31,7 +31,7 @@ export class SessionRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { userId: string; tokenHash: string; expiresAt: string }): Session {
+  async create(input: { userId: string; tokenHash: string; expiresAt: string }): Promise<Session> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -40,12 +40,12 @@ export class SessionRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, userId: input.userId, tokenHash: input.tokenHash, expiresAt: input.expiresAt, createdAt: now };
   }
 
-  getByTokenHash(tokenHash: string): Session | undefined {
+  async getByTokenHash(tokenHash: string): Promise<Session | undefined> {
     const row = this.db.prepare(`SELECT * FROM sessions WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as SessionRow | undefined;
     return row ? rowToSession(row) : undefined;
   }
 
-  deleteByTokenHash(tokenHash: string): void {
+  async deleteByTokenHash(tokenHash: string): Promise<void> {
     this.db.prepare(`DELETE FROM sessions WHERE tenant_id = ? AND token_hash = ?`).run(this.tenantId, tokenHash);
   }
 }

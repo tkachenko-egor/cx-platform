@@ -12,8 +12,7 @@ export default async function NewToolPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const toolCredentials = new ProviderCredentialRepository(db, tenant)
-    .list()
+  const toolCredentials = (await new ProviderCredentialRepository(db, tenant).list())
     .filter((c) => c.kind === "tool_integration" && c.isActive)
     .map((c) => ({ id: c.id, label: c.label, provider: c.provider }));
 

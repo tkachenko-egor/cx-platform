@@ -33,7 +33,7 @@ export class PasswordResetRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { userId: string; tokenHash: string; expiresAt: string }): PasswordResetToken {
+  async create(input: { userId: string; tokenHash: string; expiresAt: string }): Promise<PasswordResetToken> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -42,12 +42,12 @@ export class PasswordResetRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, userId: input.userId, tokenHash: input.tokenHash, expiresAt: input.expiresAt, usedAt: null, createdAt: now };
   }
 
-  getByTokenHash(tokenHash: string): PasswordResetToken | undefined {
+  async getByTokenHash(tokenHash: string): Promise<PasswordResetToken | undefined> {
     const row = this.db.prepare(`SELECT * FROM password_reset_tokens WHERE tenant_id = ? AND token_hash = ?`).get(this.tenantId, tokenHash) as PasswordResetTokenRow | undefined;
     return row ? rowToToken(row) : undefined;
   }
 
-  markUsed(id: string): void {
+  async markUsed(id: string): Promise<void> {
     this.db.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
   }
 }

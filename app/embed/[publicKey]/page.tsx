@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** Phase 4 M4: what a customer's <iframe src="/embed/{publicKey}"> actually loads — the loader script (public/widget.js) creates that iframe, this page renders the real widget inside it, themed from widget_configs. No admin/desk chrome; this route has none to begin with. */
 export default async function EmbedPage(props: PageProps<"/embed/[publicKey]">) {
   const { publicKey } = await props.params;
-  const widget = getWidgetContext(publicKey);
+  const widget = await getWidgetContext(publicKey);
   if (!widget) notFound();
 
   const { title, greetingText, primaryColor, logoUrl, agentKey, fontFamily, userBubbleColor, botBubbleColor } = widget.widgetConfig;

@@ -20,7 +20,7 @@ import { buildCorePrompt } from "../src/agents/system-prompt";
 import { runAgentTurn } from "../src/agents/runtime";
 import { getCoverageGaps } from "../src/analytics/coverage";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -47,7 +47,7 @@ const FIXTURES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "fi
 const FIXTURE_PDF = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "returns-policy.pdf");
 
 describe("chunkMarkdown", () => {
-  it("splits on H2 headings and keeps a table intact within one chunk", () => {
+  it("splits on H2 headings and keeps a table intact within one chunk", async () => {
     const body = ["# Title", "intro line", "", "## Section A", "a1", "a2", "", "## Section B", "| h1 | h2 |", "| -- | -- |", "| x | y |"].join("\n");
     const chunks = chunkMarkdown(body);
     expect(chunks).toHaveLength(3);
@@ -60,7 +60,7 @@ describe("chunkMarkdown", () => {
     expect(chunks[2].text).toContain("| x | y |");
   });
 
-  it("A5: flags a chunk that contains a Markdown table and never splits the table from its heading", () => {
+  it("A5: flags a chunk that contains a Markdown table and never splits the table from its heading", async () => {
     const body = ["## Fees", "Here are the fees.", "", "| State | Fee |", "| -- | -- |", "| Unopened | None |", "| Opened | 15% |"].join("\n");
     const chunks = chunkMarkdown(body);
     expect(chunks).toHaveLength(1);
@@ -70,7 +70,7 @@ describe("chunkMarkdown", () => {
     expect(chunks[0].text).toContain("| Opened | 15% |");
   });
 
-  it("A5: splits on deeper (H3+) section headings from a layout-aware extractor", () => {
+  it("A5: splits on deeper (H3+) section headings from a layout-aware extractor", async () => {
     const body = ["## Returns", "Overview.", "", "### Unopened items", "Refunded in full.", "", "### Opened items", "Store credit only."].join("\n");
     const chunks = chunkMarkdown(body);
     expect(chunks.map((c) => c.heading)).toEqual(["Returns", "Unopened items", "Opened items"]);
@@ -79,7 +79,7 @@ describe("chunkMarkdown", () => {
 });
 
 describe("extractPdfText", () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.unstubAllGlobals();
     delete process.env.DOCLING_URL;
   });
@@ -132,7 +132,7 @@ describe("extractPdfText", () => {
 describe("hybrid retrieval", () => {
   it("ranks the keyword-matching chunk first and respects kb_scope audience filtering", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     const { ingested } = await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
@@ -150,7 +150,7 @@ describe("hybrid retrieval", () => {
 
   it("A1: the rerank stage reorders a candidate set where RRF alone puts the right chunk second", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
 
@@ -184,7 +184,7 @@ describe("hybrid retrieval", () => {
 
   it("A1: a failing or absent reranker returns the un-reranked RRF order rather than throwing", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
 
@@ -215,7 +215,7 @@ describe("hybrid retrieval", () => {
 
   it("re-ingesting unchanged content skips re-embedding", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
 
     await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
@@ -229,11 +229,11 @@ describe("hybrid retrieval", () => {
 describe("coverage-gap reporting (Phase 2 M3a)", () => {
   it("logs every retrieval's fused score to kb_retrieval_log, independent of what happens afterward", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const embeddings = new StubEmbeddingProvider();
     await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
 
-    new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+    await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
     const gateway = new ModelGateway({ db, providers: { scripted: new ScriptedProvider([{ content: "Here's what I found.", toolCalls: [], stopReason: "end_turn", usage: { promptTokens: 0, completionTokens: 0, cachedTokens: 0, costUsd: 0 } }]) } });
     const agent = new AgentDefRepository(db, tenant).publish({
       key: "support-generalist",
@@ -253,7 +253,7 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
 
   it("getCoverageGaps surfaces only retrievals below the confidence threshold", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const repo = new KbRetrievalLogRepository(db, tenant);
     repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "a well-matched question", bestScore: 0.05, retrievedDocIds: ["doc-a"] });
     repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "a poorly-matched question", bestScore: 0.0, retrievedDocIds: [] });
@@ -263,9 +263,9 @@ describe("coverage-gap reporting (Phase 2 M3a)", () => {
     expect(gaps[0].queryText).toBe("a poorly-matched question");
   });
 
-  it("A1: kb_retrieval_log persists whether the rerank stage ran", () => {
+  it("A1: kb_retrieval_log persists whether the rerank stage ran", async () => {
     const db = createDb(":memory:");
-    const tenant = new TenantRepository(db).create("Demo", "demo");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
     const repo = new KbRetrievalLogRepository(db, tenant);
     repo.record({ conversationId: "CONV-1", runId: "run-1", queryText: "with rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"], reranked: true });
     repo.record({ conversationId: "CONV-1", runId: "run-2", queryText: "without rerank", bestScore: 0.5, retrievedDocIds: ["doc-a"] });

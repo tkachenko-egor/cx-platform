@@ -17,7 +17,7 @@ export async function OPTIONS() {
 /** Phase 9 M4: CORS-enabled public sibling of app/api/chat/feedback/route.ts for embeds on a customer's own site, same publicKey-resolution pattern as app/api/embed-chat/[publicKey]/route.ts. */
 export async function POST(req: Request, ctx: RouteContext<"/api/embed-chat/[publicKey]/feedback">) {
   const { publicKey } = await ctx.params;
-  const widget = getWidgetContext(publicKey);
+  const widget = await getWidgetContext(publicKey);
   if (!widget) {
     return Response.json({ error: "Widget not found" }, { status: 404, headers: CORS_HEADERS });
   }

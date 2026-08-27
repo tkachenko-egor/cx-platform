@@ -17,19 +17,19 @@ export async function POST(req: Request, context: RouteContext<"/api/invites/[to
 
   const { db, tenant } = await getPlatformContext();
   const invites = new UserInviteRepository(db, tenant);
-  const invite = invites.getByTokenHash(hashToken(token));
+  const invite = await invites.getByTokenHash(hashToken(token));
   if (!invite || invite.acceptedAt || invite.expiresAt < new Date().toISOString()) {
     return Response.json({ error: "This invite link is invalid or has expired" }, { status: 400 });
   }
 
   const users = new UserRepository(db, tenant);
-  if (users.getByEmail(invite.email)) {
+  if (await users.getByEmail(invite.email)) {
     return Response.json({ error: "An account with this email already exists" }, { status: 409 });
   }
 
   const passwordHash = await hashPassword(body.password);
-  const user = users.create({ email: invite.email, passwordHash, role: invite.role });
-  invites.markAccepted(invite.id);
+  const user = await users.create({ email: invite.email, passwordHash, role: invite.role });
+  await invites.markAccepted(invite.id);
   await createSession(db, tenant, user.id);
 
   return Response.json({ ok: true, role: user.role });

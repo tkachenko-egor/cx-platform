@@ -12,7 +12,7 @@ import { runAgentTurn } from "../src/agents/runtime";
 import { detectCycle, appendToPath } from "../src/agents/loop-prevention";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.DEMO_DATE = "2026-08-21";
 });
 
@@ -46,13 +46,13 @@ function usage() {
 
 async function setup(providerScript: ChatResponse[]) {
   const db = createDb(":memory:");
-  const tenant = new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
+  const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
   seedCommerceBusinessData(db, tenant.id);
   const embeddings = new StubEmbeddingProvider();
   await ingestKnowledgeBase(db, tenant, embeddings);
 
   const provider = new ScriptedProvider(providerScript);
-  new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
+  await new ModelAliasRepository(db, tenant).upsert({ alias: "support-main", provider: "scripted", model: "scripted-1" });
   const gateway = new ModelGateway({ db, providers: { scripted: provider } });
 
   return { db, tenant, gateway, embeddings, provider };
@@ -97,17 +97,17 @@ function specialistAgent(handoffTargets: string[]): AgentDef {
 }
 
 describe("loop prevention (FR-6.8)", () => {
-  it("detects an immediate A->B->A cycle", () => {
+  it("detects an immediate A->B->A cycle", async () => {
     const path = appendToPath(appendToPath(["support-generalist"], "billing-specialist"), "support-generalist");
     expect(detectCycle(path, "billing-specialist")).toBe(true);
   });
 
-  it("does not flag genuinely fresh ground", () => {
+  it("does not flag genuinely fresh ground", async () => {
     const path = ["support-generalist", "billing-specialist"];
     expect(detectCycle(path, "technical-specialist")).toBe(false);
   });
 
-  it("only looks within the recent window, not the entire history", () => {
+  it("only looks within the recent window, not the entire history", async () => {
     const longAgoPath = ["billing-specialist", "a", "b", "c", "d", "e"];
     expect(detectCycle(longAgoPath, "billing-specialist")).toBe(false);
   });

@@ -16,7 +16,7 @@ import { StubEmbeddingProvider } from "../src/gateway/embeddings/stub";
  */
 async function main() {
   const db = getDb();
-  const tenant = new TenantRepository(db).getBySlug("demo");
+  const tenant = await new TenantRepository(db).getBySlug("demo");
   if (!tenant) throw new Error('Tenant "demo" not found — run `npm run seed` first.');
 
   const embeddings = process.env.OPENAI_API_KEY ? new OpenAiEmbeddingProvider(process.env.OPENAI_API_KEY) : new StubEmbeddingProvider();

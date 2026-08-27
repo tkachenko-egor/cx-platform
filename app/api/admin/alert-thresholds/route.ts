@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  new TenantRepository(db).updateAlertThresholds(tenant.id, {
+  await new TenantRepository(db).updateAlertThresholds(tenant.id, {
     maxHandoffRatePct: body.maxHandoffRatePct ?? undefined,
     minCsatScore: body.minCsatScore ?? undefined,
   });
