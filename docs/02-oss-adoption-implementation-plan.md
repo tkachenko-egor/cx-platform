@@ -39,6 +39,21 @@ branch (`a1-cross-encoder-rerank` → `a7-eval-reporting`, stacked). Full
 gate green at the tip: `npm test` (266), `typecheck`, `lint` (0 errors),
 `npm run eval` (15/15).
 
+**Phase B — B0: done** on branch `b0-async-data-layer`, five commits
+(`B0 (1/5)` … `B0 (5/5)`). Every repository method is `async` and every
+call site `await`s; `better-sqlite3` still underneath, `createDb`/`getDb`/
+migrations still synchronous, no schema change. The three `db.transaction()`
+sites (`kb-repository`, `provider-credential-repository`,
+`commerce/seed-data`) are commented `// B1: real async tx, pinned pooled
+client`. Diverged from the plan below: the async ripple reached raw-SQL
+helpers outside `src/db/repositories/` too — `src/analytics/*`,
+`src/core/{sla,state-transition}`, `src/channel/{turn,feedback,email/threading}`,
+`src/tools/commerce/*` handlers — all now async. `AuditLogRepository` landed
+with the C4 conversation cluster rather than C1 (it is used from ~25 route
+files). Full gate green: `npm test` (266), `typecheck`, `lint` (0 errors),
+`npm run eval` (15/15, zero baseline movement), `npm run seed`.
+**B1 is next** — do not start it until B0 is merged.
+
 Where the implementation diverged from the plan below:
 
 - **A2** — kept `checkPiiLeakage` / `checkOutputGuardrails` *synchronous*

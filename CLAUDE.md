@@ -18,7 +18,10 @@ mode, cost tracking, tracing). Full requirements:
    constructor, not as a per-method argument. Don't add a repository method
    that accepts `tenantId` as a parameter instead of relying on
    `this.tenantId` — that reopens the "forgot to filter" bug class this
-   pattern exists to close.
+   pattern exists to close. **Repository methods are `async`** (Phase B0 —
+   the engine is still `better-sqlite3`, but the method surface is the async
+   shape a Postgres driver needs); every call site `await`s. The
+   constructor stays synchronous.
 3. **Model bindings are aliases, resolved per-tenant through
    `model_aliases`, never hardcoded to a provider/model string** in agent
    or gateway code. Changing what a tenant's agent runs on is a DB row
