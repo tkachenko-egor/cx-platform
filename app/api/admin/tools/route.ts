@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     handlerConfig: handlerConfig as unknown as Record<string, unknown>,
   });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: existing ? "tool_def_updated" : "tool_def_created",
     target: tool.key,

@@ -74,7 +74,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/embed-chat/[pub
 
   let conversation;
   try {
-    const existing = inbound.conversationId ? conversations.get(inbound.conversationId) : undefined;
+    const existing = inbound.conversationId ? await conversations.get(inbound.conversationId) : undefined;
     conversation = await ensureConversation({ db }, tenant, existing, "widget", undefined, widgetConfig.agentKey);
   } catch (err) {
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), { status: 500, headers: CORS_HEADERS });

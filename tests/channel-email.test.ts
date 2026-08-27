@@ -57,31 +57,31 @@ describe("email threading (FR-3.12)", () => {
   it("resolves an existing conversation via In-Reply-To against a stored channel_message_id", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
-    const conversation = new ConversationRepository(db, tenant).create({ channel: "email", agentKey: "support-generalist" });
-    new MessageRepository(db, tenant).append({ conversationId: conversation.id, role: "assistant", content: "reply", channelMessageId: "<first@example.com>" });
+    const conversation = await new ConversationRepository(db, tenant).create({ channel: "email", agentKey: "support-generalist" });
+    await new MessageRepository(db, tenant).append({ conversationId: conversation.id, role: "assistant", content: "reply", channelMessageId: "<first@example.com>" });
 
-    const resolved = resolveEmailConversationId(db, tenant, { inReplyToExternalId: "<first@example.com>", subject: "Re: help" });
+    const resolved = await resolveEmailConversationId(db, tenant, { inReplyToExternalId: "<first@example.com>", subject: "Re: help" });
     expect(resolved).toBe(conversation.id);
   });
 
   it("falls back to a normalized subject hash when there is no header match", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
-    const conversation = new ConversationRepository(db, tenant).create({
+    const conversation = await new ConversationRepository(db, tenant).create({
       channel: "email",
       agentKey: "support-generalist",
       metadata: { subjectHash: normalizedSubjectHash("Order question") },
     });
 
     // A reply mangled with Re:/Fwd: prefixes and different casing still hashes the same.
-    const resolved = resolveEmailConversationId(db, tenant, { subject: "Fwd: RE: order question" });
+    const resolved = await resolveEmailConversationId(db, tenant, { subject: "Fwd: RE: order question" });
     expect(resolved).toBe(conversation.id);
   });
 
   it("returns undefined for a genuinely new thread", async () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
-    expect(resolveEmailConversationId(db, tenant, { subject: "Brand new question" })).toBeUndefined();
+    expect(await resolveEmailConversationId(db, tenant, { subject: "Brand new question" })).toBeUndefined();
   });
 });
 

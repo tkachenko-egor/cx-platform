@@ -56,7 +56,7 @@ export class TicketRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { conversationId: string; subject: string; priority?: TicketPriority; category?: string }): Ticket {
+  async create(input: { conversationId: string; subject: string; priority?: TicketPriority; category?: string }): Promise<Ticket> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -65,28 +65,28 @@ export class TicketRepository extends TenantScopedRepository {
          VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?)`,
       )
       .run(id, this.tenantId, input.conversationId, input.subject, input.priority ?? "normal", input.category ?? null, now, now);
-    return this.get(id)!;
+    return (await this.get(id))!;
   }
 
-  get(id: string): Ticket | undefined {
+  async get(id: string): Promise<Ticket | undefined> {
     const row = this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as TicketRow | undefined;
     return row ? rowToTicket(row) : undefined;
   }
 
-  getByConversation(conversationId: string): Ticket | undefined {
+  async getByConversation(conversationId: string): Promise<Ticket | undefined> {
     const row = this.db.prepare(`SELECT * FROM tickets WHERE tenant_id = ? AND conversation_id = ?`).get(this.tenantId, conversationId) as TicketRow | undefined;
     return row ? rowToTicket(row) : undefined;
   }
 
-  setStatus(id: string, status: TicketStatus): void {
+  async setStatus(id: string, status: TicketStatus): Promise<void> {
     this.db.prepare(`UPDATE tickets SET status = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(status, new Date().toISOString(), this.tenantId, id);
   }
 
-  assign(id: string, assigneeId: string | null): void {
+  async assign(id: string, assigneeId: string | null): Promise<void> {
     this.db.prepare(`UPDATE tickets SET assignee_id = ?, updated_at = ? WHERE tenant_id = ? AND id = ?`).run(assigneeId, new Date().toISOString(), this.tenantId, id);
   }
 
-  list(opts: { statuses?: TicketStatus[] } = {}): Ticket[] {
+  async list(opts: { statuses?: TicketStatus[] } = {}): Promise<Ticket[]> {
     if (opts.statuses && opts.statuses.length > 0) {
       const placeholders = opts.statuses.map(() => "?").join(",");
       const rows = this.db

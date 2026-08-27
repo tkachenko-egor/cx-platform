@@ -105,15 +105,15 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
     expect(result.assistantText).toBe("I can see the double charge — let me fix that.");
     expect(result.state).toBe("bot_active");
 
-    const updated = new ConversationRepository(db, tenant).get(conversation.id);
+    const updated = await new ConversationRepository(db, tenant).get(conversation.id);
     expect(updated?.currentAgentId).toBe("billing-specialist");
     expect(updated?.metadata.agentPath).toEqual(["support-generalist", "billing-specialist"]);
 
-    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    const events = await new EventRepository(db, tenant).listByConversation(conversation.id);
     const handoffEvent = events.find((e) => e.type === "handoff");
     expect(handoffEvent?.payload).toMatchObject({ from: "support-generalist", to: "billing-specialist" });
 
-    const messages = new MessageRepository(db, tenant).listByConversation(conversation.id, { includeInternal: true });
+    const messages = await new MessageRepository(db, tenant).listByConversation(conversation.id, { includeInternal: true });
     expect(messages.some((m) => m.role === "handoff")).toBe(true);
   });
 
@@ -140,11 +140,11 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
 
     expect(result.assistantText).toBe("Sorry about the crash — what device and OS are you on?");
 
-    const updated = new ConversationRepository(db, tenant).get(conversation.id);
+    const updated = await new ConversationRepository(db, tenant).get(conversation.id);
     expect(updated?.currentAgentId).toBe("technical-specialist");
     expect(updated?.metadata.agentPath).toEqual(["support-generalist", "billing-specialist", "technical-specialist"]);
 
-    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    const events = await new EventRepository(db, tenant).listByConversation(conversation.id);
     const handoffEvents = events.filter((e) => e.type === "handoff");
     expect(handoffEvents).toHaveLength(2);
     expect(handoffEvents[1].payload).toMatchObject({ from: "billing-specialist", to: "technical-specialist", reason: "Actually a bug report" });
@@ -186,7 +186,7 @@ describe("orchestrator: entry agent -> specialist -> handback via processInbound
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "Hi" });
 
     expect(result.assistantText).toBe("Happy to help.");
-    expect(new ConversationRepository(db, tenant).get(conversation.id)?.currentAgentId).toBe("support-generalist");
+    expect((await new ConversationRepository(db, tenant).get(conversation.id))?.currentAgentId).toBe("support-generalist");
     expect(provider.calls).toBe(1); // one model call total — no separate routing turn
   });
 });

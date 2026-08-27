@@ -35,11 +35,11 @@ export default async function ReplayPage({ params }: PageProps<"/desk/[conversat
   const user = await getSessionUser(db, tenant);
   if (!user) redirect(await loginRedirectPath());
 
-  const conversation = new ConversationRepository(db, tenant).get(conversationId);
+  const conversation = await new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) notFound();
 
-  const messages = new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
-  const events = new EventRepository(db, tenant).listByConversation(conversationId);
+  const messages = await new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
+  const events = await new EventRepository(db, tenant).listByConversation(conversationId);
 
   const sortable: { sortKey: string; item: ReplayItem }[] = [
     ...messages.map((m) => ({

@@ -86,7 +86,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.assistantText).toBe("Happy to help with that.");
     expect(result.assistantMessageId).toBeTruthy();
 
-    const messages = new MessageRepository(db, tenant).listByConversation(conversation.id);
+    const messages = await new MessageRepository(db, tenant).listByConversation(conversation.id);
     expect(messages.map((m) => m.role)).toEqual(["user", "assistant"]);
   });
 
@@ -114,7 +114,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.state).toBe("bot_active");
     expect(result.handoff).toBe(false);
 
-    const pending = new ReviewQueueRepository(db, tenant).listPending();
+    const pending = await new ReviewQueueRepository(db, tenant).listPending();
     expect(pending).toHaveLength(1);
     expect(pending[0].conversationId).toBe(conversation.id);
     expect(pending[0].reason).toBe("low_kb_confidence");
@@ -146,7 +146,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "second message" });
 
-    const runs = new RunRepository(db, tenant).listByConversation(conversation.id);
+    const runs = await new RunRepository(db, tenant).listByConversation(conversation.id);
     expect(runs.every((r) => r.agentVersion === 1)).toBe(true);
   });
 
@@ -161,10 +161,10 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.handoff).toBe(true);
     expect(result.state).toBe("awaiting_human");
     expect(result.escalationReasons).toContain("severe_symptom");
-    expect(new ConversationRepository(db, tenant).get(conversation.id)?.state).toBe("awaiting_human");
+    expect((await new ConversationRepository(db, tenant).get(conversation.id))?.state).toBe("awaiting_human");
 
     // FR-4.2: the transition into awaiting_human must be a logged event, not just a field mutation.
-    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    const events = await new EventRepository(db, tenant).listByConversation(conversation.id);
     const stateChanged = events.filter((e) => e.type === "state_changed");
     expect(stateChanged.some((e) => e.payload.to === "awaiting_human")).toBe(true);
   });
@@ -172,7 +172,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
   it("does not run the agent while a human is handling the conversation — just records the message for continuity", async () => {
     const { db, tenant, gateway, embeddings } = await setup([OK_RESPONSE]);
     const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
-    new ConversationRepository(db, tenant).setState(conversation.id, "human_active");
+    await new ConversationRepository(db, tenant).setState(conversation.id, "human_active");
 
     const result = await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "still there?" });
 
@@ -181,7 +181,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.assistantText).toBeUndefined();
 
     // The message is still persisted to the transcript even though the bot didn't answer.
-    const messages = new MessageRepository(db, tenant).listByConversation(conversation.id);
+    const messages = await new MessageRepository(db, tenant).listByConversation(conversation.id);
     expect(messages.map((m) => m.role)).toEqual(["user"]);
   });
 
@@ -197,7 +197,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
     expect(result.state).toBe("awaiting_human");
     expect(result.assistantText).toMatch(/hand you to a colleague/);
 
-    const events = new EventRepository(db, tenant).listByConversation(conversation.id);
+    const events = await new EventRepository(db, tenant).listByConversation(conversation.id);
     expect(events.some((e) => e.type === "state_changed" && e.payload.to === "awaiting_human")).toBe(true);
   });
 
@@ -207,7 +207,7 @@ describe("processInboundTurn (channel-agnostic core)", () => {
 
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "email body", channelMessageId: "<abc@example.com>" });
 
-    const found = new MessageRepository(db, tenant).findConversationIdByChannelMessageIds(["<abc@example.com>"]);
+    const found = await new MessageRepository(db, tenant).findConversationIdByChannelMessageIds(["<abc@example.com>"]);
     expect(found).toBe(conversation.id);
   });
 });

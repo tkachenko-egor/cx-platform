@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     await syncArticleToVectorStore(db, tenant, collection.openaiVectorStoreId, article).catch((err) => console.error(`File Search sync failed for article "${article.docId}":`, err));
   }
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "kb_article_created",
     target: article.docId,

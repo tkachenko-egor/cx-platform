@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     audienceRules: body.audienceRules,
   });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: existing ? "widget_config_updated" : "widget_config_created",
     target: body.agentKey,
@@ -111,7 +111,7 @@ export async function PATCH(req: Request) {
   const config = await new WidgetConfigRepository(db, tenant).rotateKey(body.agentKey);
   if (!config) return Response.json({ error: `No widget found for agent "${body.agentKey}"` }, { status: 404 });
 
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "widget_config_key_rotated", target: body.agentKey });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "widget_config_key_rotated", target: body.agentKey });
 
   return Response.json({ ok: true, config });
 }

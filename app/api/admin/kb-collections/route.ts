@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   const collection = await new KbCollectionRepository(db, tenant).create({ name: body.name.trim(), description: body.description?.trim() });
 
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_created", target: collection.id, after: { name: collection.name } });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_created", target: collection.id, after: { name: collection.name } });
 
   return Response.json({ ok: true, collection: { ...collection, articleCount: 0 } });
 }

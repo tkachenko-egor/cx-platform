@@ -55,7 +55,7 @@ export async function PATCH(req: Request, ctx: RouteContext<"/api/admin/kb/[docI
     }
   }
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "kb_article_updated",
     target: article.docId,
@@ -91,7 +91,7 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/kb/[do
   await new KbChunkRepository(db, tenant).replaceForArticle(existing.id, []);
   await articles.delete(docId);
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "kb_article_deleted",
     target: docId,

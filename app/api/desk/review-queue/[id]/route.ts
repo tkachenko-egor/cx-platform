@@ -22,10 +22,10 @@ export async function PATCH(req: Request, context: RouteContext<"/api/desk/revie
   }
 
   const reviewQueue = new ReviewQueueRepository(db, tenant);
-  const entry = reviewQueue.get(id);
+  const entry = await reviewQueue.get(id);
   if (!entry) return Response.json({ error: "Review item not found" }, { status: 404 });
   if (entry.status !== "pending") return Response.json({ error: `Already ${entry.status}` }, { status: 409 });
 
-  reviewQueue.markDecided(entry.id, body.decision, staffUser.id);
+  await reviewQueue.markDecided(entry.id, body.decision, staffUser.id);
   return Response.json({ ok: true, status: body.decision });
 }

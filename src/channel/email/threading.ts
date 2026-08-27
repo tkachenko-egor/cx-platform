@@ -17,18 +17,18 @@ export function normalizedSubjectHash(subject: string): string {
 }
 
 /** FR-3.12: resolve via Message-ID/In-Reply-To/References first, with a subject-hash fallback. */
-export function resolveEmailConversationId(
+export async function resolveEmailConversationId(
   db: Database.Database,
   tenant: Tenant,
   input: { inReplyToExternalId?: string; references?: string[]; subject: string },
-): string | undefined {
+): Promise<string | undefined> {
   const candidateIds = [input.inReplyToExternalId, ...(input.references ?? [])].filter((id): id is string => Boolean(id));
 
   if (candidateIds.length > 0) {
-    const found = new MessageRepository(db, tenant).findConversationIdByChannelMessageIds(candidateIds);
+    const found = await new MessageRepository(db, tenant).findConversationIdByChannelMessageIds(candidateIds);
     if (found) return found;
   }
 
   const subjectHash = normalizedSubjectHash(input.subject);
-  return new ConversationRepository(db, tenant).findBySubjectHash(subjectHash)?.id;
+  return (await new ConversationRepository(db, tenant).findBySubjectHash(subjectHash))?.id;
 }

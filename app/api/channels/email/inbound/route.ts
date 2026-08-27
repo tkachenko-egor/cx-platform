@@ -56,8 +56,8 @@ export async function POST(req: Request) {
   const from = inbound.metadata?.from as string | undefined;
   const references = (inbound.metadata?.references as string[] | undefined) ?? [];
 
-  const existingId = resolveEmailConversationId(db, tenant, { inReplyToExternalId: inbound.inReplyToExternalId, references, subject });
-  const existing = existingId ? conversations.get(existingId) : undefined;
+  const existingId = await resolveEmailConversationId(db, tenant, { inReplyToExternalId: inbound.inReplyToExternalId, references, subject });
+  const existing = existingId ? await conversations.get(existingId) : undefined;
   const isNewThread = !existing;
 
   let conversation;
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 
-  const ticket = isNewThread ? tickets.create({ conversationId: conversation.id, subject }) : tickets.getByConversation(conversation.id);
+  const ticket = isNewThread ? await tickets.create({ conversationId: conversation.id, subject }) : await tickets.getByConversation(conversation.id);
 
   const result = await processInboundTurn(
     { db, gateway, embeddings },
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
   );
 
   if (ticket) {
-    tickets.setStatus(ticket.id, result.handoff ? "pending_internal" : "pending_customer");
+    await tickets.setStatus(ticket.id, result.handoff ? "pending_internal" : "pending_customer");
   }
 
   if (result.assistantText && from) {
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
       metadata: { to: from, subject: subject.startsWith("Re:") ? subject : `Re: ${subject}`, inReplyTo: inbound.externalMessageId },
     });
     if (receipt.ok && receipt.detail && result.assistantMessageId) {
-      new MessageRepository(db, tenant).setChannelMessageId(result.assistantMessageId, receipt.detail);
+      await new MessageRepository(db, tenant).setChannelMessageId(result.assistantMessageId, receipt.detail);
     }
   }
 

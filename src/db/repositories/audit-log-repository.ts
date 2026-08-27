@@ -44,7 +44,7 @@ export class AuditLogRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(entry: { actorUserId: string | null; action: string; target: string; before?: Record<string, unknown>; after?: Record<string, unknown> }): void {
+  async record(entry: { actorUserId: string | null; action: string; target: string; before?: Record<string, unknown>; after?: Record<string, unknown> }): Promise<void> {
     this.db
       .prepare(`INSERT INTO audit_log (id, tenant_id, actor_user_id, action, target, before, after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(
@@ -59,13 +59,13 @@ export class AuditLogRepository extends TenantScopedRepository {
       );
   }
 
-  listByTarget(target: string): AuditLogEntry[] {
+  async listByTarget(target: string): Promise<AuditLogEntry[]> {
     const rows = this.db.prepare(`SELECT * FROM audit_log WHERE tenant_id = ? AND target = ? ORDER BY created_at ASC`).all(this.tenantId, target) as AuditLogRow[];
     return rows.map(rowToEntry);
   }
 
   /** Phase 3 M3: paginated viewer feed — newest first, optionally continuing from a `before` cursor (an earlier row's createdAt). */
-  listRecent(input?: { limit?: number; before?: string }): AuditLogEntry[] {
+  async listRecent(input?: { limit?: number; before?: string }): Promise<AuditLogEntry[]> {
     const limit = input?.limit ?? 50;
     const rows = input?.before
       ? (this.db.prepare(`SELECT * FROM audit_log WHERE tenant_id = ? AND created_at < ? ORDER BY created_at DESC LIMIT ?`).all(this.tenantId, input.before, limit) as AuditLogRow[])

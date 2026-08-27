@@ -26,14 +26,14 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
   }
 
   const conversations = new ConversationRepository(db, tenant);
-  const conversation = conversations.get(conversationId);
+  const conversation = await conversations.get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
   const events = new EventRepository(db, tenant);
-  new MessageRepository(db, tenant).append({ conversationId, role: "agent_human", content: text });
-  setConversationState(conversations, events, conversationId, "human_active", staffUser.id);
-  clearSlaClock(conversations, conversationId); // a human has now responded — the "time to first response" clock stops
-  events.append({ conversationId, type: "assigned", actor: staffUser.id, payload: { action: "reply_sent" } });
+  await new MessageRepository(db, tenant).append({ conversationId, role: "agent_human", content: text });
+  await setConversationState(conversations, events, conversationId, "human_active", staffUser.id);
+  await clearSlaClock(conversations, conversationId); // a human has now responded — the "time to first response" clock stops
+  await events.append({ conversationId, type: "assigned", actor: staffUser.id, payload: { action: "reply_sent" } });
 
   // Keep the model's own continuity in sync in case the conversation is
   // later handed back to the bot mid-thread.

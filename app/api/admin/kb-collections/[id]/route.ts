@@ -24,7 +24,7 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/kb-col
   const result = await collections.delete(id);
   if (!result.ok) return Response.json({ error: result.error }, { status: 400 });
 
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_deleted", target: id, before: { name: existing.name } });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_collection_deleted", target: id, before: { name: existing.name } });
 
   return Response.json({ ok: true });
 }

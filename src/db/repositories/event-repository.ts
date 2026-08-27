@@ -32,7 +32,7 @@ export class EventRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  append(input: { conversationId: string; type: ConversationEventType; payload?: Record<string, unknown>; actor: string }): void {
+  async append(input: { conversationId: string; type: ConversationEventType; payload?: Record<string, unknown>; actor: string }): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO events (id, tenant_id, conversation_id, type, payload, actor, created_at)
@@ -41,7 +41,7 @@ export class EventRepository extends TenantScopedRepository {
       .run(randomUUID(), this.tenantId, input.conversationId, input.type, JSON.stringify(input.payload ?? {}), input.actor, new Date().toISOString());
   }
 
-  listByConversation(conversationId: string): ConversationEvent[] {
+  async listByConversation(conversationId: string): Promise<ConversationEvent[]> {
     const rows = this.db
       .prepare(`SELECT * FROM events WHERE tenant_id = ? AND conversation_id = ? ORDER BY created_at ASC`)
       .all(this.tenantId, conversationId) as EventRow[];

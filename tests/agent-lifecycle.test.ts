@@ -123,6 +123,6 @@ describe("per-conversation cost ceiling (Phase 7 M2)", () => {
     // The model must never have been called for the second turn — the ceiling check short-circuits before that.
     expect(provider.calls).toBe(1);
 
-    expect(new ConversationRepository(db, tenant).get(conversation.id)?.state).toBe("awaiting_human");
+    expect((await new ConversationRepository(db, tenant).get(conversation.id))?.state).toBe("awaiting_human");
   });
 });

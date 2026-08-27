@@ -35,7 +35,7 @@ export async function POST(req: Request) {
 
   try {
     const tenant = await new TenantRepository(db).create(name, slug);
-    new AuditLogRepository(db, found.tenant).record({ actorUserId: found.user.id, action: "tenant_created", target: tenant.id, after: { name, slug } });
+    await new AuditLogRepository(db, found.tenant).record({ actorUserId: found.user.id, action: "tenant_created", target: tenant.id, after: { name, slug } });
     return Response.json({ ok: true, tenant });
   } catch {
     return Response.json({ error: "A tenant with that slug already exists" }, { status: 409 });

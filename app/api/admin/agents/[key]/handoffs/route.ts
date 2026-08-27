@@ -38,7 +38,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
     semanticCacheEnabled: current.semanticCacheEnabled,
   });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_handoff_targets_updated",
     target: key,

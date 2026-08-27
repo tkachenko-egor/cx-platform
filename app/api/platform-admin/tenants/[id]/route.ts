@@ -27,7 +27,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/platform-a
 
   try {
     const updated = await tenants.update(id, { name: name || undefined, slug: slug || undefined });
-    new AuditLogRepository(db, found.tenant).record({
+    await new AuditLogRepository(db, found.tenant).record({
       actorUserId: found.user.id,
       action: "tenant_updated",
       target: id,

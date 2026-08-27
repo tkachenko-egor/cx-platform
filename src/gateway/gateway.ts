@@ -66,7 +66,7 @@ export class ModelGateway {
 
       try {
         const response = await attempt(provider, target.model);
-        llmCalls.record({
+        await llmCalls.record({
           id: randomUUID(),
           runId,
           modelAlias: aliasName,
@@ -99,7 +99,7 @@ export class ModelGateway {
       } catch (err) {
         const gatewayError = err instanceof GatewayError ? err : new GatewayError("ProviderUnavailable", String(err));
         lastError = gatewayError;
-        llmCalls.record({
+        await llmCalls.record({
           id: randomUUID(),
           runId,
           modelAlias: aliasName,

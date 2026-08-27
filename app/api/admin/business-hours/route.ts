@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   await new TenantRepository(db).updateBusinessHours(tenant.id, { enabled: Boolean(body.enabled), weeklyHours: body.weeklyHours ?? [] });
   // See app/api/admin/alert-thresholds/route.ts's comment — same per-slug cache staleness issue.
   invalidatePlatformContext(tenant.slug);
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "business_hours_updated", target: tenant.id });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "business_hours_updated", target: tenant.id });
 
   return Response.json({ ok: true });
 }

@@ -12,7 +12,7 @@ beforeAll(async () => {
 async function setup() {
   const db = createDb(":memory:");
   const tenant = await new TenantRepository(db).create("Tenant A", "tenant-a");
-  const conversation = new ConversationRepository(db, tenant).create({ channel: "widget", agentKey: "support-generalist" });
+  const conversation = await new ConversationRepository(db, tenant).create({ channel: "widget", agentKey: "support-generalist" });
   return { db, tenant, conversation };
 }
 
@@ -37,25 +37,25 @@ describe("SlaPolicyRepository.findForPriorityAndChannel", () => {
   it("prefers a channel-specific policy over a channel-agnostic one", async () => {
     const { db, tenant } = await setup();
     const policies = new SlaPolicyRepository(db, tenant);
-    policies.create({ priority: "normal", targetMinutes: 60 });
-    policies.create({ priority: "normal", targetMinutes: 20, appliesToChannel: "widget" });
+    await policies.create({ priority: "normal", targetMinutes: 60 });
+    await policies.create({ priority: "normal", targetMinutes: 20, appliesToChannel: "widget" });
 
-    const found = policies.findForPriorityAndChannel("normal", "widget");
+    const found = await policies.findForPriorityAndChannel("normal", "widget");
     expect(found?.targetMinutes).toBe(20);
   });
 
   it("falls back to the channel-agnostic policy when no channel-specific one exists", async () => {
     const { db, tenant } = await setup();
     const policies = new SlaPolicyRepository(db, tenant);
-    policies.create({ priority: "urgent", targetMinutes: 10 });
+    await policies.create({ priority: "urgent", targetMinutes: 10 });
 
-    const found = policies.findForPriorityAndChannel("urgent", "email");
+    const found = await policies.findForPriorityAndChannel("urgent", "email");
     expect(found?.targetMinutes).toBe(10);
   });
 
   it("returns undefined when nothing matches — the tenant simply has no SLA policy for this case", async () => {
     const { db, tenant } = await setup();
-    const found = new SlaPolicyRepository(db, tenant).findForPriorityAndChannel("low", "widget");
+    const found = await new SlaPolicyRepository(db, tenant).findForPriorityAndChannel("low", "widget");
     expect(found).toBeUndefined();
   });
 });
@@ -65,19 +65,19 @@ describe("startSlaClock / clearSlaClock", () => {
     const { db, tenant, conversation } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const policies = new SlaPolicyRepository(db, tenant);
-    policies.create({ priority: "normal", targetMinutes: 30 });
+    await policies.create({ priority: "normal", targetMinutes: 30 });
 
-    startSlaClock(conversations, policies, conversation.id, "normal", "widget");
-    expect(conversations.get(conversation.id)?.slaDueAt).toBe("2026-08-21T10:30:00.000Z");
+    await startSlaClock(conversations, policies, conversation.id, "normal", "widget");
+    expect((await conversations.get(conversation.id))?.slaDueAt).toBe("2026-08-21T10:30:00.000Z");
 
-    clearSlaClock(conversations, conversation.id);
-    expect(conversations.get(conversation.id)?.slaDueAt).toBeNull();
+    await clearSlaClock(conversations, conversation.id);
+    expect((await conversations.get(conversation.id))?.slaDueAt).toBeNull();
   });
 
   it("leaves sla_due_at null when the tenant has no matching policy", async () => {
     const { db, tenant, conversation } = await setup();
-    startSlaClock(new ConversationRepository(db, tenant), new SlaPolicyRepository(db, tenant), conversation.id, "normal", "widget");
-    expect(new ConversationRepository(db, tenant).get(conversation.id)?.slaDueAt).toBeNull();
+    await startSlaClock(new ConversationRepository(db, tenant), new SlaPolicyRepository(db, tenant), conversation.id, "normal", "widget");
+    expect((await new ConversationRepository(db, tenant).get(conversation.id))?.slaDueAt).toBeNull();
   });
 });
 
@@ -86,22 +86,22 @@ describe("ConversationRepository.listSlaBreaching", () => {
     const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
 
-    const breaching = conversations.create({ channel: "widget", agentKey: "support-generalist" });
-    conversations.setState(breaching.id, "awaiting_human");
-    conversations.setSlaDueAt(breaching.id, "2026-08-21T09:00:00.000Z"); // in the past relative to "now" below
+    const breaching = await conversations.create({ channel: "widget", agentKey: "support-generalist" });
+    await conversations.setState(breaching.id, "awaiting_human");
+    await conversations.setSlaDueAt(breaching.id, "2026-08-21T09:00:00.000Z"); // in the past relative to "now" below
 
-    const notYetDue = conversations.create({ channel: "widget", agentKey: "support-generalist" });
-    conversations.setState(notYetDue.id, "awaiting_human");
-    conversations.setSlaDueAt(notYetDue.id, "2026-08-21T12:00:00.000Z"); // in the future
+    const notYetDue = await conversations.create({ channel: "widget", agentKey: "support-generalist" });
+    await conversations.setState(notYetDue.id, "awaiting_human");
+    await conversations.setSlaDueAt(notYetDue.id, "2026-08-21T12:00:00.000Z"); // in the future
 
-    const noClock = conversations.create({ channel: "widget", agentKey: "support-generalist" });
-    conversations.setState(noClock.id, "awaiting_human");
+    const noClock = await conversations.create({ channel: "widget", agentKey: "support-generalist" });
+    await conversations.setState(noClock.id, "awaiting_human");
 
-    const humanActiveButOverdue = conversations.create({ channel: "widget", agentKey: "support-generalist" });
-    conversations.setState(humanActiveButOverdue.id, "human_active");
-    conversations.setSlaDueAt(humanActiveButOverdue.id, "2026-08-21T09:00:00.000Z");
+    const humanActiveButOverdue = await conversations.create({ channel: "widget", agentKey: "support-generalist" });
+    await conversations.setState(humanActiveButOverdue.id, "human_active");
+    await conversations.setSlaDueAt(humanActiveButOverdue.id, "2026-08-21T09:00:00.000Z");
 
-    const result = conversations.listSlaBreaching("2026-08-21T10:00:00.000Z");
+    const result = await conversations.listSlaBreaching("2026-08-21T10:00:00.000Z");
     expect(result.map((c) => c.id)).toEqual([breaching.id]);
   });
 });

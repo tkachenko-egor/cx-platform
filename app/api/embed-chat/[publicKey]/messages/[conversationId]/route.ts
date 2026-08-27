@@ -20,10 +20,10 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/embed-chat/[pub
   const widget = await getWidgetContext(publicKey);
   if (!widget) return Response.json({ error: "Widget not found" }, { status: 404, headers: CORS_HEADERS });
 
-  const conversation = new ConversationRepository(widget.db, widget.tenant).get(conversationId);
+  const conversation = await new ConversationRepository(widget.db, widget.tenant).get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404, headers: CORS_HEADERS });
 
-  const messages = new MessageRepository(widget.db, widget.tenant).listByConversation(conversationId);
+  const messages = await new MessageRepository(widget.db, widget.tenant).listByConversation(conversationId);
   return Response.json(
     { state: conversation.state, messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })) },
     { headers: CORS_HEADERS },

@@ -20,11 +20,11 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   }
 
   const conversations = new ConversationRepository(db, tenant);
-  const conversation = conversations.get(conversationId);
+  const conversation = await conversations.get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
-  setConversationState(conversations, new EventRepository(db, tenant), conversationId, "bot_active", staffUser.id);
-  clearSlaClock(conversations, conversationId);
+  await setConversationState(conversations, new EventRepository(db, tenant), conversationId, "bot_active", staffUser.id);
+  await clearSlaClock(conversations, conversationId);
 
   return Response.json({ ok: true });
 }

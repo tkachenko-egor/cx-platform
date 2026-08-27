@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     ownerUserId: actor.id,
   });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "provider_credential_set",
     target: credential.provider,

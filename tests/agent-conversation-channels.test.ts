@@ -101,18 +101,18 @@ describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
   it("keeps a previously-set agent-key tag (setTags) alongside a keyword-matched tag (addTags)", async () => {
     const { db, tenant, gateway, embeddings } = await baseSetup([OK_RESPONSE]);
     await new AgentDefRepository(db, tenant).publish({ key: DEFAULT_AGENT_KEY, systemPrompt: buildCorePrompt("Fixture Retail Co"), modelAlias: "support-main" });
-    new AutoTagRuleRepository(db, tenant).create({ tag: "billing", keywords: ["invoice"] });
+    await new AutoTagRuleRepository(db, tenant).create({ tag: "billing", keywords: ["invoice"] });
 
     const conversations = new ConversationRepository(db, tenant);
     const conversation = await ensureConversation({ db }, tenant, undefined, "widget");
     // Simulates what src/channel/turn.ts's entry-turn bookkeeping already does
     // via setTags — a full handoff setup isn't needed to prove the regression
     // this guards against: addTags below must not stomp this.
-    conversations.setTags(conversation.id, [DEFAULT_AGENT_KEY]);
+    await conversations.setTags(conversation.id, [DEFAULT_AGENT_KEY]);
 
     await processInboundTurn({ db, gateway, embeddings }, tenant, { conversationId: conversation.id, text: "I need my invoice" });
 
-    const tags = conversations.get(conversation.id)?.tags ?? [];
+    const tags = (await conversations.get(conversation.id))?.tags ?? [];
     expect(tags).toContain(DEFAULT_AGENT_KEY);
     expect(tags).toContain("billing");
   });
@@ -121,11 +121,11 @@ describe("auto-tagging merges instead of stomping (Phase 9 M4)", () => {
     const db = createDb(":memory:");
     const tenant = await new TenantRepository(db).create("Fixture Retail Co", "fixture-retail");
     const conversations = new ConversationRepository(db, tenant);
-    const conversation = conversations.create({ channel: "widget", agentKey: DEFAULT_AGENT_KEY });
-    conversations.setTags(conversation.id, ["support-generalist"]);
-    conversations.addTags(conversation.id, ["billing", "support-generalist"]); // duplicate should collapse
+    const conversation = await conversations.create({ channel: "widget", agentKey: DEFAULT_AGENT_KEY });
+    await conversations.setTags(conversation.id, ["support-generalist"]);
+    await conversations.addTags(conversation.id, ["billing", "support-generalist"]); // duplicate should collapse
 
-    expect(conversations.get(conversation.id)?.tags.sort()).toEqual(["billing", "support-generalist"]);
+    expect((await conversations.get(conversation.id))?.tags.sort()).toEqual(["billing", "support-generalist"]);
   });
 });
 

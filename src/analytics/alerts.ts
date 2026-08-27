@@ -16,7 +16,7 @@ export interface ActiveAlert {
  * average against tenants.alert_thresholds, both already-computed metrics —
  * no new aggregation machinery, just a threshold comparison.
  */
-export function getActiveAlerts(db: Database.Database, tenant: Tenant): ActiveAlert[] {
+export async function getActiveAlerts(db: Database.Database, tenant: Tenant): Promise<ActiveAlert[]> {
   const alerts: ActiveAlert[] = [];
   const { maxHandoffRatePct, minCsatScore } = tenant.alertThresholds;
 
@@ -31,7 +31,7 @@ export function getActiveAlerts(db: Database.Database, tenant: Tenant): ActiveAl
   }
 
   if (minCsatScore != null) {
-    const feedback = new MessageFeedbackRepository(db, tenant).aggregateForTenant();
+    const feedback = await new MessageFeedbackRepository(db, tenant).aggregateForTenant();
     if (feedback.total > 0) {
       const csatPct = (feedback.up / feedback.total) * 100;
       if (csatPct < minCsatScore) {

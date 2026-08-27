@@ -94,7 +94,7 @@ export async function runAgentTurn(
   // the turn (not mid-loop), so a turn already in progress is allowed to
   // finish rather than being cut off partway through.
   if (agent.costCeilingUsd != null) {
-    const spentSoFar = new LlmCallRepository(deps.db, tenant).sumCostForConversation(conversationId);
+    const spentSoFar = await new LlmCallRepository(deps.db, tenant).sumCostForConversation(conversationId);
     if (spentSoFar >= agent.costCeilingUsd) {
       const overBudget = "Let me get a colleague to take it from here.";
       return {
@@ -196,7 +196,7 @@ export async function runAgentTurn(
     if (agent.escalationConfig.escalateOnLowConfidence && bestScore < (agent.escalationConfig.confidenceThreshold ?? DEFAULT_LOW_CONFIDENCE_THRESHOLD)) {
       genericEscalationReasons.push("low_kb_confidence_escalation");
     }
-    new KbRetrievalLogRepository(deps.db, tenant).record({
+    await new KbRetrievalLogRepository(deps.db, tenant).record({
       conversationId,
       runId,
       queryText: userText,

@@ -32,13 +32,13 @@ export async function POST(req: Request, context: RouteContext<"/api/desk/[conve
 
   if (body.decision === "deny") {
     await approvals.markDecided(approval.id, "denied", staffUser.id);
-    audit.record({ actorUserId: staffUser.id, action: "tool_approval_denied", target: approval.id, after: { toolKey: approval.toolKey } });
+    await audit.record({ actorUserId: staffUser.id, action: "tool_approval_denied", target: approval.id, after: { toolKey: approval.toolKey } });
     return Response.json({ ok: true, status: "denied" });
   }
 
   const result = await executeApprovedTool(db, tenant, approval);
   await approvals.markDecided(approval.id, "approved", staffUser.id);
-  audit.record({ actorUserId: staffUser.id, action: "tool_approval_approved", target: approval.id, before: { toolKey: approval.toolKey }, after: { result } });
+  await audit.record({ actorUserId: staffUser.id, action: "tool_approval_approved", target: approval.id, before: { toolKey: approval.toolKey }, after: { result } });
 
   return Response.json({ ok: true, status: "approved", result });
 }

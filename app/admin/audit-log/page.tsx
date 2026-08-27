@@ -11,7 +11,7 @@ export default async function AuditLogPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const entries = new AuditLogRepository(db, tenant).listRecent({ limit: 100 });
+  const entries = await new AuditLogRepository(db, tenant).listRecent({ limit: 100 });
   const usersById = new Map((await new UserRepository(db, tenant).list()).map((u) => [u.id, u.email]));
 
   const rows = entries.map((entry) => ({

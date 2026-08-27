@@ -14,7 +14,7 @@ export async function GET() {
     throw err;
   }
 
-  const rules = new AutoTagRuleRepository(db, tenant).list();
+  const rules = await new AutoTagRuleRepository(db, tenant).list();
   return Response.json({ rules });
 }
 
@@ -34,8 +34,8 @@ export async function POST(req: Request) {
     throw err;
   }
 
-  const rule = new AutoTagRuleRepository(db, tenant).create({ tag: body.tag.trim(), keywords: body.keywords.map((k) => k.trim()).filter(Boolean) });
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "auto_tag_rule_created", target: rule.tag });
+  const rule = await new AutoTagRuleRepository(db, tenant).create({ tag: body.tag.trim(), keywords: body.keywords.map((k) => k.trim()).filter(Boolean) });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "auto_tag_rule_created", target: rule.tag });
 
   return Response.json({ ok: true, rule });
 }

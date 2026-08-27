@@ -55,7 +55,7 @@ export class LlmCallRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(entry: LlmCallRecord): void {
+  async record(entry: LlmCallRecord): Promise<void> {
     const now = new Date().toISOString();
     this.db
       .prepare(
@@ -83,7 +83,7 @@ export class LlmCallRepository extends TenantScopedRepository {
       );
   }
 
-  listByRun(runId: string): LlmCallRecord[] {
+  async listByRun(runId: string): Promise<LlmCallRecord[]> {
     const rows = this.db
       .prepare(`SELECT * FROM llm_calls WHERE tenant_id = ? AND run_id = ? ORDER BY created_at ASC`)
       .all(this.tenantId, runId) as LlmCallRow[];
@@ -91,7 +91,7 @@ export class LlmCallRepository extends TenantScopedRepository {
   }
 
   /** Phase 7 M2: per-conversation cost ceiling check — sums every llm_calls row across every run (turn) this conversation has had so far, joined through runs.conversation_id since llm_calls itself only carries run_id. */
-  sumCostForConversation(conversationId: string): number {
+  async sumCostForConversation(conversationId: string): Promise<number> {
     const row = this.db
       .prepare(
         `SELECT COALESCE(SUM(lc.cost_usd), 0) as total FROM llm_calls lc

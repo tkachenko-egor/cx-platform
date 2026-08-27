@@ -50,7 +50,7 @@ export class SemanticCacheRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  record(input: { agentKey: string; queryText: string; queryEmbedding: number[]; responseText: string; citableDocs: { docId: string; title: string }[] }): void {
+  async record(input: { agentKey: string; queryText: string; queryEmbedding: number[]; responseText: string; citableDocs: { docId: string; title: string }[] }): Promise<void> {
     this.db
       .prepare(
         `INSERT INTO semantic_cache (id, tenant_id, agent_key, query_text, query_embedding, response_text, citable_docs, hit_count, created_at, last_hit_at)
@@ -59,12 +59,12 @@ export class SemanticCacheRepository extends TenantScopedRepository {
       .run(randomUUID(), this.tenantId, input.agentKey, input.queryText, JSON.stringify(input.queryEmbedding), input.responseText, JSON.stringify(input.citableDocs), new Date().toISOString());
   }
 
-  listByAgent(agentKey: string): SemanticCacheEntry[] {
+  async listByAgent(agentKey: string): Promise<SemanticCacheEntry[]> {
     const rows = this.db.prepare(`SELECT * FROM semantic_cache WHERE tenant_id = ? AND agent_key = ?`).all(this.tenantId, agentKey) as SemanticCacheRow[];
     return rows.map(rowToEntry);
   }
 
-  recordHit(id: string): void {
+  async recordHit(id: string): Promise<void> {
     this.db.prepare(`UPDATE semantic_cache SET hit_count = hit_count + 1, last_hit_at = ? WHERE tenant_id = ? AND id = ?`).run(new Date().toISOString(), this.tenantId, id);
   }
 }

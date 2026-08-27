@@ -14,7 +14,7 @@ export default async function ReviewQueuePage() {
   const user = await getSessionUser(db, tenant);
   if (!user) redirect(await loginRedirectPath());
 
-  const items = new ReviewQueueRepository(db, tenant).listPending().map((item) => ({
+  const items = (await new ReviewQueueRepository(db, tenant).listPending()).map((item) => ({
     id: item.id,
     conversationId: item.conversationId,
     reason: item.reason,

@@ -23,7 +23,7 @@ export async function DELETE(_req: Request, context: RouteContext<"/api/admin/ap
 
   await credentials.deactivate(id);
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "provider_credential_deactivated",
     target: existing.provider,

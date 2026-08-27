@@ -35,10 +35,10 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const runs = new RunRepository(db, tenant);
-    const c1 = conversations.create({ channel: "widget", agentKey: "general" });
-    runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
-    runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
-    runs.start({ conversationId: c1.id, agentKey: "billing", agentVersion: 1, trigger: "customer_message" });
+    const c1 = await conversations.create({ channel: "widget", agentKey: "general" });
+    await runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
+    await runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
+    await runs.start({ conversationId: c1.id, agentKey: "billing", agentVersion: 1, trigger: "customer_message" });
 
     const volume = getAgentVolume(db, tenant);
     expect(volume).toEqual([
@@ -51,9 +51,9 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const events = new EventRepository(db, tenant);
-    const contained = conversations.create({ channel: "widget", agentKey: "general" });
-    const escalated = conversations.create({ channel: "widget", agentKey: "general" });
-    events.append({ conversationId: escalated.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
+    const contained = await conversations.create({ channel: "widget", agentKey: "general" });
+    const escalated = await conversations.create({ channel: "widget", agentKey: "general" });
+    await events.append({ conversationId: escalated.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
     const rate = getContainmentRate(db, tenant);
     expect(rate).toEqual({ totalConversations: 2, containedConversations: 1, rate: 0.5 });
@@ -64,10 +64,10 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const { db, tenant } = await setup();
     const conversations = new ConversationRepository(db, tenant);
     const events = new EventRepository(db, tenant);
-    const c1 = conversations.create({ channel: "widget", agentKey: "general" });
-    const c2 = conversations.create({ channel: "widget", agentKey: "general" });
-    events.append({ conversationId: c1.id, type: "escalated", payload: { reasons: ["human_request", "negative_sentiment"] }, actor: "system" });
-    events.append({ conversationId: c2.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
+    const c1 = await conversations.create({ channel: "widget", agentKey: "general" });
+    const c2 = await conversations.create({ channel: "widget", agentKey: "general" });
+    await events.append({ conversationId: c1.id, type: "escalated", payload: { reasons: ["human_request", "negative_sentiment"] }, actor: "system" });
+    await events.append({ conversationId: c2.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
     const breakdown = getEscalationReasonBreakdown(db, tenant);
     expect(breakdown).toEqual([
@@ -81,12 +81,12 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const conversations = new ConversationRepository(db, tenant);
     const runs = new RunRepository(db, tenant);
     const llmCalls = new LlmCallRepository(db, tenant);
-    const c1 = conversations.create({ channel: "widget", agentKey: "general" });
-    const generalRun = runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
-    const billingRun = runs.start({ conversationId: c1.id, agentKey: "billing", agentVersion: 1, trigger: "customer_message" });
+    const c1 = await conversations.create({ channel: "widget", agentKey: "general" });
+    const generalRun = await runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
+    const billingRun = await runs.start({ conversationId: c1.id, agentKey: "billing", agentVersion: 1, trigger: "customer_message" });
 
-    for (const ms of [100, 200, 300, 400, 500]) llmCalls.record(llmCall(generalRun.id, { latencyMs: ms }));
-    llmCalls.record(llmCall(billingRun.id, { latencyMs: 9000 }));
+    for (const ms of [100, 200, 300, 400, 500]) await llmCalls.record(llmCall(generalRun.id, { latencyMs: ms }));
+    await llmCalls.record(llmCall(billingRun.id, { latencyMs: 9000 }));
 
     const overall = getLatencyPercentiles(db, tenant);
     expect(overall.count).toBe(6);
@@ -102,14 +102,14 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const runs = new RunRepository(db, tenant);
     const llmCalls = new LlmCallRepository(db, tenant);
 
-    const cA = conversations.create({ channel: "widget", agentKey: "general" });
-    const runA = runs.start({ conversationId: cA.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
-    llmCalls.record(llmCall(runA.id, { costUsd: 0.01, latencyMs: 100 }));
+    const cA = await conversations.create({ channel: "widget", agentKey: "general" });
+    const runA = await runs.start({ conversationId: cA.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
+    await llmCalls.record(llmCall(runA.id, { costUsd: 0.01, latencyMs: 100 }));
 
-    const cB = conversations.create({ channel: "widget", agentKey: "general" });
-    const runB = runs.start({ conversationId: cB.id, agentKey: "general", agentVersion: 2, trigger: "customer_message" });
-    llmCalls.record(llmCall(runB.id, { costUsd: 0.02, latencyMs: 200 }));
-    events.append({ conversationId: cB.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
+    const cB = await conversations.create({ channel: "widget", agentKey: "general" });
+    const runB = await runs.start({ conversationId: cB.id, agentKey: "general", agentVersion: 2, trigger: "customer_message" });
+    await llmCalls.record(llmCall(runB.id, { costUsd: 0.02, latencyMs: 200 }));
+    await events.append({ conversationId: cB.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
     const perf = getAgentVersionPerformance(db, tenant, "general");
     expect(perf).toEqual([

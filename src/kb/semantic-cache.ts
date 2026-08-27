@@ -25,7 +25,7 @@ export async function lookupCache(
   embeddings: EmbeddingProvider,
 ): Promise<SemanticCacheHit | undefined> {
   const repo = new SemanticCacheRepository(db, tenant);
-  const entries = repo.listByAgent(agentKey);
+  const entries = await repo.listByAgent(agentKey);
   if (entries.length === 0) return undefined;
 
   const [queryVector] = await embeddings.embed([queryText]);
@@ -38,7 +38,7 @@ export async function lookupCache(
   }
   if (!best || best.similarity < SIMILARITY_THRESHOLD) return undefined;
 
-  repo.recordHit(best.id);
+  await repo.recordHit(best.id);
   return { responseText: best.responseText, citableDocs: best.citableDocs };
 }
 
@@ -52,5 +52,5 @@ export async function writeCache(
   embeddings: EmbeddingProvider,
 ): Promise<void> {
   const [queryVector] = await embeddings.embed([queryText]);
-  new SemanticCacheRepository(db, tenant).record({ agentKey, queryText, queryEmbedding: queryVector, responseText, citableDocs });
+  await new SemanticCacheRepository(db, tenant).record({ agentKey, queryText, queryEmbedding: queryVector, responseText, citableDocs });
 }

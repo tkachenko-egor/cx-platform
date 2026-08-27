@@ -24,19 +24,19 @@ export default async function DeskConversationPage({ params }: PageProps<"/desk/
   const user = await getSessionUser(db, tenant);
   if (!user) redirect(await loginRedirectPath());
 
-  const conversation = new ConversationRepository(db, tenant).get(conversationId);
+  const conversation = await new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) notFound();
 
-  const messages = new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
-  const events = new EventRepository(db, tenant).listByConversation(conversationId);
-  const runs = new RunRepository(db, tenant).listByConversation(conversationId);
+  const messages = await new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
+  const events = await new EventRepository(db, tenant).listByConversation(conversationId);
+  const runs = await new RunRepository(db, tenant).listByConversation(conversationId);
   const llmCalls = new LlmCallRepository(db, tenant);
   const toolCalls = new ToolCallRepository(db, tenant);
 
   const trace = await Promise.all(
     runs.map(async (run) => ({
       run,
-      llmCalls: llmCalls.listByRun(run.id),
+      llmCalls: await llmCalls.listByRun(run.id),
       toolCalls: await toolCalls.listByRun(run.id),
     })),
   );

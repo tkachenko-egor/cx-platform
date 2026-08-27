@@ -31,7 +31,7 @@ export async function DELETE(_req: Request, props: { params: Promise<{ key: stri
   const archived = await agentDefs.publish({ ...current, agentStatus: "archived", changeNotes: "Archived" });
   await agentDefs.clearDraft(key);
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_def_archived",
     target: key,

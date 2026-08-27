@@ -38,9 +38,9 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const totalCost = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.avgCostUsd * v.runCount, 0), 0);
   const avgCostPerRun = totalRuns > 0 ? totalCost / totalRuns : null;
 
-  const feedback = new MessageFeedbackRepository(db, tenant).aggregateForTenant();
+  const feedback = await new MessageFeedbackRepository(db, tenant).aggregateForTenant();
   const csatPct = feedback.total > 0 ? (feedback.up / feedback.total) * 100 : null;
-  const activeAlerts = getActiveAlerts(db, tenant);
+  const activeAlerts = await getActiveAlerts(db, tenant);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">

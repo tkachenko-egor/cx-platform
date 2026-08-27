@@ -14,12 +14,12 @@ export const runtime = "nodejs";
 export async function GET(_req: Request, context: RouteContext<"/api/conversations/[conversationId]/messages">) {
   const { conversationId } = await context.params;
   const { db, tenant } = await getPlatformContext();
-  const conversation = new ConversationRepository(db, tenant).get(conversationId);
+  const conversation = await new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) {
     return Response.json({ error: "Conversation not found" }, { status: 404 });
   }
 
-  const messages = new MessageRepository(db, tenant).listByConversation(conversationId);
+  const messages = await new MessageRepository(db, tenant).listByConversation(conversationId);
   return Response.json({
     state: conversation.state,
     messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),

@@ -34,7 +34,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/user
 
   const updated = await users.update(id, { role: body.role as Role | undefined, status: body.status as "active" | "disabled" | undefined });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: body.status === "disabled" ? "user_deactivated" : "user_role_changed",
     target: id,

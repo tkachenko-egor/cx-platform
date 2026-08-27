@@ -30,7 +30,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
 
   if (body.decision === "rejected") {
     await approvals.markDecided(approval.id, "rejected", actor.id);
-    new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_rejected", target: approval.agentKey, before: { approvalId: approval.id } });
+    await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_rejected", target: approval.agentKey, before: { approvalId: approval.id } });
     return Response.json({ ok: true, status: "rejected" });
   }
 
@@ -38,7 +38,7 @@ export async function PATCH(req: Request, context: RouteContext<"/api/admin/agen
   // it from whatever the editor happens to show now, which may have moved on.
   const published = await new AgentDefRepository(db, tenant).publish(approval.payload as unknown as Parameters<AgentDefRepository["publish"]>[0]);
   await approvals.markDecided(approval.id, "approved", actor.id);
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_publish_approved",
     target: approval.agentKey,

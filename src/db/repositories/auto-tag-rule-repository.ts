@@ -29,19 +29,19 @@ export class AutoTagRuleRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { tag: string; keywords: string[] }): AutoTagRule {
+  async create(input: { tag: string; keywords: string[] }): Promise<AutoTagRule> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`INSERT INTO auto_tag_rules (id, tenant_id, tag, keywords, created_at) VALUES (?, ?, ?, ?, ?)`).run(id, this.tenantId, input.tag, JSON.stringify(input.keywords), now);
     return { id, tenantId: this.tenantId, tag: input.tag, keywords: input.keywords, createdAt: now };
   }
 
-  list(): AutoTagRule[] {
+  async list(): Promise<AutoTagRule[]> {
     const rows = this.db.prepare(`SELECT * FROM auto_tag_rules WHERE tenant_id = ? ORDER BY created_at ASC`).all(this.tenantId) as AutoTagRuleRow[];
     return rows.map(rowToRule);
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     this.db.prepare(`DELETE FROM auto_tag_rules WHERE tenant_id = ? AND id = ?`).run(this.tenantId, id);
   }
 }

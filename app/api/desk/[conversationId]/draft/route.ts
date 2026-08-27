@@ -26,7 +26,7 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
     throw err;
   }
 
-  const conversation = new ConversationRepository(db, tenant).get(conversationId);
+  const conversation = await new ConversationRepository(db, tenant).get(conversationId);
   if (!conversation) return Response.json({ error: "Conversation not found" }, { status: 404 });
 
   const agentDefs = new AgentDefRepository(db, tenant);
@@ -38,7 +38,7 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   const agent = await agentDefs.getVersion(agentKey, agentVersion) ?? await agentDefs.getLatestPublished(agentKey);
   if (!agent) return Response.json({ error: "No agent definition available" }, { status: 500 });
 
-  const messages = new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
+  const messages = await new MessageRepository(db, tenant).listByConversation(conversationId, { includeInternal: true });
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUserMessage) return Response.json({ error: "No customer message to reply to" }, { status: 400 });
 
@@ -49,14 +49,14 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   const userText = draftFromLast ? last.content : lastUserMessage.content;
 
   const runs = new RunRepository(db, tenant);
-  const run = runs.start({ conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: "human_draft_request" });
+  const run = await runs.start({ conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: "human_draft_request" });
 
   try {
     const result = await runAgentTurn({ db, gateway, embeddings }, tenant, conversationId, run.id, agent, historyForDraft, userText);
-    runs.complete(run.id, "completed");
+    await runs.complete(run.id, "completed");
     return Response.json({ draftText: result.assistantText, cards: result.cards, citableDocs: result.citableDocs });
   } catch (err) {
-    runs.complete(run.id, "failed");
+    await runs.complete(run.id, "failed");
     return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 });
   }
 }

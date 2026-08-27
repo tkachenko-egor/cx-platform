@@ -39,7 +39,7 @@ export class SlaPolicyRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  create(input: { priority: ConversationPriority; targetMinutes: number; appliesToChannel?: ConversationChannel }): SlaPolicy {
+  async create(input: { priority: ConversationPriority; targetMinutes: number; appliesToChannel?: ConversationChannel }): Promise<SlaPolicy> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -48,13 +48,13 @@ export class SlaPolicyRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, priority: input.priority, targetMinutes: input.targetMinutes, appliesToChannel: input.appliesToChannel ?? null, createdAt: now };
   }
 
-  list(): SlaPolicy[] {
+  async list(): Promise<SlaPolicy[]> {
     const rows = this.db.prepare(`SELECT * FROM sla_policies WHERE tenant_id = ?`).all(this.tenantId) as SlaPolicyRow[];
     return rows.map(rowToPolicy);
   }
 
   /** Channel-specific policy takes precedence over a channel-agnostic (applies_to_channel IS NULL) one for the same priority. */
-  findForPriorityAndChannel(priority: ConversationPriority, channel: ConversationChannel): SlaPolicy | undefined {
+  async findForPriorityAndChannel(priority: ConversationPriority, channel: ConversationChannel): Promise<SlaPolicy | undefined> {
     const specific = this.db
       .prepare(`SELECT * FROM sla_policies WHERE tenant_id = ? AND priority = ? AND applies_to_channel = ?`)
       .get(this.tenantId, priority, channel) as SlaPolicyRow | undefined;

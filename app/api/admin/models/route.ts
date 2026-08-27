@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const fallbackChain = body.fallbackChain ?? existing?.fallbackChain ?? [];
   const alias = await modelAliases.upsert({ alias: body.alias.trim(), provider: body.provider.trim(), model: body.model.trim(), fallbackChain });
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: existing ? "model_alias_updated" : "model_alias_created",
     target: alias.alias,

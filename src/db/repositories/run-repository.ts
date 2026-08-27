@@ -29,7 +29,7 @@ export class RunRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  start(input: { conversationId: string; agentKey: string; agentVersion: number; trigger: string }): Run {
+  async start(input: { conversationId: string; agentKey: string; agentVersion: number; trigger: string }): Promise<Run> {
     const id = randomUUID();
     this.db
       .prepare(
@@ -48,13 +48,13 @@ export class RunRepository extends TenantScopedRepository {
     };
   }
 
-  complete(id: string, status: "completed" | "failed"): void {
+  async complete(id: string, status: "completed" | "failed"): Promise<void> {
     this.db
       .prepare(`UPDATE runs SET status = ?, ended_at = ? WHERE tenant_id = ? AND id = ?`)
       .run(status, new Date().toISOString(), this.tenantId, id);
   }
 
-  listByConversation(conversationId: string): Run[] {
+  async listByConversation(conversationId: string): Promise<Run[]> {
     const rows = this.db
       .prepare(`SELECT * FROM runs WHERE tenant_id = ? AND conversation_id = ? ORDER BY started_at ASC`)
       .all(this.tenantId, conversationId) as RunRow[];

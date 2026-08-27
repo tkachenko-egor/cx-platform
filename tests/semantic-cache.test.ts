@@ -63,7 +63,7 @@ describe("semantic cache module (src/kb/semantic-cache.ts)", () => {
     const hit = await lookupCache(db, tenant, "support-generalist", "Where is my order?", embeddings);
     expect(hit).toEqual({ responseText: "It shipped yesterday.", citableDocs: [{ docId: "doc-a", title: "Shipping" }] });
 
-    const entries = new SemanticCacheRepository(db, tenant).listByAgent("support-generalist");
+    const entries = await new SemanticCacheRepository(db, tenant).listByAgent("support-generalist");
     expect(entries[0].hitCount).toBe(1);
     expect(entries[0].lastHitAt).toBeTruthy();
   });
@@ -124,7 +124,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
 
     // Both turns hit the model — no cache write happened since the agent never opted in.
     expect(result2.assistantText).toBe("Happy to help with that.");
-    expect(new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(0);
+    expect(await new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(0);
   });
 
   it("writes to the cache after a plain answered turn, then serves a repeat of the same question from cache", async () => {
@@ -132,7 +132,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
 
     const first = await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agent, [], "What's your return policy?");
     expect(first.assistantText).toBe("Happy to help with that.");
-    expect(new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(1);
+    expect(await new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(1);
 
     const second = await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-2", agent, [], "What's your return policy?");
     // Served from cache — the second scripted response (which would prove a model call happened) never surfaces.
@@ -158,7 +158,7 @@ describe("semantic caching wired into runAgentTurn (Phase 2 M3b)", () => {
 
     await runAgentTurn({ db, gateway, embeddings }, tenant, "CONV-1", "run-1", agentWithTool, [], "Do you have wireless headphones?");
 
-    expect(new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(0);
+    expect(await new SemanticCacheRepository(db, tenant).listByAgent("support-generalist")).toHaveLength(0);
   });
 
   it("skips the cache lookup entirely for a severe-symptom message, even with a matching cached entry", async () => {

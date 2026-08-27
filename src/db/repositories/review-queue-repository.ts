@@ -54,7 +54,7 @@ export class ReviewQueueRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  enqueue(input: { conversationId: string; reason: string; sourceEventId?: string }): ReviewQueueEntry {
+  async enqueue(input: { conversationId: string; reason: string; sourceEventId?: string }): Promise<ReviewQueueEntry> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -63,17 +63,17 @@ export class ReviewQueueRepository extends TenantScopedRepository {
     return { id, tenantId: this.tenantId, conversationId: input.conversationId, reason: input.reason, sourceEventId: input.sourceEventId ?? null, status: "pending", reviewedBy: null, reviewedAt: null, createdAt: now };
   }
 
-  get(id: string): ReviewQueueEntry | undefined {
+  async get(id: string): Promise<ReviewQueueEntry | undefined> {
     const row = this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as ReviewQueueRow | undefined;
     return row ? rowToEntry(row) : undefined;
   }
 
-  listPending(): ReviewQueueEntry[] {
+  async listPending(): Promise<ReviewQueueEntry[]> {
     const rows = this.db.prepare(`SELECT * FROM review_queue WHERE tenant_id = ? AND status = 'pending' ORDER BY created_at ASC`).all(this.tenantId) as ReviewQueueRow[];
     return rows.map(rowToEntry);
   }
 
-  markDecided(id: string, status: "reviewed" | "dismissed", reviewedBy: string): void {
+  async markDecided(id: string, status: "reviewed" | "dismissed", reviewedBy: string): Promise<void> {
     this.db.prepare(`UPDATE review_queue SET status = ?, reviewed_by = ?, reviewed_at = ? WHERE tenant_id = ? AND id = ?`).run(status, reviewedBy, new Date().toISOString(), this.tenantId, id);
   }
 }

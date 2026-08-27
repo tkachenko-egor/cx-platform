@@ -24,7 +24,7 @@ export async function DELETE(_req: Request, context: RouteContext<"/api/admin/to
 
   await toolDefs.delete(key);
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "tool_def_deleted",
     target: key,

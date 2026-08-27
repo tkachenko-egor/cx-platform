@@ -10,7 +10,7 @@ export default async function TagRulesPage() {
   const { db, tenant } = await getPlatformContext();
   await requireAdminPage(db, tenant);
 
-  const rules = new AutoTagRuleRepository(db, tenant).list().map((r) => ({ id: r.id, tag: r.tag, keywords: r.keywords }));
+  const rules = (await new AutoTagRuleRepository(db, tenant).list()).map((r) => ({ id: r.id, tag: r.tag, keywords: r.keywords }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">

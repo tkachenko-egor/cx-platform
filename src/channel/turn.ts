@@ -66,16 +66,16 @@ export async function processInboundTurn(
   const reviewQueue = new ReviewQueueRepository(db, tenant);
 
   return withConversationLock(input.conversationId, async (): Promise<ProcessTurnResult> => {
-    const conversation = conversations.get(input.conversationId);
+    const conversation = await conversations.get(input.conversationId);
     if (!conversation) throw new Error(`Conversation ${input.conversationId} not found`);
 
-    messages.append({ conversationId: input.conversationId, role: "user", content: input.text, channelMessageId: input.channelMessageId });
+    await messages.append({ conversationId: input.conversationId, role: "user", content: input.text, channelMessageId: input.channelMessageId });
 
     // Phase 9 M4: additive — never touches the router/handoff agent-key tag
     // (conversations.setTags below), regardless of which one runs first in
     // this turn, since addTags always reads-then-unions the latest state.
-    const matchedTags = scanAutoTags(input.text, new AutoTagRuleRepository(db, tenant).list());
-    if (matchedTags.length > 0) conversations.addTags(input.conversationId, matchedTags);
+    const matchedTags = scanAutoTags(input.text, await new AutoTagRuleRepository(db, tenant).list());
+    if (matchedTags.length > 0) await conversations.addTags(input.conversationId, matchedTags);
 
     const session = getOrCreateSession(input.conversationId);
 
@@ -105,22 +105,22 @@ export async function processInboundTurn(
         pinnedAgent?.persona.cannedMessages?.default?.handoff ||
         "We've covered a lot of ground in this conversation — let me hand you to a colleague to pick up from here.";
       callbacks.onTextDelta?.(cannedText);
-      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
-      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
-      events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: ["loop_cap"] } });
+      await setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      await startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
+      await events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: ["loop_cap"] } });
       return { conversationId: input.conversationId, state: "awaiting_human", assistantText: cannedText, handoff: true, loopCapHit: true };
     }
 
-    const escalateAndReturn = (reason: EscalationReason): ProcessTurnResult => {
-      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
-      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
-      events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: [reason] } });
+    const escalateAndReturn = async (reason: EscalationReason): Promise<ProcessTurnResult> => {
+      await setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      await startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
+      await events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: [reason] } });
       return { conversationId: input.conversationId, state: "awaiting_human", handoff: true, loopCapHit: false, escalationReasons: [reason] };
     };
 
-    const persistHandoff = (from: string, to: string, pkg: HandoffPackage) => {
-      messages.append({ conversationId: input.conversationId, role: "handoff", content: JSON.stringify({ from, to, ...pkg }) });
-      events.append({ conversationId: input.conversationId, type: "handoff", actor: "system", payload: { from, to, ...pkg } });
+    const persistHandoff = async (from: string, to: string, pkg: HandoffPackage) => {
+      await messages.append({ conversationId: input.conversationId, role: "handoff", content: JSON.stringify({ from, to, ...pkg }) });
+      await events.append({ conversationId: input.conversationId, type: "handoff", actor: "system", payload: { from, to, ...pkg } });
     };
 
     let agentPath = (conversation.metadata.agentPath as string[] | undefined) ?? [];
@@ -138,8 +138,8 @@ export async function processInboundTurn(
       agentPath = appendToPath(agentPath, currentAgentKey);
       // addTags (merge), not setTags (replace) — this must coexist with the
       // auto-tag scan above regardless of which one ran first in the turn.
-      conversations.addTags(input.conversationId, [currentAgentKey]);
-      conversations.updateMetadata(input.conversationId, { agentPath });
+      await conversations.addTags(input.conversationId, [currentAgentKey]);
+      await conversations.updateMetadata(input.conversationId, { agentPath });
     }
 
     session.turnCount++;
@@ -167,7 +167,7 @@ export async function processInboundTurn(
         if (session.turnCount === 1 && entryAgentDisclosure) callbacks.onTextDelta?.(`${entryAgentDisclosure}\n\n`);
       }
 
-      const run = runs.start({ conversationId: input.conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: hops === 0 ? "user_message" : "handoff" });
+      const run = await runs.start({ conversationId: input.conversationId, agentKey: agent.key, agentVersion: agent.version, trigger: hops === 0 ? "user_message" : "handoff" });
 
       // Phase 9 M2: 'recent' trims the model's in-memory replay context —
       // session.history (src/agents/sessions-store.ts) is a process-local
@@ -183,9 +183,9 @@ export async function processInboundTurn(
       try {
         result = await runAgentTurn(deps, tenant, input.conversationId, run.id, agent, historyForTurn, input.text, callbacks, handoffContext, tenant.name);
         session.history = result.updatedHistory;
-        runs.complete(run.id, "completed");
+        await runs.complete(run.id, "completed");
       } catch (err) {
-        runs.complete(run.id, "failed");
+        await runs.complete(run.id, "failed");
         throw err;
       }
 
@@ -194,20 +194,20 @@ export async function processInboundTurn(
         break;
       }
 
-      if (hops >= MAX_HOPS_PER_REQUEST) return escalateAndReturn("handoff_cycle_detected");
+      if (hops >= MAX_HOPS_PER_REQUEST) return await escalateAndReturn("handoff_cycle_detected");
 
       const { target, package: pkg } = result.handoffRequested;
       const nextAgent = target ? await agentDefs.getForTraffic(target, input.conversationId) : undefined;
-      if (!nextAgent || detectCycle(agentPath, target)) return escalateAndReturn("handoff_cycle_detected");
-      if (nextAgent.agentStatus !== "active") return escalateAndReturn("target_agent_unavailable");
+      if (!nextAgent || detectCycle(agentPath, target)) return await escalateAndReturn("handoff_cycle_detected");
+      if (nextAgent.agentStatus !== "active") return await escalateAndReturn("target_agent_unavailable");
 
       agentPath = appendToPath(agentPath, target);
       currentAgentKey = nextAgent.key;
       currentAgentVersion = nextAgent.version;
-      conversations.setCurrentAgentKey(input.conversationId, currentAgentKey);
-      conversations.setTags(input.conversationId, [currentAgentKey]);
-      conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
-      persistHandoff(agent.key, target, pkg);
+      await conversations.setCurrentAgentKey(input.conversationId, currentAgentKey);
+      await conversations.setTags(input.conversationId, [currentAgentKey]);
+      await conversations.updateMetadata(input.conversationId, { agentPath, agentVersion: currentAgentVersion });
+      await persistHandoff(agent.key, target, pkg);
       handoffContext = pkg;
     }
 
@@ -230,19 +230,19 @@ export async function processInboundTurn(
       finalResult = { ...finalResult, assistantText: `${finalResult.assistantText}\n\n${entryAgentOutOfHours}` };
     }
 
-    const assistantMessage = messages.append({ conversationId: input.conversationId, role: "assistant", content: finalResult.assistantText });
+    const assistantMessage = await messages.append({ conversationId: input.conversationId, role: "assistant", content: finalResult.assistantText });
 
     let state: ConversationState = "bot_active";
     if (finalResult.escalate) {
-      setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
-      startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
-      events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: finalResult.escalationReasons } });
+      await setConversationState(conversations, events, input.conversationId, "awaiting_human", "system");
+      await startSlaClock(conversations, slaPolicies, input.conversationId, conversation.priority, conversation.channel);
+      await events.append({ conversationId: input.conversationId, type: "escalated", actor: "system", payload: { reasons: finalResult.escalationReasons } });
       state = "awaiting_human";
     } else if (finalResult.lowKbConfidence) {
       // Phase 2 M5: a review tier distinct from escalation — the bot kept
       // serving the customer, but a low-confidence retrieval is worth a
       // human's eyes later. Never touches conversation.state.
-      reviewQueue.enqueue({ conversationId: input.conversationId, reason: "low_kb_confidence" });
+      await reviewQueue.enqueue({ conversationId: input.conversationId, reason: "low_kb_confidence" });
     }
 
     return {
@@ -287,7 +287,7 @@ export async function ensureConversation(
   }
 
   const conversations = new ConversationRepository(deps.db, tenant);
-  const conversation = conversations.create({ id: conversationId, channel, agentKey, metadata: { agentVersion: published.version, ...metadata } });
-  new EventRepository(deps.db, tenant).append({ conversationId: conversation.id, type: "state_changed", actor: "system", payload: { to: "bot_active" } });
+  const conversation = await conversations.create({ id: conversationId, channel, agentKey, metadata: { agentVersion: published.version, ...metadata } });
+  await new EventRepository(deps.db, tenant).append({ conversationId: conversation.id, type: "state_changed", actor: "system", payload: { to: "bot_active" } });
   return conversation;
 }

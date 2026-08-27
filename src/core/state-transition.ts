@@ -9,14 +9,14 @@ import type { ConversationState } from "./types";
  * `setState` call is paired with a `state_changed` event the same way
  * app/api/desk/[conversationId]/handback/route.ts already does it.
  */
-export function setConversationState(
+export async function setConversationState(
   conversations: ConversationRepository,
   events: EventRepository,
   conversationId: string,
   state: ConversationState,
   actor: string,
   extraPayload?: Record<string, unknown>,
-): void {
-  conversations.setState(conversationId, state);
-  events.append({ conversationId, type: "state_changed", actor, payload: { to: state, ...extraPayload } });
+): Promise<void> {
+  await conversations.setState(conversationId, state);
+  await events.append({ conversationId, type: "state_changed", actor, payload: { to: state, ...extraPayload } });
 }

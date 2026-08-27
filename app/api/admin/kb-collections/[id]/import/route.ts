@@ -94,7 +94,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/admin/kb-collec
   const article = await articles.upsert({ docId, title, audience, effective, contentHash, body: bodyText, collectionId });
   await chunkAndEmbedArticle(new KbChunkRepository(db, tenant), embeddings, article.id, bodyText);
 
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_article_imported", target: article.docId, after: { title, source: ext } });
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "kb_article_imported", target: article.docId, after: { title, source: ext } });
 
   return Response.json({ ok: true, article });
 }

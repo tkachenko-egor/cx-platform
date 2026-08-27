@@ -162,13 +162,13 @@ export async function POST(req: Request) {
         fromEnvironment: "none",
         toEnvironment: publishInput.environment,
       });
-      new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
+      await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
       return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
     }
 
     const created = await agentDefs.publish(publishInput);
 
-    new AuditLogRepository(db, tenant).record({
+    await new AuditLogRepository(db, tenant).record({
       actorUserId: actor.id,
       action: "agent_def_created",
       target: body.key,
@@ -226,13 +226,13 @@ export async function POST(req: Request) {
       fromEnvironment: current.environment,
       toEnvironment: publishInput.environment,
     });
-    new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
+    await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "agent_publish_requested", target: body.key, after: { approvalId: approval.id } });
     return Response.json({ ok: true, pendingApproval: true, approvalId: approval.id });
   }
 
   const published = await agentDefs.publish(publishInput);
 
-  new AuditLogRepository(db, tenant).record({
+  await new AuditLogRepository(db, tenant).record({
     actorUserId: actor.id,
     action: "agent_def_published",
     target: body.key,

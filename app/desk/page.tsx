@@ -40,14 +40,14 @@ export default async function DeskPage({ searchParams }: { searchParams: Promise
   const query = (q ?? "").trim().toLowerCase();
 
   const conversationRepo = new ConversationRepository(db, tenant);
-  const allConversations = slaOnly ? conversationRepo.listSlaBreaching(nowIso) : conversationRepo.listByStates(["awaiting_human", "human_active"]);
+  const allConversations = slaOnly ? await conversationRepo.listSlaBreaching(nowIso) : await conversationRepo.listByStates(["awaiting_human", "human_active"]);
   const channelFiltered = activeChannel === "all" ? allConversations : allConversations.filter((c) => c.channel === activeChannel);
   const costs = getConversationCostSummaries(
     db,
     tenant,
     channelFiltered.map((c) => c.id),
   );
-  const previews = new MessageRepository(db, tenant).latestByConversationIds(channelFiltered.map((c) => c.id));
+  const previews = await new MessageRepository(db, tenant).latestByConversationIds(channelFiltered.map((c) => c.id));
   const staffUsers = (await new UserRepository(db, tenant).list()).filter((u) => u.status === "active");
 
   const isBreaching = (c: { slaDueAt: string | null }) => Boolean(c.slaDueAt && c.slaDueAt < nowIso);

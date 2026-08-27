@@ -16,8 +16,8 @@ export async function DELETE(_req: Request, ctx: RouteContext<"/api/admin/tag-ru
     throw err;
   }
 
-  new AutoTagRuleRepository(db, tenant).delete(id);
-  new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "auto_tag_rule_deleted", target: id });
+  await new AutoTagRuleRepository(db, tenant).delete(id);
+  await new AuditLogRepository(db, tenant).record({ actorUserId: actor.id, action: "auto_tag_rule_deleted", target: id });
 
   return Response.json({ ok: true });
 }

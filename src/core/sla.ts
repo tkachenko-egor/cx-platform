@@ -23,18 +23,18 @@ export function computeDueAt(policy: SlaPolicy | undefined, fromTimestamp: strin
  * left null — same "unconfigured feature is a no-op" convention as an
  * agent with no handoffTargets configured (src/channel/turn.ts).
  */
-export function startSlaClock(
+export async function startSlaClock(
   conversations: ConversationRepository,
   slaPolicies: SlaPolicyRepository,
   conversationId: string,
   priority: ConversationPriority,
   channel: ConversationChannel,
-): void {
-  const policy = slaPolicies.findForPriorityAndChannel(priority, channel);
-  conversations.setSlaDueAt(conversationId, computeDueAt(policy));
+): Promise<void> {
+  const policy = await slaPolicies.findForPriorityAndChannel(priority, channel);
+  await conversations.setSlaDueAt(conversationId, computeDueAt(policy));
 }
 
 /** Stops the SLA clock — a human replied, or the conversation was handed back to the bot. */
-export function clearSlaClock(conversations: ConversationRepository, conversationId: string): void {
-  conversations.setSlaDueAt(conversationId, null);
+export async function clearSlaClock(conversations: ConversationRepository, conversationId: string): Promise<void> {
+  await conversations.setSlaDueAt(conversationId, null);
 }

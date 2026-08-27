@@ -41,7 +41,7 @@ export class MessageRepository extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  append(input: {
+  async append(input: {
     conversationId: string;
     role: MessageRole;
     content: string;
@@ -49,7 +49,7 @@ export class MessageRepository extends TenantScopedRepository {
     /** Channel-threading columns (FR-3.12) — only email uses these today. */
     channelMessageId?: string;
     inReplyTo?: string;
-  }): CanonicalMessage {
+  }): Promise<CanonicalMessage> {
     const id = randomUUID();
     const now = new Date().toISOString();
     const sequence = this.nextSequence(input.conversationId);
@@ -83,12 +83,12 @@ export class MessageRepository extends TenantScopedRepository {
   }
 
   /** Sets the outbound channel id after the fact — e.g. the email provider's Message-ID, known only once the send succeeds. */
-  setChannelMessageId(id: string, channelMessageId: string): void {
+  async setChannelMessageId(id: string, channelMessageId: string): Promise<void> {
     this.db.prepare(`UPDATE messages SET channel_message_id = ? WHERE tenant_id = ? AND id = ?`).run(channelMessageId, this.tenantId, id);
   }
 
   /** FR-3.12: resolve a conversation from Message-ID/In-Reply-To/References headers. */
-  findConversationIdByChannelMessageIds(channelMessageIds: string[]): string | undefined {
+  async findConversationIdByChannelMessageIds(channelMessageIds: string[]): Promise<string | undefined> {
     if (channelMessageIds.length === 0) return undefined;
     const placeholders = channelMessageIds.map(() => "?").join(",");
     const row = this.db
@@ -98,12 +98,12 @@ export class MessageRepository extends TenantScopedRepository {
   }
 
   /** Phase 9 M4: lets a feedback-submission route confirm the message actually belongs to the conversation/tenant it claims before recording anything. */
-  get(id: string): CanonicalMessage | undefined {
+  async get(id: string): Promise<CanonicalMessage | undefined> {
     const row = this.db.prepare(`SELECT * FROM messages WHERE tenant_id = ? AND id = ?`).get(this.tenantId, id) as MessageRow | undefined;
     return row ? rowToMessage(row) : undefined;
   }
 
-  listByConversation(conversationId: string, opts: { includeInternal?: boolean } = {}): CanonicalMessage[] {
+  async listByConversation(conversationId: string, opts: { includeInternal?: boolean } = {}): Promise<CanonicalMessage[]> {
     const visibilityClause = opts.includeInternal ? "" : `AND visibility = 'public'`;
     const rows = this.db
       .prepare(
@@ -114,7 +114,7 @@ export class MessageRepository extends TenantScopedRepository {
   }
 
   /** DA-01: last public message per conversation, for the desk list's message preview — not paginated/indexed for scale, the desk queue is expected to be tens of conversations, not thousands. */
-  latestByConversationIds(conversationIds: string[]): Map<string, CanonicalMessage> {
+  async latestByConversationIds(conversationIds: string[]): Promise<Map<string, CanonicalMessage>> {
     if (conversationIds.length === 0) return new Map();
     const placeholders = conversationIds.map(() => "?").join(",");
     const rows = this.db

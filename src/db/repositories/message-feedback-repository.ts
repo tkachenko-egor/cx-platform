@@ -44,7 +44,7 @@ export class MessageFeedbackRepository extends TenantScopedRepository {
   }
 
   /** One rating per message — re-submitting (a customer changing their mind) overwrites rather than erroring on the UNIQUE(tenant_id, message_id) constraint. */
-  record(input: { conversationId: string; messageId: string; rating: FeedbackRating; comment?: string | null }): MessageFeedback {
+  async record(input: { conversationId: string; messageId: string; rating: FeedbackRating; comment?: string | null }): Promise<MessageFeedback> {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db
@@ -59,7 +59,7 @@ export class MessageFeedbackRepository extends TenantScopedRepository {
   }
 
   /** Phase 9 M4: the CSAT stat tile on /analytics — % thumbs-up of all feedback, tenant-wide. No test_harness exclusion needed here (unlike src/analytics/agent-performance.ts's queries): the admin preview chat never renders feedback controls, so a preview conversation can never have a row here. */
-  aggregateForTenant(): { total: number; up: number } {
+  async aggregateForTenant(): Promise<{ total: number; up: number }> {
     const row = this.db
       .prepare(`SELECT COUNT(*) as total, SUM(CASE WHEN rating = 'up' THEN 1 ELSE 0 END) as up FROM message_feedback WHERE tenant_id = ?`)
       .get(this.tenantId) as { total: number; up: number | null };

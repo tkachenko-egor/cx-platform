@@ -12,14 +12,14 @@ export class FeedbackValidationError extends Error {}
  * recording anything, same "never trust the client's IDs" spirit as every
  * other tenant-scoped write in this codebase.
  */
-export function recordMessageFeedback(
+export async function recordMessageFeedback(
   db: Database.Database,
   tenant: TenantContext,
   input: { conversationId: string; messageId: string; rating: FeedbackRating; comment?: string | null },
 ) {
-  const message = new MessageRepository(db, tenant).get(input.messageId);
+  const message = await new MessageRepository(db, tenant).get(input.messageId);
   if (!message || message.conversationId !== input.conversationId) {
     throw new FeedbackValidationError("Message not found in this conversation");
   }
-  return new MessageFeedbackRepository(db, tenant).record(input);
+  return await new MessageFeedbackRepository(db, tenant).record(input);
 }

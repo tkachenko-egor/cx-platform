@@ -81,7 +81,7 @@ export async function POST(req: Request) {
   const agentKey = draft.key && draft.key.trim() ? draft.key.trim() : "__preview__";
 
   const conversations = new ConversationRepository(db, tenant);
-  const conversationId = body.conversationId ?? conversations.create({ channel: "test_harness", agentKey, metadata: { preview: true } }).id;
+  const conversationId = body.conversationId ?? (await conversations.create({ channel: "test_harness", agentKey, metadata: { preview: true } })).id;
 
   const toolDefs = new ToolDefRepository(db, tenant);
   let droppedWriteTools = 0;
@@ -139,7 +139,7 @@ export async function POST(req: Request) {
   };
 
   const runs = new RunRepository(db, tenant);
-  const run = runs.start({ conversationId, agentKey, agentVersion: 0, trigger: "preview" });
+  const run = await runs.start({ conversationId, agentKey, agentVersion: 0, trigger: "preview" });
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -163,13 +163,13 @@ export async function POST(req: Request) {
           undefined,
           tenant.name,
         );
-        runs.complete(run.id, "completed");
+        await runs.complete(run.id, "completed");
 
         // Milestone 6: surface what this turn actually cost/did — pulled from
         // the same llm_calls/tool_calls rows the real cost-tracking/tracing
         // path writes (runAgentTurn -> LlmCallRepository.record/ToolCallRepository.record),
         // just read back immediately instead of only ever being queried from analytics.
-        const llmCalls = new LlmCallRepository(db, tenant).listByRun(run.id);
+        const llmCalls = await new LlmCallRepository(db, tenant).listByRun(run.id);
         const usage = llmCalls.reduce(
           (acc, c) => ({
             promptTokens: acc.promptTokens + c.promptTokens,
@@ -195,7 +195,7 @@ export async function POST(req: Request) {
           toolCalls,
         });
       } catch (err) {
-        runs.complete(run.id, "failed");
+        await runs.complete(run.id, "failed");
         const detail = err instanceof Error ? err.message : String(err);
         send({ type: "error", message: "The preview run hit an error — check the model/tool configuration.", detail });
       } finally {
