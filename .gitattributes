@@ -1,1 +1,5 @@
 *.pdf binary
+
+# Shell scripts must stay LF — docker/entrypoint.sh runs as PID 1 in the
+# container and a CRLF shebang would break it.
+*.sh text eol=lf
