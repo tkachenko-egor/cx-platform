@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluateTurn, summarize, checkThresholds, contextRecall, contextPrecision, type CaseResult, type TurnOutcome } from "../scripts/eval/scoring";
+import { buildReport, diffAgainstBaseline, renderDiffMarkdown, type EvalReport } from "../scripts/eval/report";
 
 function outcome(overrides: Partial<TurnOutcome> = {}): TurnOutcome {
   return { assistantText: "", toolCallsMade: [], escalate: false, escalationReasons: [], guardrailBlocked: false, citableDocs: [], ...overrides };
@@ -151,5 +152,52 @@ describe("A3: retrieval metrics", () => {
     const summary = summarize([{ id: "a", tags: ["routing"], passed: true, failures: [] }]);
     const gate = checkThresholds(summary, { contextRecall: 0.9, faithfulness: 0.8 });
     expect(gate.ok).toBe(true);
+  });
+});
+
+describe("A7: eval report + baseline diff", () => {
+  const results: CaseResult[] = [
+    { id: "a", tags: ["routing"], passed: true, failures: [] },
+    { id: "b", tags: ["routing"], passed: false, failures: [] },
+    { id: "c", tags: ["retrieval"], passed: true, failures: [], retrieval: [{ contextRecall: 1, contextPrecision: 0.5, faithfulness: null }] },
+  ];
+  const summary = summarize(results);
+  const gate = checkThresholds(summary, { routing: 0.9 });
+  const report = buildReport(summary, results, gate, "2026-08-27T00:00:00.000Z");
+
+  it("buildReport captures the summary, gate and per-case pass/fail without re-running anything", () => {
+    expect(report.overall).toEqual({ passed: 2, total: 3, rate: 2 / 3 });
+    expect(report.gate.ok).toBe(false);
+    expect(report.cases).toEqual([
+      { id: "a", tags: ["routing"], passed: true },
+      { id: "b", tags: ["routing"], passed: false },
+      { id: "c", tags: ["retrieval"], passed: true },
+    ]);
+  });
+
+  it("diffAgainstBaseline reports metric deltas and which cases flipped", () => {
+    const baseline: EvalReport = {
+      ...report,
+      overall: { passed: 3, total: 3, rate: 1 },
+      byTag: { routing: { passed: 2, total: 2, rate: 1 } },
+      cases: [
+        { id: "a", tags: ["routing"], passed: true },
+        { id: "b", tags: ["routing"], passed: true },
+        { id: "removed", tags: ["tools"], passed: true },
+      ],
+    };
+    const diff = diffAgainstBaseline(report, baseline);
+    expect(diff.hasBaseline).toBe(true);
+    expect(diff.casesRegressed).toEqual(["b"]);
+    expect(diff.casesAdded).toEqual(["c"]);
+    expect(diff.casesRemoved).toEqual(["removed"]);
+    const overall = diff.metrics.find((m) => m.metric === "overall")!;
+    expect(overall.delta).toBeCloseTo(2 / 3 - 1);
+  });
+
+  it("diffAgainstBaseline degrades gracefully with no baseline", () => {
+    const diff = diffAgainstBaseline(report, null);
+    expect(diff.hasBaseline).toBe(false);
+    expect(renderDiffMarkdown(diff)).toContain("No baseline stored");
   });
 });

@@ -12,7 +12,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "eval": "tsx scripts/eval/run-eval.ts"
+    "eval": "tsx scripts/eval/run-eval.ts",
+    "eval:baseline": "tsx scripts/eval/run-eval.ts --update-baseline"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

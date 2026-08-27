@@ -11,3 +11,7 @@ dist/
 graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/cache/
+
+# A7: eval run artifact — regenerated every `npm run eval`; baseline.json is the committed one.
+scripts/eval/report.latest.json
+scripts/eval/report.latest.md

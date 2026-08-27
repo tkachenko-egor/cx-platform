@@ -21,6 +21,7 @@ import {
   type TurnOutcome,
   type TurnRetrievalScore,
 } from "./scoring";
+import { buildReport, renderReportMarkdown, diffAgainstBaseline, renderDiffMarkdown, type EvalReport } from "./report";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -176,6 +177,26 @@ async function main() {
   console.log(`  answer faithfulness: ${fmtMetric(retrieval.faithfulness, "no judge model configured")}`);
 
   const gate = checkThresholds(summary, thresholds);
+
+  // A7: reporting only — does not change how cases run, and the gate below is
+  // still the sole CI signal. `report.latest.json` is git-ignored; a run with
+  // --update-baseline promotes it to the committed baseline.json.
+  const report = buildReport(summary, results, gate);
+  const baselinePath = path.join(moduleDir, "baseline.json");
+  const baseline = fs.existsSync(baselinePath) ? (JSON.parse(fs.readFileSync(baselinePath, "utf-8")) as EvalReport) : null;
+  const diff = diffAgainstBaseline(report, baseline);
+
+  fs.writeFileSync(path.join(moduleDir, "report.latest.json"), JSON.stringify(report, null, 2));
+  fs.writeFileSync(path.join(moduleDir, "report.latest.md"), `${renderReportMarkdown(report)}\n\n${renderDiffMarkdown(diff)}\n`);
+
+  console.log(`\n${renderDiffMarkdown(diff)}`);
+  console.log(`\nReport written to scripts/eval/report.latest.{json,md}`);
+
+  if (process.argv.includes("--update-baseline")) {
+    fs.writeFileSync(baselinePath, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`Baseline updated: scripts/eval/baseline.json`);
+  }
+
   if (!gate.ok) {
     console.log(`\nRegression gate FAILED:`);
     for (const miss of gate.misses) {

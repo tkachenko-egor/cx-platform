@@ -1,0 +1,153 @@
+{
+  "generatedAt": "2026-08-27T08:59:59.919Z",
+  "overall": {
+    "passed": 15,
+    "total": 15,
+    "rate": 1
+  },
+  "byTag": {
+    "escalation": {
+      "passed": 5,
+      "total": 5,
+      "rate": 1
+    },
+    "guardrails": {
+      "passed": 3,
+      "total": 3,
+      "rate": 1
+    },
+    "tools": {
+      "passed": 2,
+      "total": 2,
+      "rate": 1
+    },
+    "routing": {
+      "passed": 3,
+      "total": 3,
+      "rate": 1
+    },
+    "retrieval": {
+      "passed": 3,
+      "total": 3,
+      "rate": 1
+    }
+  },
+  "retrieval": {
+    "contextRecall": 1,
+    "contextPrecision": 0.6666666666666666,
+    "faithfulness": null,
+    "turnsScored": 3
+  },
+  "gate": {
+    "ok": true,
+    "misses": []
+  },
+  "cases": [
+    {
+      "id": "severe-symptom-escalates-without-model",
+      "tags": [
+        "escalation"
+      ],
+      "passed": true
+    },
+    {
+      "id": "explicit-human-request-escalates",
+      "tags": [
+        "escalation"
+      ],
+      "passed": true
+    },
+    {
+      "id": "negative-sentiment-escalates-without-model",
+      "tags": [
+        "escalation"
+      ],
+      "passed": true
+    },
+    {
+      "id": "neutral-message-does-not-trigger-sentiment-escalation",
+      "tags": [
+        "escalation"
+      ],
+      "passed": true
+    },
+    {
+      "id": "blocks-prompt-injection-before-model-call",
+      "tags": [
+        "guardrails"
+      ],
+      "passed": true
+    },
+    {
+      "id": "flags-ungrounded-citation",
+      "tags": [
+        "guardrails"
+      ],
+      "passed": true
+    },
+    {
+      "id": "flags-forbidden-refund-guarantee",
+      "tags": [
+        "guardrails"
+      ],
+      "passed": true
+    },
+    {
+      "id": "looks-up-order-status",
+      "tags": [
+        "tools"
+      ],
+      "passed": true
+    },
+    {
+      "id": "eligible-return-escalates-with-no-write-tool",
+      "tags": [
+        "tools",
+        "escalation"
+      ],
+      "passed": true
+    },
+    {
+      "id": "routes-billing-question-to-billing-specialist",
+      "tags": [
+        "routing"
+      ],
+      "passed": true
+    },
+    {
+      "id": "routes-technical-question-to-technical-specialist",
+      "tags": [
+        "routing"
+      ],
+      "passed": true
+    },
+    {
+      "id": "retrieves-returns-policy-for-a-returns-question",
+      "tags": [
+        "retrieval"
+      ],
+      "passed": true
+    },
+    {
+      "id": "retrieves-shipping-doc-for-a-delivery-question",
+      "tags": [
+        "retrieval"
+      ],
+      "passed": true
+    },
+    {
+      "id": "retrieves-both-policies-for-a-mixed-question",
+      "tags": [
+        "retrieval"
+      ],
+      "passed": true
+    },
+    {
+      "id": "generalist-answers-directly-without-handoff",
+      "tags": [
+        "routing"
+      ],
+      "passed": true
+    }
+  ]
+}
