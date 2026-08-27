@@ -3,6 +3,7 @@ import type { SqlDatabase } from "../db/pg";
 import type { RerankProvider } from "../gateway/rerank/types";
 import type { TenantContext } from "../tenancy/context";
 import { KbArticleRepository, KbChunkRepository, type KbArticle, type KbChunk } from "../db/repositories/kb-repository";
+import { resolveTextSearchConfig } from "./text-search-config";
 
 export interface RetrievedChunk {
   chunk: KbChunk;
@@ -37,6 +38,8 @@ export interface HybridSearchOptions {
   reranker?: RerankProvider;
   /** A1: called once with whether the rerank stage actually reordered this query's results — false when disabled, no provider, or it errored and fell back. Lets the caller record it on kb_retrieval_log. */
   onRerankRan?: (ran: boolean) => void;
+  /** B3: the agent's configured language (free text, e.g. "Spanish" / "es"), used to pick the Postgres text-search config for the keyword half. Absent → 'english' (pre-B3 behaviour). */
+  language?: string | null;
 }
 
 /**
@@ -128,7 +131,7 @@ export async function hybridSearch(
   const denseRanked = await chunkRepo.nearest(queryVector, poolSize, [...allowedChunkIds]);
 
   const ftsQuery = toFtsQuery(query);
-  const keywordIds = ftsQuery ? await chunkRepo.searchKeyword(ftsQuery, poolSize) : [];
+  const keywordIds = ftsQuery ? await chunkRepo.searchKeyword(ftsQuery, poolSize, resolveTextSearchConfig(opts.language)) : [];
   const keywordRanked = keywordIds.filter((id) => allowedChunkIds.has(id));
 
   const scores = new Map<string, number>();

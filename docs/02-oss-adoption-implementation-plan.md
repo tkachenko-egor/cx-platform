@@ -86,7 +86,16 @@ half of `hybridSearch` ranks in SQL via `KbChunkRepository.nearest`
 (`embedding <=> $1::vector`) instead of a JS `cosineSimilarity` full scan.
 Column left unsized (dimension is provider-dependent), exact KNN, no ANN
 index — see the B2 section below. Gate green: `npm test` 267, `eval` 15/15
-(zero movement — ordering is identical). **B3 is next.**
+(zero movement — ordering is identical).
+
+**Phase B — B3: done** on branch `b3-postgres-fts-per-language` (stacked on
+B2). Keyword search is now per-agent-language: `KbChunkRepository.searchKeyword`
+takes a Postgres text-search config resolved from `agent_defs.language_config`
+by `src/kb/text-search-config.ts` (→ `'english'` default, `'simple'` for
+languages Postgres has no stemmer for). Migration `002` drops the hardcoded
+`fts` generated column for a query-time `to_tsvector(<config>, text)` + an
+`'english'` expression index. Gate green: `npm test` 270, `eval` 15/15
+(english byte-identical). **B5 is next.**
 
 Where the implementation diverged from the plan below:
 
@@ -598,25 +607,43 @@ synchronous SQLite, a race with real async. Now awaited.
 15/15 (no movement vs B1 — dense ordering is byte-identical), `npm run seed`
 (migration `001` verified applied + column converted on the real dev DB).
 
-## B3 — Postgres full-text search (per-language config)
+## B3 — Postgres full-text search (per-language config) → **DONE**
 
-**B1 already did the base port** — `kb_chunks.fts tsvector` + GIN,
-`websearch_to_tsquery('english', …)`, `ts_rank_cd`, same RRF fusion / same
-`RRF_K = 60`, `kb_scope` filtering unchanged. What's **left for B3**:
+**What shipped** (branch `b3-postgres-fts-per-language`, stacked on B2):
 
-- The `'english'` config is hardcoded in `KbChunkRepository.searchKeyword`
-  and in the `fts` generated column. Wire it to the agent language field
-  (was migration 022, now a column on `agent_defs`). The generated column
-  can't be per-agent — either store `fts` per configured language, or drop
-  the generated column and compute `to_tsvector($lang, text)` in the query.
-- Revisit whether the keyword and dense halves should be one SQL query now
-  that both can be (B2 moves dense into SQL too) — only if it doesn't
-  obscure the fusion.
+1. **`src/kb/text-search-config.ts`** (new) — `resolveTextSearchConfig(language?)`
+   maps `agent_defs.language_config`'s free text (the admin editor field is a
+   plain input, placeholder "e.g. Ukrainian") to one of Postgres's 29 built-in
+   `regconfig`s. Nothing configured → `'english'` (pre-B3 behaviour);
+   recognised name / ISO-639-1 code / common endonym → its config; anything
+   else — including languages Postgres ships no stemmer for, like Ukrainian —
+   → `'simple'` (lowercase + split, never a *wrong* stemming).
+2. **Migration `002-kb-chunks-fts-per-language.ts`** — drops the `kb_chunks.fts`
+   generated column + `idx_kb_chunks_fts`. It was hardcoded `'english'` and
+   couldn't be per-agent: one KB collection feeds agents in different
+   languages, so the search language is a *query-time* property. Adds a GIN
+   *expression* index `to_tsvector('english', text)` so the common/default
+   path stays index-backed; other languages do an on-the-fly tsvector scan
+   (fine at this corpus size).
+3. **`KbChunkRepository.searchKeyword(query, limit, config = 'english')`** —
+   computes `to_tsvector(<config>, text)` / `websearch_to_tsquery(<config>, …)`
+   at query time. `config` is inlined (a `regconfig` must name a config, not
+   be a bound value) and re-asserted against the 29-name allow-list — same
+   safety basis as B1 inlining `'english'`. `ts_rank_cd` / RRF / `RRF_K = 60`
+   / `kb_scope` filtering all unchanged.
+4. **`hybridSearch`** — `HybridSearchOptions.language`, resolved and passed to
+   `searchKeyword`. **`runtime.ts`** passes
+   `agent.languageConfig.defaultLanguage ?? supportedLanguages?.[0]`.
 
-**Acceptance:** keyword results per-language correct; `english` path
-byte-identical to B1; `kb_scope` filtering preserved.
+**Skipped deliberately:** folding the keyword + dense halves into one SQL
+query. Both *could* be SQL now (B2 moved dense in), but the JS-side RRF fusion
+stays more legible as two ranked-id lists merged in one place — the plan
+gated this on "only if it doesn't obscure the fusion".
 
-**Effort:** S–M.
+**Gate:** `npm test` 270/270, `typecheck`, `lint` (0 errors), `npm run eval`
+15/15 (english path byte-identical — zero movement), `npm run seed`
+(migration `002` verified on the dev DB: `fts` column + old index gone,
+`idx_kb_chunks_fts_english` present).
 
 ## B5 — Row-level security as a tenancy backstop
 

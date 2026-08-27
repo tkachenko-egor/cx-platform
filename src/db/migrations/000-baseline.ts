@@ -214,6 +214,9 @@ CREATE TABLE IF NOT EXISTS kb_chunks (
   embedding jsonb NOT NULL,
   embedding_model text NOT NULL,
   token_count integer NOT NULL,
+  -- migration 002 drops this generated column: the keyword-search language is an
+  -- agent property, not a chunk property, so it moved to a query-time
+  -- to_tsvector(<config>, text). New DBs create it here then 002 removes it.
   fts tsvector GENERATED ALWAYS AS (to_tsvector('english', text)) STORED
 );
 CREATE INDEX IF NOT EXISTS idx_kb_chunks_tenant ON kb_chunks(tenant_id);
