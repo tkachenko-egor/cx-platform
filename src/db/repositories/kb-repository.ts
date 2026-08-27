@@ -145,10 +145,19 @@ function rowToChunk(row: KbChunkRow): KbChunk {
   };
 }
 
+/** Postgres text-search configs `searchKeyword` will accept inlined into SQL — the resolved output of `src/kb/text-search-config.ts`, re-checked here as defence in depth. */
+const TS_CONFIGS = new Set([
+  "arabic", "armenian", "basque", "catalan", "danish", "dutch", "english", "finnish", "french",
+  "german", "greek", "hindi", "hungarian", "indonesian", "irish", "italian", "lithuanian", "nepali",
+  "norwegian", "portuguese", "romanian", "russian", "serbian", "simple", "spanish", "swedish",
+  "tamil", "turkish", "yiddish",
+]);
+
 /**
- * FR-7 chunk storage + the keyword index. B1: the fts5 sidecar table became a
- * `tsvector` generated column (`kb_chunks.fts`) with a GIN index — nothing to
- * maintain on write, and `searchKeyword` ranks with `ts_rank_cd`.
+ * FR-7 chunk storage + the keyword search. B1 made this a `tsvector` generated
+ * column; B3 (migration 002) dropped it — the search language is an agent
+ * property, so `searchKeyword` computes `to_tsvector(<config>, text)` at query
+ * time. A GIN expression index on the `'english'` form keeps that path fast.
  */
 export class KbChunkRepository extends TenantScopedRepository {
   constructor(db: SqlDatabase, tenant: TenantContext) {
@@ -216,12 +225,20 @@ export class KbChunkRepository extends TenantScopedRepository {
     return rows.map((r) => r.id);
   }
 
-  async searchKeyword(query: string, limit: number): Promise<string[]> {
+  /**
+   * B3: `config` is a Postgres text-search config resolved from the agent's
+   * language (`src/kb/text-search-config.ts`). It is inlined rather than bound
+   * because it must name a `regconfig`, not be a value — safe because it is
+   * always one of the built-in config names (asserted here). Default `'english'`
+   * keeps the pre-B3 behaviour for an agent with no language configured.
+   */
+  async searchKeyword(query: string, limit: number, config = "english"): Promise<string[]> {
+    if (!TS_CONFIGS.has(config)) config = "simple";
     const rows = await this.db
       .prepare(
-        `SELECT id, ts_rank_cd(fts, websearch_to_tsquery('english', ?)) AS rank
+        `SELECT id, ts_rank_cd(to_tsvector('${config}', text), websearch_to_tsquery('${config}', ?)) AS rank
          FROM kb_chunks
-         WHERE tenant_id = ? AND fts @@ websearch_to_tsquery('english', ?)
+         WHERE tenant_id = ? AND to_tsvector('${config}', text) @@ websearch_to_tsquery('${config}', ?)
          ORDER BY rank DESC
          LIMIT ?`,
       )

@@ -308,7 +308,16 @@ is, now fed by an indexed candidate set.
 fixture corpus match the pre-migration ordering (modulo ANN recall);
 `npm run eval` does not regress.
 
-## B3 — Postgres full-text search
+## B3 — Postgres full-text search → **done**
+
+Shipped: B1 did the `tsvector` + GIN + `websearch_to_tsquery` / `ts_rank_cd`
+base port. B3 made the language per-agent — `searchKeyword` takes a Postgres
+text-search config resolved from `agent_defs.language_config`
+(`src/kb/text-search-config.ts`); migration `002` replaced the hardcoded
+`'english'` generated column with a query-time `to_tsvector(<config>, text)`
+plus an `'english'` expression index. Keyword+dense stayed two queries fused
+in JS (kept the fusion legible). See
+`02-oss-adoption-implementation-plan.md` for the detail.
 
 **Files:** `src/kb/retrieval.ts`, schema/migration.
 

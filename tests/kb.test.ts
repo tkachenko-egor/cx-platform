@@ -7,10 +7,11 @@ import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { KbRetrievalLogRepository } from "../src/db/repositories/kb-retrieval-log-repository";
-import { KbChunkRepository } from "../src/db/repositories/kb-repository";
+import { KbArticleRepository, KbChunkRepository } from "../src/db/repositories/kb-repository";
+import { resolveTextSearchConfig } from "../src/kb/text-search-config";
 import { chunkMarkdown } from "../src/kb/chunking";
 import { extractPdfText } from "../src/kb/pdf-extract";
-import { ingestKnowledgeBase } from "../src/kb/ingest";
+import { chunkAndEmbedArticle, ingestKnowledgeBase } from "../src/kb/ingest";
 import { hybridSearch } from "../src/kb/retrieval";
 import type { RerankProvider } from "../src/gateway/rerank/types";
 import { StubRerankProvider } from "../src/gateway/rerank/stub";
@@ -247,6 +248,52 @@ describe("hybrid retrieval", () => {
 
     expect(second.ingested).toEqual([]);
     expect(second.skipped.sort()).toEqual(["doc-a", "doc-b", "doc-c"]);
+  });
+});
+
+describe("B3: per-language keyword search", () => {
+  it("resolveTextSearchConfig maps names/codes to a Postgres config, defaults english, falls back to simple", () => {
+    expect(resolveTextSearchConfig(undefined)).toBe("english");
+    expect(resolveTextSearchConfig("")).toBe("english");
+    expect(resolveTextSearchConfig("Spanish")).toBe("spanish");
+    expect(resolveTextSearchConfig("es")).toBe("spanish");
+    expect(resolveTextSearchConfig("Español")).toBe("spanish");
+    expect(resolveTextSearchConfig("simple")).toBe("simple");
+    // Postgres ships no Ukrainian stemmer — must not throw, must not force english
+    expect(resolveTextSearchConfig("Ukrainian")).toBe("simple");
+    expect(resolveTextSearchConfig("Klingon")).toBe("simple");
+  });
+
+  it("searchKeyword stems the query and document in the given language config", async () => {
+    const db = createDb(":memory:");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
+    const embeddings = new StubEmbeddingProvider();
+    const articles = new KbArticleRepository(db, tenant);
+    const chunks = new KbChunkRepository(db, tenant);
+
+    const art = await articles.upsert({ docId: "es-1", title: "Devoluciones", audience: "customer", effective: null, contentHash: "h-es-1" });
+    await chunkAndEmbedArticle(chunks, embeddings, art.id, "## Política\nAceptamos devoluciones y reembolsos dentro de 30 días.");
+    const [chunk] = await chunks.listByTenant();
+
+    // Spanish stemmer relates the singular query "devolución" to "devoluciones" in the doc.
+    expect(await chunks.searchKeyword("devolución", 10, "spanish")).toContain(chunk.id);
+    // English / simple do not — no shared lexeme after (non-)stemming.
+    expect(await chunks.searchKeyword("devolución", 10, "english")).not.toContain(chunk.id);
+    expect(await chunks.searchKeyword("devolución", 10, "simple")).not.toContain(chunk.id);
+    // an exact token still matches regardless of config
+    expect(await chunks.searchKeyword("devoluciones", 10, "english")).toContain(chunk.id);
+  });
+
+  it("hybridSearch keyword half honours opts.language; omitting it is the english path", async () => {
+    const db = createDb(":memory:");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
+    const embeddings = new StubEmbeddingProvider();
+    await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
+
+    const scope = { audience: ["customer"] };
+    const noLang = await hybridSearch(db, tenant, scope, "skin reaction refund", 5, embeddings);
+    const english = await hybridSearch(db, tenant, scope, "skin reaction refund", 5, embeddings, { language: "English" });
+    expect(english.map((r) => r.chunk.id)).toEqual(noLang.map((r) => r.chunk.id));
   });
 });
 

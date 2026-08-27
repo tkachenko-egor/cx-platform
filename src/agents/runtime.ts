@@ -183,6 +183,8 @@ export async function runAgentTurn(
       onRerankRan: (ran) => {
         rerankRan = ran;
       },
+      // B3: keyword half stems in the agent's configured language.
+      language: agent.languageConfig.defaultLanguage ?? agent.languageConfig.supportedLanguages?.[0],
     });
 
     // Coverage-gap reporting (Phase 2 M3a): logged regardless of whether
