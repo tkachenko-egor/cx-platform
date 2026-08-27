@@ -1,4 +1,5 @@
 import type { GuardrailCheckResult } from "./types";
+import type { PiiSpan } from "./presidio";
 
 /**
  * FR-12.7/FR-6.14: every `[doc_id]`-style citation must resolve to a doc
@@ -38,18 +39,41 @@ const PHONE_PATTERN = /\+?\d[\d\s().-]{7,}\d/g;
  * streaming mode the raw text has already gone out by the time this check
  * runs, so redactedText is computed correctly here but nothing downstream
  * can un-send what already streamed.
+ *
+ * A2: when `opts.spans` is supplied (a non-null array), it is Presidio's
+ * typed entity detection for this reply and drives the check — cards, IBANs,
+ * national IDs, person names, addresses, not just email/phone. `null` or
+ * omitted means the sidecar was unavailable, so the original email/phone
+ * regexes run as the offline fallback. The attribution rule is identical in
+ * both paths: PII that appears verbatim in this turn's tool results is a
+ * legitimate relay and passes.
  */
-export function checkPiiLeakage(assistantText: string, toolResultsText: string, mode: "block" | "redact" = "block"): GuardrailCheckResult {
+export function checkPiiLeakage(
+  assistantText: string,
+  toolResultsText: string,
+  mode: "block" | "redact" = "block",
+  opts: { spans?: PiiSpan[] | null } = {},
+): GuardrailCheckResult {
   const reasons: string[] = [];
   let redactedText = assistantText;
-  for (const pattern of [EMAIL_PATTERN, PHONE_PATTERN]) {
-    for (const match of assistantText.matchAll(pattern)) {
-      if (!toolResultsText.includes(match[0])) {
-        reasons.push(`unattributed_pii:${pattern === EMAIL_PATTERN ? "email" : "phone"}`);
-        if (mode === "redact") redactedText = redactedText.split(match[0]).join("[redacted]");
+
+  if (opts.spans != null) {
+    for (const span of opts.spans) {
+      if (span.text === "" || toolResultsText.includes(span.text)) continue;
+      reasons.push(`unattributed_pii:${span.entityType.toLowerCase()}`);
+      if (mode === "redact") redactedText = redactedText.split(span.text).join("[redacted]");
+    }
+  } else {
+    for (const pattern of [EMAIL_PATTERN, PHONE_PATTERN]) {
+      for (const match of assistantText.matchAll(pattern)) {
+        if (!toolResultsText.includes(match[0])) {
+          reasons.push(`unattributed_pii:${pattern === EMAIL_PATTERN ? "email" : "phone"}`);
+          if (mode === "redact") redactedText = redactedText.split(match[0]).join("[redacted]");
+        }
       }
     }
   }
+
   if (reasons.length === 0) return { blocked: false, reasons: [] };
   return mode === "redact" ? { blocked: false, reasons, redactedText } : { blocked: true, reasons };
 }

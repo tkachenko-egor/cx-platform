@@ -21,6 +21,15 @@ export interface AgentGuardrailConfig {
      * this check runs (see src/guardrails/output.ts's checkPiiLeakage).
      */
     piiMode?: "block" | "redact";
+    /**
+     * A2: per-agent control over which Presidio entity types the PII check
+     * considers. `allow` restricts detection to those types (passed to the
+     * sidecar); `deny` drops those types from the results after analysis.
+     * Only consulted when the Presidio sidecar is reachable — the offline
+     * regex fallback always checks email + phone. Omitted → Presidio's full
+     * recognizer set.
+     */
+    piiEntities?: { allow?: string[]; deny?: string[] };
     /** Default true — refund/medical/legal promise marker list (FR-6.14). */
     forbiddenClaimsCheck?: boolean;
     /** Phase 8 M2: default true — a small built-in profanity marker list, same style as forbiddenClaimsCheck. */

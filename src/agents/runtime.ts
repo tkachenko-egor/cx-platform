@@ -15,6 +15,7 @@ import { getOrCreateSession } from "./sessions-store";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
 import type { AgentGuardrailConfig } from "../guardrails/types";
 import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
+import { analyzePii, type PiiSpan } from "../guardrails/presidio";
 import { HANDOFF_TOOL_NAME, handoffToolDefinition, parseHandoffPackage, type HandoffPackage } from "./handoff";
 import { KbRetrievalLogRepository } from "../db/repositories/kb-retrieval-log-repository";
 import { LlmCallRepository } from "../db/repositories/llm-call-repository";
@@ -312,7 +313,21 @@ export async function runAgentTurn(
 
   const loopCapHit = round >= ROUND_CAP;
 
-  const outputGuardrail = checkOutputGuardrails(guardrailConfig, finalText, citableDocs.map((d) => d.docId), toolResultTexts.join("\n"));
+  // A2: typed PII detection needs an async call to the Presidio sidecar, so
+  // it happens here and the spans are handed to the (sync) guardrail runner.
+  // Unconfigured/unreachable → analyzePii returns null and checkPiiLeakage
+  // falls back to its email/phone regexes.
+  let piiSpans: PiiSpan[] | null = null;
+  if (guardrailConfig.output?.piiLeakageCheck !== false) {
+    const piiEntities = guardrailConfig.output?.piiEntities;
+    piiSpans = await analyzePii(finalText, { entities: piiEntities?.allow });
+    if (piiSpans && piiEntities?.deny?.length) {
+      const denied = new Set(piiEntities.deny);
+      piiSpans = piiSpans.filter((s) => !denied.has(s.entityType));
+    }
+  }
+
+  const outputGuardrail = checkOutputGuardrails(guardrailConfig, finalText, citableDocs.map((d) => d.docId), toolResultTexts.join("\n"), { piiSpans });
 
   if (blockingMode) {
     if (outputGuardrail.blocked) {

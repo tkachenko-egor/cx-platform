@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createDb } from "../src/db/client";
 import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
@@ -13,6 +13,13 @@ import { runAgentTurn } from "../src/agents/runtime";
 import { buildCorePrompt } from "../src/agents/system-prompt";
 import { scanForPromptInjection } from "../src/guardrails/input";
 import { checkGroundedness, checkPiiLeakage, checkForbiddenClaims } from "../src/guardrails/output";
+import { analyzePii, type PiiSpan } from "../src/guardrails/presidio";
+
+/** Builds a PiiSpan for `needle`'s first occurrence in `text`, the way analyzePii slices from Presidio offsets. */
+function span(text: string, needle: string, entityType: string, score = 0.9): PiiSpan {
+  const start = text.indexOf(needle);
+  return { entityType, start, end: start + needle.length, score, text: needle };
+}
 
 beforeAll(() => {
   process.env.DEMO_DATE = "2026-08-21";
@@ -135,6 +142,80 @@ describe("checkPiiLeakage", () => {
   it("flags an email in the reply that never appeared in any tool result", () => {
     const result = checkPiiLeakage("You can also reach our regional manager at leaked@example.com.", "");
     expect(result.blocked).toBe(true);
+  });
+
+  describe("A2: typed Presidio spans", () => {
+    const reply = "Send it to Jane Doe, card 4111 1111 1111 1111, IBAN DE89 3704 0044 0532 0130 00.";
+    const spans: PiiSpan[] = [
+      span(reply, "Jane Doe", "PERSON"),
+      span(reply, "4111 1111 1111 1111", "CREDIT_CARD"),
+      span(reply, "DE89 3704 0044 0532 0130 00", "IBAN_CODE"),
+    ];
+
+    it("catches a card number, an IBAN and a person name in an unattributed reply", () => {
+      const result = checkPiiLeakage(reply, "", "block", { spans });
+      expect(result.blocked).toBe(true);
+      expect(result.reasons).toEqual(
+        expect.arrayContaining(["unattributed_pii:person", "unattributed_pii:credit_card", "unattributed_pii:iban_code"]),
+      );
+    });
+
+    it("passes PII that appears verbatim in this turn's tool results — attribution logic is unchanged", () => {
+      const toolResults = JSON.stringify({ customer: { name: "Jane Doe" } });
+      const result = checkPiiLeakage("Your account is under Jane Doe.", toolResults, "block", {
+        spans: [span("Your account is under Jane Doe.", "Jane Doe", "PERSON")],
+      });
+      expect(result.blocked).toBe(false);
+    });
+
+    it("redact mode masks each typed span in place instead of blocking", () => {
+      const result = checkPiiLeakage(reply, "", "redact", { spans });
+      expect(result.blocked).toBe(false);
+      expect(result.redactedText).toContain("[redacted]");
+      expect(result.redactedText).not.toContain("Jane Doe");
+      expect(result.redactedText).not.toContain("4111 1111 1111 1111");
+    });
+
+    it("falls back to the email/phone regexes when spans is null (sidecar unavailable)", () => {
+      const result = checkPiiLeakage("Reach the manager at leaked@example.com.", "", "block", { spans: null });
+      expect(result.blocked).toBe(true);
+      expect(result.reasons).toEqual(["unattributed_pii:email"]);
+    });
+  });
+});
+
+describe("A2: analyzePii", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.PRESIDIO_URL;
+  });
+
+  it("returns null when no sidecar is configured, so the caller falls back", async () => {
+    expect(await analyzePii("Jane Doe lives at 10 Downing Street")).toBeNull();
+  });
+
+  it("returns null (not a throw) when the sidecar is unreachable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNREFUSED")));
+    expect(await analyzePii("Jane Doe", { url: "http://presidio.local" })).toBeNull();
+  });
+
+  it("maps Presidio analyzer results into spans with the matched substring", async () => {
+    const text = "Card 4111111111111111 belongs to Jane Doe";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          { entity_type: "CREDIT_CARD", start: 5, end: 21, score: 0.99 },
+          { entity_type: "PERSON", start: 33, end: 41, score: 0.85 },
+        ],
+      }),
+    );
+    const spans = await analyzePii(text, { url: "http://presidio.local" });
+    expect(spans).toEqual([
+      { entityType: "CREDIT_CARD", start: 5, end: 21, score: 0.99, text: "4111111111111111" },
+      { entityType: "PERSON", start: 33, end: 41, score: 0.85, text: "Jane Doe" },
+    ]);
   });
 });
 

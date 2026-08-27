@@ -1,4 +1,5 @@
 import type { AgentGuardrailConfig, GuardrailCheckResult } from "./types";
+import type { PiiSpan } from "./presidio";
 import { scanForPromptInjection } from "./input";
 import { checkGroundedness, checkPiiLeakage, checkForbiddenClaims, checkProfanity } from "./output";
 
@@ -39,12 +40,24 @@ export function checkRetrievedChunkGuardrails(config: AgentGuardrailConfig, chun
   return { blocked: reasons.length > 0, reasons };
 }
 
-/** Runs once the tool loop has a final assistant reply. */
-export function checkOutputGuardrails(config: AgentGuardrailConfig, assistantText: string, citableDocIds: string[], toolResultsText: string): GuardrailCheckResult {
+/**
+ * Runs once the tool loop has a final assistant reply.
+ *
+ * A2: `opts.piiSpans` is Presidio's typed detection for `assistantText`,
+ * resolved by the caller (it needs an async HTTP call, kept out of this
+ * sync function). `null`/omitted → checkPiiLeakage uses its regex fallback.
+ */
+export function checkOutputGuardrails(
+  config: AgentGuardrailConfig,
+  assistantText: string,
+  citableDocIds: string[],
+  toolResultsText: string,
+  opts: { piiSpans?: PiiSpan[] | null } = {},
+): GuardrailCheckResult {
   const outputConfig = config.output ?? {};
   const checks: GuardrailCheckResult[] = [];
   if (outputConfig.groundednessCheck !== false) checks.push(checkGroundedness(assistantText, citableDocIds));
-  if (outputConfig.piiLeakageCheck !== false) checks.push(checkPiiLeakage(assistantText, toolResultsText, outputConfig.piiMode ?? "block"));
+  if (outputConfig.piiLeakageCheck !== false) checks.push(checkPiiLeakage(assistantText, toolResultsText, outputConfig.piiMode ?? "block", { spans: opts.piiSpans }));
   if (outputConfig.forbiddenClaimsCheck !== false) checks.push(checkForbiddenClaims(assistantText));
   if (outputConfig.profanityCheck !== false) checks.push(checkProfanity(assistantText));
   return merge(...checks);
