@@ -39,15 +39,15 @@ export function resolveCancelOrderSettings(settings?: Record<string, unknown>): 
 }
 
 /** FR-8.5's first real write path. Approval-policy gating happens one layer up, in src/tools/registry.ts. */
-export function runCancelOrder(db: Database.Database, tenant: TenantContext, input: CancelOrderInput, settings?: Record<string, unknown>) {
+export async function runCancelOrder(db: Database.Database, tenant: TenantContext, input: CancelOrderInput, settings?: Record<string, unknown>) {
   const { mutableStatuses } = resolveCancelOrderSettings(settings);
   const repo = new CommerceRepo(db, tenant);
-  const order = repo.findOrder(input.order_id);
+  const order = await repo.findOrder(input.order_id);
   if (!order) return { ok: false as const, error: `No order found for ${input.order_id}` };
   if (!mutableStatuses.includes(order.status)) {
     return { ok: false as const, error: `Order ${input.order_id} is already ${order.status} and can no longer be cancelled.` };
   }
 
-  repo.cancelOrder(input.order_id);
+  await repo.cancelOrder(input.order_id);
   return { ok: true as const, order_id: input.order_id, status: "Cancelled" as const };
 }

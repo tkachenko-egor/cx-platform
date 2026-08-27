@@ -29,8 +29,8 @@ export default async function AdminDashboardPage() {
 
   const collectionsCount = (await new KbCollectionRepository(db, tenant).list()).length;
 
-  const containment = getContainmentRate(db, tenant);
-  const volume = getAgentVolume(db, tenant);
+  const containment = await getContainmentRate(db, tenant);
+  const volume = await getAgentVolume(db, tenant);
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-12">

@@ -26,14 +26,16 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const { agent: agentKey } = await searchParams;
   const options = agentKey ? { agentKey } : {};
 
-  const volume = getAgentVolume(db, tenant, options);
-  const containment = getContainmentRate(db, tenant, options);
-  const escalationReasons = getEscalationReasonBreakdown(db, tenant, options);
-  const latency = getLatencyPercentiles(db, tenant, options);
+  const volume = await getAgentVolume(db, tenant, options);
+  const containment = await getContainmentRate(db, tenant, options);
+  const escalationReasons = await getEscalationReasonBreakdown(db, tenant, options);
+  const latency = await getLatencyPercentiles(db, tenant, options);
   const agentKeys = [...new Set((await new AgentDefRepository(db, tenant).listAllPublished()).map((a) => a.key))];
-  const versionPerformance = (agentKey ? [agentKey] : agentKeys)
-    .map((key) => ({ key, versions: getAgentVersionPerformance(db, tenant, key) }))
-    .filter((v) => v.versions.length > 0);
+  const versionPerformance = (
+    await Promise.all(
+      (agentKey ? [agentKey] : agentKeys).map(async (key) => ({ key, versions: await getAgentVersionPerformance(db, tenant, key) })),
+    )
+  ).filter((v) => v.versions.length > 0);
   const totalRuns = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.runCount, 0), 0);
   const totalCost = versionPerformance.reduce((sum, { versions }) => sum + versions.reduce((s, v) => s + v.avgCostUsd * v.runCount, 0), 0);
   const avgCostPerRun = totalRuns > 0 ? totalCost / totalRuns : null;

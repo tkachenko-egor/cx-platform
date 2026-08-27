@@ -10,7 +10,7 @@ export interface AgentVolumeRow {
 const EXCLUDE_PREVIEW_RUNS = `NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = runs.conversation_id AND pc.channel = 'test_harness')`;
 
 /** Volume per agent — a straight COUNT over `runs`, the join point every debugging/cost question already uses. Phase 5 M6: optional agentKey scopes this to one agent's own page instead of the tenant-wide breakdown. */
-export function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): AgentVolumeRow[] {
+export async function getAgentVolume(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<AgentVolumeRow[]> {
   const conditions = ["tenant_id = ?", EXCLUDE_PREVIEW_RUNS];
   const params: unknown[] = [tenant.tenantId];
   if (options.agentKey) {
@@ -36,7 +36,7 @@ export interface EscalationReasonCount {
  * on the desk detail page, never aggregated. Small enough at this scale to
  * tally in JS rather than reaching for SQLite's json_each.
  */
-export function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): EscalationReasonCount[] {
+export async function getEscalationReasonBreakdown(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<EscalationReasonCount[]> {
   const conditions = [
     "tenant_id = ?",
     "type = 'escalated'",
@@ -80,7 +80,7 @@ export interface ContainmentRate {
  * at all" is the honest substitute, and M1's event-integrity fix is what
  * makes it reliable.
  */
-export function getContainmentRate(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): ContainmentRate {
+export async function getContainmentRate(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<ContainmentRate> {
   let conversationIds: string[];
   if (options.agentKey) {
     // Scoped to one agent: a conversation counts if that agent handled at least one run in it — runs.agent_key, not
@@ -122,7 +122,7 @@ export interface LatencyPercentiles {
 }
 
 /** No PERCENTILE_CONT in SQLite — small enough at this scale to sort in JS rather than reach for a window-function approximation. */
-export function getLatencyPercentiles(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): LatencyPercentiles {
+export async function getLatencyPercentiles(db: Database.Database, tenant: TenantContext, options: { agentKey?: string; since?: string } = {}): Promise<LatencyPercentiles> {
   const conditions = ["lc.tenant_id = ?", "NOT EXISTS (SELECT 1 FROM conversations pc WHERE pc.id = r.conversation_id AND pc.channel = 'test_harness')"];
   const params: unknown[] = [tenant.tenantId];
   let query = `SELECT lc.latency_ms as latencyMs FROM llm_calls lc JOIN runs r ON r.id = lc.run_id AND r.tenant_id = lc.tenant_id`;
@@ -151,7 +151,7 @@ export interface AgentVersionPerformance {
 }
 
 /** Phase 2 M7a: the read side of M6a's A/B tests — per-version cost/latency/escalation-rate comparison. */
-export function getAgentVersionPerformance(db: Database.Database, tenant: TenantContext, agentKey: string, options: { since?: string } = {}): AgentVersionPerformance[] {
+export async function getAgentVersionPerformance(db: Database.Database, tenant: TenantContext, agentKey: string, options: { since?: string } = {}): Promise<AgentVersionPerformance[]> {
   const sinceClause = options.since ? "AND started_at >= ?" : "";
   const listParams = options.since ? [tenant.tenantId, agentKey, options.since] : [tenant.tenantId, agentKey];
   const versions = (

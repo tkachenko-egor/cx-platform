@@ -24,7 +24,7 @@ async function seededTenant() {
 describe("lookup_order", () => {
   it("finds a seeded order and returns an order_status card", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runLookupOrder(db, tenant, { order_id: "ORD-100001" });
+    const result = await runLookupOrder(db, tenant, { order_id: "ORD-100001" });
     expect(result.ok).toBe(true);
     expect(result.found).toBe(true);
     if (result.found && !("multiple" in result)) {
@@ -35,7 +35,7 @@ describe("lookup_order", () => {
 
   it("returns found:false (not an error) for an unknown order", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runLookupOrder(db, tenant, { order_id: "ORD-999999" });
+    const result = await runLookupOrder(db, tenant, { order_id: "ORD-999999" });
     expect(result).toEqual({ ok: true, found: false });
   });
 });
@@ -94,7 +94,7 @@ describe("check_return_eligibility — the centerpiece extended-window override"
 describe("search_products", () => {
   it("returns a product_results card and filters on free-form facets rather than a fixed taxonomy", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runSearchProducts(db, tenant, { inStock: true, limit: 5, category: "Electronics" });
+    const result = await runSearchProducts(db, tenant, { inStock: true, limit: 5, category: "Electronics" });
     expect(result.ok).toBe(true);
     expect(result.card.kind).toBe("product_results");
     expect(result.products.length).toBeGreaterThan(0);
@@ -103,15 +103,15 @@ describe("search_products", () => {
 
   it("matches a tag without it being an enum in code", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runSearchProducts(db, tenant, { inStock: true, limit: 10, tag: "wireless" });
+    const result = await runSearchProducts(db, tenant, { inStock: true, limit: 10, tag: "wireless" });
     expect(result.products.length).toBeGreaterThan(0);
     expect(result.products.every((p) => p.tags.includes("wireless"))).toBe(true);
   });
 
   it("formats prices in the currency from tool settings", async () => {
     const { db, tenant } = await seededTenant();
-    const usd = runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" });
-    const eur = runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" }, { currency: "EUR" });
+    const usd = await runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" });
+    const eur = await runSearchProducts(db, tenant, { inStock: true, limit: 1, category: "Kitchen" }, { currency: "EUR" });
     expect(usd.products[0].price.startsWith("$")).toBe(true);
     expect(eur.products[0].price.startsWith("€")).toBe(true);
   });

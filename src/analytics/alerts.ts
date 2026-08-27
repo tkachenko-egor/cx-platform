@@ -21,7 +21,7 @@ export async function getActiveAlerts(db: Database.Database, tenant: Tenant): Pr
   const { maxHandoffRatePct, minCsatScore } = tenant.alertThresholds;
 
   if (maxHandoffRatePct != null) {
-    const containment = getContainmentRate(db, tenant);
+    const containment = await getContainmentRate(db, tenant);
     if (containment.totalConversations > 0) {
       const handoffRatePct = (1 - containment.rate) * 100;
       if (handoffRatePct > maxHandoffRatePct) {

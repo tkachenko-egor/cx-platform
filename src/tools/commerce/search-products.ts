@@ -51,10 +51,10 @@ function splitTags(tags: string | null): string[] {
     .filter(Boolean);
 }
 
-export function runSearchProducts(db: Database.Database, tenant: TenantContext, input: SearchProductsInput, settings?: Record<string, unknown>) {
+export async function runSearchProducts(db: Database.Database, tenant: TenantContext, input: SearchProductsInput, settings?: Record<string, unknown>) {
   const { currency } = resolveSearchProductsSettings(settings);
   const repo = new CommerceRepo(db, tenant);
-  const rows = repo.searchProducts(input);
+  const rows = await repo.searchProducts(input);
 
   const products = rows.map((p) => ({
     product_id: p.product_id,

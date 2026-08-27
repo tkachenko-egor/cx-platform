@@ -42,7 +42,7 @@ export default async function DeskPage({ searchParams }: { searchParams: Promise
   const conversationRepo = new ConversationRepository(db, tenant);
   const allConversations = slaOnly ? await conversationRepo.listSlaBreaching(nowIso) : await conversationRepo.listByStates(["awaiting_human", "human_active"]);
   const channelFiltered = activeChannel === "all" ? allConversations : allConversations.filter((c) => c.channel === activeChannel);
-  const costs = getConversationCostSummaries(
+  const costs = await getConversationCostSummaries(
     db,
     tenant,
     channelFiltered.map((c) => c.id),

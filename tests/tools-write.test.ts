@@ -27,25 +27,25 @@ async function seededTenant() {
 describe("runCancelOrder", () => {
   it("cancels an order still in Processing status", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runCancelOrder(db, tenant, { order_id: PROCESSING_ORDER });
+    const result = await runCancelOrder(db, tenant, { order_id: PROCESSING_ORDER });
     expect(result).toEqual({ ok: true, order_id: PROCESSING_ORDER, status: "Cancelled" });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Cancelled");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Cancelled");
   });
 
   it("refuses to cancel an order that has already shipped/delivered", async () => {
     const { db, tenant } = await seededTenant();
-    const result = runCancelOrder(db, tenant, { order_id: DELIVERED_ORDER });
+    const result = await runCancelOrder(db, tenant, { order_id: DELIVERED_ORDER });
     expect(result.ok).toBe(false);
-    expect(new CommerceRepo(db, tenant).findOrder(DELIVERED_ORDER)?.status).toBe("Delivered");
+    expect((await new CommerceRepo(db, tenant).findOrder(DELIVERED_ORDER))?.status).toBe("Delivered");
   });
 
   it("takes its cancellable statuses from per-agent tool settings", async () => {
     const { db, tenant } = await seededTenant();
-    expect(runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER }).ok).toBe(false);
+    expect((await runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER })).ok).toBe(false);
 
-    const widened = runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER }, { mutableStatuses: ["Processing", "InTransit"] });
+    const widened = await runCancelOrder(db, tenant, { order_id: IN_TRANSIT_ORDER }, { mutableStatuses: ["Processing", "InTransit"] });
     expect(widened.ok).toBe(true);
-    expect(new CommerceRepo(db, tenant).findOrder(IN_TRANSIT_ORDER)?.status).toBe("Cancelled");
+    expect((await new CommerceRepo(db, tenant).findOrder(IN_TRANSIT_ORDER))?.status).toBe("Cancelled");
   });
 });
 
@@ -79,7 +79,7 @@ describe("executeTool — sandbox environment (Phase 7 M2)", () => {
     const result = await executeTool(db, tenant, "CONV-6", "run-1", "cancel_order", { order_id: PROCESSING_ORDER }, { sandbox: true });
 
     expect(result).toMatchObject({ ok: true, dryRun: true });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Processing");
     expect(await new ToolApprovalRepository(db, tenant).listPendingByConversation("CONV-6")).toHaveLength(0);
 
     // Still logged for visibility even though nothing actually ran.
@@ -100,7 +100,7 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
 
     const result = await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(result).toMatchObject({ ok: false, needsConfirmation: true });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Processing");
   });
 
   it("still defers on a same-turn retry — the model looping is not the customer confirming", async () => {
@@ -111,7 +111,7 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
     const secondSameTurn = await executeTool(db, tenant, "CONV-2", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
 
     expect(secondSameTurn).toMatchObject({ ok: false, needsConfirmation: true });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Processing");
   });
 
   it("executes once the same request is re-issued in a later turn (the customer's confirmation)", async () => {
@@ -126,7 +126,7 @@ describe("executeTool — confirm_with_customer approval policy (FR-8.5)", () =>
     const confirmed = await executeTool(db, tenant, "CONV-2", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
 
     expect(confirmed).toEqual({ ok: true, order_id: PROCESSING_ORDER, status: "Cancelled" });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Cancelled");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Cancelled");
 
     // The approval created on the first attempt is now marked approved, not left pending.
     expect(await approvals.listPendingByConversation("CONV-2")).toHaveLength(0);
@@ -145,7 +145,7 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
 
     const result = await executeTool(db, tenant, "CONV-3", "run-1", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(result).toMatchObject({ ok: false, needsApproval: true });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Processing");
 
     const pending = await new ToolApprovalRepository(db, tenant).listPendingByConversation("CONV-3");
     expect(pending).toHaveLength(1);
@@ -184,6 +184,6 @@ describe("executeTool — require_human_approval approval policy (FR-8.5)", () =
 
     const retry = await executeTool(db, tenant, "CONV-5", "run-2", "cancel_order", { order_id: PROCESSING_ORDER });
     expect(retry).toMatchObject({ ok: false, denied: true });
-    expect(new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER)?.status).toBe("Processing");
+    expect((await new CommerceRepo(db, tenant).findOrder(PROCESSING_ORDER))?.status).toBe("Processing");
   });
 });

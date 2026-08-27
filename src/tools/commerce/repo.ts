@@ -65,42 +65,42 @@ export class CommerceRepo extends TenantScopedRepository {
     super(db, tenant);
   }
 
-  findOrder(orderId: string): OrderRow | undefined {
+  async findOrder(orderId: string): Promise<OrderRow | undefined> {
     return this.db.prepare(`SELECT * FROM orders WHERE tenant_id = ? AND order_id = ?`).get(this.tenantId, orderId) as OrderRow | undefined;
   }
 
-  findCustomer(customerId: string): CustomerRow | undefined {
+  async findCustomer(customerId: string): Promise<CustomerRow | undefined> {
     return this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?`).get(this.tenantId, customerId) as CustomerRow | undefined;
   }
 
-  findCustomerByEmail(email: string): CustomerRow | undefined {
+  async findCustomerByEmail(email: string): Promise<CustomerRow | undefined> {
     return this.db.prepare(`SELECT * FROM customers WHERE tenant_id = ? AND lower(email) = lower(?)`).get(this.tenantId, email) as CustomerRow | undefined;
   }
 
-  findLinesForOrder(orderId: string): LineRow[] {
+  async findLinesForOrder(orderId: string): Promise<LineRow[]> {
     return this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND order_id = ?`).all(this.tenantId, orderId) as LineRow[];
   }
 
-  findLine(lineId: string): LineRow | undefined {
+  async findLine(lineId: string): Promise<LineRow | undefined> {
     return this.db.prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND line_id = ?`).get(this.tenantId, lineId) as LineRow | undefined;
   }
 
-  findLineByProductName(orderId: string, productName: string): LineRow | undefined {
+  async findLineByProductName(orderId: string, productName: string): Promise<LineRow | undefined> {
     return this.db
       .prepare(`SELECT * FROM order_lines WHERE tenant_id = ? AND order_id = ? AND lower(product_name) = lower(?) LIMIT 1`)
       .get(this.tenantId, orderId, productName) as LineRow | undefined;
   }
 
-  findProduct(productId: string): ProductRow | undefined {
+  async findProduct(productId: string): Promise<ProductRow | undefined> {
     return this.db.prepare(`SELECT * FROM products WHERE tenant_id = ? AND product_id = ?`).get(this.tenantId, productId) as ProductRow | undefined;
   }
 
   /** FR-8.5's first real write path — see cancel-order.ts for the status gate around it. */
-  cancelOrder(orderId: string): void {
+  async cancelOrder(orderId: string): Promise<void> {
     this.db.prepare(`UPDATE orders SET status = 'Cancelled' WHERE tenant_id = ? AND order_id = ?`).run(this.tenantId, orderId);
   }
 
-  findOrdersByCustomer(customerId: string, limit: number): { orders: OrderRow[]; total: number } {
+  async findOrdersByCustomer(customerId: string, limit: number): Promise<{ orders: OrderRow[]; total: number }> {
     const orders = this.db
       .prepare(`SELECT * FROM orders WHERE tenant_id = ? AND customer_id = ? ORDER BY order_date DESC LIMIT ?`)
       .all(this.tenantId, customerId, limit) as OrderRow[];
@@ -109,7 +109,7 @@ export class CommerceRepo extends TenantScopedRepository {
   }
 
   /** Free-form facets only — no fixed vertical taxonomy, so any tenant's catalogue works unchanged. */
-  searchProducts(input: { query?: string; category?: string; tag?: string; priceMax?: number; inStock?: boolean; limit: number }): ProductRow[] {
+  async searchProducts(input: { query?: string; category?: string; tag?: string; priceMax?: number; inStock?: boolean; limit: number }): Promise<ProductRow[]> {
     const clauses: string[] = [`tenant_id = ?`];
     const params: unknown[] = [this.tenantId];
 

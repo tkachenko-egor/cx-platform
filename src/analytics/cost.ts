@@ -8,7 +8,7 @@ export interface ConversationCostSummary {
 }
 
 /** FR-11.6: cost per conversation. Joins runs -> llm_calls, per the data-model sketch's "almost every debugging and cost question is answered by joining from here." */
-export function getConversationCostSummaries(db: Database.Database, tenant: TenantContext, conversationIds: string[]): Map<string, ConversationCostSummary> {
+export async function getConversationCostSummaries(db: Database.Database, tenant: TenantContext, conversationIds: string[]): Promise<Map<string, ConversationCostSummary>> {
   if (conversationIds.length === 0) return new Map();
   const placeholders = conversationIds.map(() => "?").join(",");
   const rows = db

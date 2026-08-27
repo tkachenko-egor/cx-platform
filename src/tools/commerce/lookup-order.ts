@@ -75,12 +75,12 @@ function trackingUrl(carrier: string | null, trackingNumber: string | null): str
   return `https://track.example.com/${encodeURIComponent(carrier)}/${encodeURIComponent(trackingNumber)}`;
 }
 
-function buildOrderResult(repo: CommerceRepo, orderId: string, currency: string) {
-  const order = repo.findOrder(orderId);
+async function buildOrderResult(repo: CommerceRepo, orderId: string, currency: string) {
+  const order = await repo.findOrder(orderId);
   if (!order) return { ok: true as const, found: false as const };
 
-  const customer = repo.findCustomer(order.customer_id);
-  const lines = repo.findLinesForOrder(orderId);
+  const customer = await repo.findCustomer(order.customer_id);
+  const lines = await repo.findLinesForOrder(orderId);
   const todayStr = today();
   const days = daysSinceDelivery(order, todayStr);
   const eta = etaLabel(order, todayStr);
@@ -145,38 +145,40 @@ function buildOrderResult(repo: CommerceRepo, orderId: string, currency: string)
       loyalty_tier: customer.loyalty_tier,
       country: customer.country,
     },
-    lines: lines.map((l) => {
-      const product = repo.findProduct(l.product_id);
-      return {
-        line_id: l.line_id,
-        product_id: l.product_id,
-        product_name: l.product_name,
-        sku: l.sku,
-        quantity: l.quantity,
-        unit_price: formatMoney(l.unit_price, currency),
-        line_total: formatMoney(l.line_total, currency),
-        batch_number: l.batch_number,
-        expiry_date: l.expiry_date,
-        is_opened: l.is_opened,
-        is_promotional_item: Boolean(product?.is_promotional_item),
-        stock_qty: product?.stock_qty ?? 0,
-      };
-    }),
+    lines: await Promise.all(
+      lines.map(async (l) => {
+        const product = await repo.findProduct(l.product_id);
+        return {
+          line_id: l.line_id,
+          product_id: l.product_id,
+          product_name: l.product_name,
+          sku: l.sku,
+          quantity: l.quantity,
+          unit_price: formatMoney(l.unit_price, currency),
+          line_total: formatMoney(l.line_total, currency),
+          batch_number: l.batch_number,
+          expiry_date: l.expiry_date,
+          is_opened: l.is_opened,
+          is_promotional_item: Boolean(product?.is_promotional_item),
+          stock_qty: product?.stock_qty ?? 0,
+        };
+      }),
+    ),
     card: { kind: "order_status" as const, data: card },
   };
 }
 
-export function runLookupOrder(db: Database.Database, tenant: TenantContext, input: LookupOrderInput, settings?: Record<string, unknown>) {
+export async function runLookupOrder(db: Database.Database, tenant: TenantContext, input: LookupOrderInput, settings?: Record<string, unknown>) {
   const { currency } = resolveLookupOrderSettings(settings);
   const repo = new CommerceRepo(db, tenant);
-  if (input.order_id) return buildOrderResult(repo, input.order_id, currency);
+  if (input.order_id) return await buildOrderResult(repo, input.order_id, currency);
 
-  const customer = repo.findCustomerByEmail(input.email!);
+  const customer = await repo.findCustomerByEmail(input.email!);
   if (!customer) return { ok: true as const, found: false as const };
 
-  const { orders, total } = repo.findOrdersByCustomer(customer.customer_id, 5);
+  const { orders, total } = await repo.findOrdersByCustomer(customer.customer_id, 5);
   if (orders.length === 0) return { ok: true as const, found: false as const };
-  if (orders.length === 1 && total === 1) return buildOrderResult(repo, orders[0].order_id, currency);
+  if (orders.length === 1 && total === 1) return await buildOrderResult(repo, orders[0].order_id, currency);
 
   return {
     ok: true as const,

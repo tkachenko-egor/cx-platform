@@ -46,18 +46,18 @@ const ALTERNATIVE_ACTION_MAP: Record<string, string> = {
 export async function runCheckReturnEligibility(db: Database.Database, tenant: TenantContext, input: CheckReturnEligibilityInput, settings?: Record<string, unknown>) {
   const policy = resolveReturnPolicy(settings);
   const repo = new CommerceRepo(db, tenant);
-  const order = repo.findOrder(input.order_id);
+  const order = await repo.findOrder(input.order_id);
   if (!order) return { ok: false as const, error: `No order found for ${input.order_id}` };
 
-  const customer = repo.findCustomer(order.customer_id);
+  const customer = await repo.findCustomer(order.customer_id);
   if (!customer) return { ok: false as const, error: `Order ${input.order_id} has no matching customer` };
 
-  const line = input.line_id ? repo.findLine(input.line_id) : input.product_name ? repo.findLineByProductName(input.order_id, input.product_name) : undefined;
+  const line = input.line_id ? await repo.findLine(input.line_id) : input.product_name ? await repo.findLineByProductName(input.order_id, input.product_name) : undefined;
   if (!line || line.order_id !== input.order_id) {
     return { ok: false as const, error: `Could not find that item on order ${input.order_id}` };
   }
 
-  const product = repo.findProduct(line.product_id);
+  const product = await repo.findProduct(line.product_id);
   if (!product) return { ok: false as const, error: `Product ${line.product_id} not found` };
 
   const ctx: EligibilityContext = {

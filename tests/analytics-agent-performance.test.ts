@@ -40,7 +40,7 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     await runs.start({ conversationId: c1.id, agentKey: "general", agentVersion: 1, trigger: "customer_message" });
     await runs.start({ conversationId: c1.id, agentKey: "billing", agentVersion: 1, trigger: "customer_message" });
 
-    const volume = getAgentVolume(db, tenant);
+    const volume = await getAgentVolume(db, tenant);
     expect(volume).toEqual([
       { agentKey: "general", runCount: 2 },
       { agentKey: "billing", runCount: 1 },
@@ -55,7 +55,7 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     const escalated = await conversations.create({ channel: "widget", agentKey: "general" });
     await events.append({ conversationId: escalated.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
-    const rate = getContainmentRate(db, tenant);
+    const rate = await getContainmentRate(db, tenant);
     expect(rate).toEqual({ totalConversations: 2, containedConversations: 1, rate: 0.5 });
     expect(contained.id).not.toBe(escalated.id);
   });
@@ -69,7 +69,7 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     await events.append({ conversationId: c1.id, type: "escalated", payload: { reasons: ["human_request", "negative_sentiment"] }, actor: "system" });
     await events.append({ conversationId: c2.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
-    const breakdown = getEscalationReasonBreakdown(db, tenant);
+    const breakdown = await getEscalationReasonBreakdown(db, tenant);
     expect(breakdown).toEqual([
       { reason: "human_request", count: 2 },
       { reason: "negative_sentiment", count: 1 },
@@ -88,10 +88,10 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     for (const ms of [100, 200, 300, 400, 500]) await llmCalls.record(llmCall(generalRun.id, { latencyMs: ms }));
     await llmCalls.record(llmCall(billingRun.id, { latencyMs: 9000 }));
 
-    const overall = getLatencyPercentiles(db, tenant);
+    const overall = await getLatencyPercentiles(db, tenant);
     expect(overall.count).toBe(6);
 
-    const generalOnly = getLatencyPercentiles(db, tenant, { agentKey: "general" });
+    const generalOnly = await getLatencyPercentiles(db, tenant, { agentKey: "general" });
     expect(generalOnly).toEqual({ p50: 300, p95: 500, count: 5 });
   });
 
@@ -111,7 +111,7 @@ describe("agent-performance analytics (Phase 2 M7a)", () => {
     await llmCalls.record(llmCall(runB.id, { costUsd: 0.02, latencyMs: 200 }));
     await events.append({ conversationId: cB.id, type: "escalated", payload: { reasons: ["human_request"] }, actor: "system" });
 
-    const perf = getAgentVersionPerformance(db, tenant, "general");
+    const perf = await getAgentVersionPerformance(db, tenant, "general");
     expect(perf).toEqual([
       { agentVersion: 1, runCount: 1, avgCostUsd: 0.01, avgLatencyMs: 100, escalationRate: 0 },
       { agentVersion: 2, runCount: 1, avgCostUsd: 0.02, avgLatencyMs: 200, escalationRate: 1 },

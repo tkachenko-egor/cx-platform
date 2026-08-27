@@ -30,6 +30,7 @@ export function seedCommerceBusinessData(db: Database.Database, tenantId: string
   const orderLines = readCsv<Record<string, string>>("order_lines.csv");
   const products = readCsv<Record<string, string>>("products.csv");
 
+  // B1: real async tx, pinned pooled client — sync better-sqlite3 tx for now.
   const run = db.transaction(() => {
     db.prepare(`DELETE FROM order_lines WHERE tenant_id = ?`).run(tenantId);
     db.prepare(`DELETE FROM orders WHERE tenant_id = ?`).run(tenantId);
