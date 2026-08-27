@@ -32,6 +32,42 @@ Phase B.
 
 ---
 
+## Status
+
+**Phase A (A1–A7): all shipped**, one commit per task, each on its own
+branch (`a1-cross-encoder-rerank` → `a7-eval-reporting`, stacked). Full
+gate green at the tip: `npm test` (266), `typecheck`, `lint` (0 errors),
+`npm run eval` (15/15).
+
+Where the implementation diverged from the plan below:
+
+- **A2** — kept `checkPiiLeakage` / `checkOutputGuardrails` *synchronous*
+  instead of the predicted async ripple. The one Presidio HTTP call is
+  made in `runtime.ts`; resolved spans are passed down. No SDK — raw
+  fetch (`PRESIDIO_URL`).
+- **A3** — `contextRecall` / `contextPrecision` are deterministic and
+  gated. **Faithfulness is plumbed but always reported "skipped"**:
+  computing it needs a judge model *and* retrieved-chunk-text threaded
+  through `runAgentTurn` (out of A3's file scope). Verified: `KB_TOP_K=1`
+  fails the gate on context recall.
+- **A4** — added `INJECTION_PATTERNS` (4 regexes) alongside the string
+  list for the override/exfiltration families; despaced matching for
+  markers ≥12 chars.
+- **A5** — Docling via a raw-fetch sidecar (`DOCLING_URL`), `pdf-parse`
+  kept as the offline fallback. `chunkMarkdown` now splits on any H2+
+  heading (was H2-only); `.md` KB output unchanged. `.gitattributes`
+  added (`*.pdf binary`) for the fixture.
+- **A6** — OTLP/HTTP JSON built by hand, **no OpenTelemetry SDK
+  dependency** (house style). Touched `gateway.ts` + `registry.ts` (one
+  line each) so the exported span tree actually carries tokens/cost and a
+  span per tool call — the roadmap's "no call sites change" could not
+  co-exist with its "spans covering … each tool call" acceptance.
+- **A7** — `scripts/eval/report.ts` + `baseline.json`; `npm run eval`
+  now writes `report.latest.{json,md}` (git-ignored) and prints a
+  baseline diff. `npm run eval:baseline` promotes a run.
+
+---
+
 ## Current-state notes that every task depends on
 
 - **`createDb(location)`** (`src/db/client.ts`) loads `schema.sql`
