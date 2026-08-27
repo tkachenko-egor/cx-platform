@@ -7,6 +7,7 @@ import { TenantRepository } from "../src/db/repositories/tenant-repository";
 import { ModelAliasRepository } from "../src/db/repositories/model-alias-repository";
 import { AgentDefRepository } from "../src/db/repositories/agent-def-repository";
 import { KbRetrievalLogRepository } from "../src/db/repositories/kb-retrieval-log-repository";
+import { KbChunkRepository } from "../src/db/repositories/kb-repository";
 import { chunkMarkdown } from "../src/kb/chunking";
 import { extractPdfText } from "../src/kb/pdf-extract";
 import { ingestKnowledgeBase } from "../src/kb/ingest";
@@ -211,6 +212,29 @@ describe("hybrid retrieval", () => {
     // A provider present but the agent not opted in (rerank absent) is also a no-op.
     const notOptedIn = await hybridSearch(db, tenant, { audience: ["customer"] }, query, 3, embeddings, { reranker: new StubRerankProvider() });
     expect(notOptedIn.map((r) => r.chunk.id)).toEqual(baseline.map((r) => r.chunk.id));
+  });
+
+  it("B2: dense nearest-neighbour ranking is computed in SQL over the pgvector column", async () => {
+    const db = createDb(":memory:");
+    const tenant = await new TenantRepository(db).create("Demo", "demo");
+    const embeddings = new StubEmbeddingProvider();
+    await ingestKnowledgeBase(db, tenant, embeddings, FIXTURES_DIR);
+
+    const chunkRepo = new KbChunkRepository(db, tenant);
+    const all = await chunkRepo.listByTenant();
+    expect(all.length).toBeGreaterThan(2);
+    // stored embeddings round-trip through the `vector` column as real arrays
+    expect(Array.isArray(all[0].embedding)).toBe(true);
+    expect(all[0].embedding.length).toBeGreaterThan(0);
+
+    // a chunk's own embedding is its nearest neighbour — proves `<=>` ordering runs in Postgres
+    const target = all[1];
+    const ranked = await chunkRepo.nearest(target.embedding, all.length, all.map((c) => c.id));
+    expect(ranked[0]).toBe(target.id);
+
+    // the candidate-id restriction is honoured (kb_scope filtering happens before ranking)
+    const restricted = await chunkRepo.nearest(target.embedding, 5, [target.id]);
+    expect(restricted).toEqual([target.id]);
   });
 
   it("re-ingesting unchanged content skips re-embedding", async () => {

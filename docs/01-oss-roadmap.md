@@ -287,9 +287,15 @@ gate passes. No behaviour change is observable in the eval.
 working database from scratch. `tests/gateway-swap.test.ts` and the tenancy
 suite are unchanged in intent.
 
-## B2 — pgvector for dense retrieval
+## B2 — pgvector for dense retrieval → **done**
 
 **Component:** pgvector (PostgreSQL licence).
+
+Shipped: `kb_chunks.embedding` is a pgvector `vector`; `hybridSearch`'s dense
+half ranks in SQL (`embedding <=> $1`). Column left unsized with exact KNN and
+no HNSW index — the embedding dimension is provider-dependent, so an ANN index
+is a follow-up once a deployment locks its model. See
+`02-oss-adoption-implementation-plan.md` for the detail.
 
 **Files:** `src/kb/retrieval.ts`, `src/kb/ingest.ts`, schema/migration.
 

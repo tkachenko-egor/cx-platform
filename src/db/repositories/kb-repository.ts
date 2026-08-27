@@ -121,9 +121,14 @@ interface KbChunkRow {
   ordinal: number;
   heading: string | null;
   text: string;
-  embedding: number[];
+  embedding: string | number[];
   embedding_model: string;
   token_count: number;
+}
+
+/** B2: pgvector hands a `vector` column back as its text form (`'[1,2,3]'`), which is also valid JSON. Tolerates an already-parsed array too. */
+function parseVector(v: string | number[]): number[] {
+  return Array.isArray(v) ? v : (JSON.parse(v) as number[]);
 }
 
 function rowToChunk(row: KbChunkRow): KbChunk {
@@ -134,7 +139,7 @@ function rowToChunk(row: KbChunkRow): KbChunk {
     ordinal: row.ordinal,
     heading: row.heading,
     text: row.text,
-    embedding: row.embedding, // jsonb — pg returns the parsed float array
+    embedding: parseVector(row.embedding),
     embeddingModel: row.embedding_model,
     tokenCount: row.token_count,
   };
@@ -157,7 +162,7 @@ export class KbChunkRepository extends TenantScopedRepository {
         await q
           .prepare(
             `INSERT INTO kb_chunks (id, tenant_id, article_id, ordinal, heading, text, embedding, embedding_model, token_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?::vector, ?, ?)`,
           )
           .run(randomUUID(), this.tenantId, articleId, chunk.ordinal, chunk.heading, chunk.text, JSON.stringify(chunk.embedding), chunk.embeddingModel, chunk.tokenCount);
       }
@@ -186,6 +191,29 @@ export class KbChunkRepository extends TenantScopedRepository {
       .prepare(`SELECT * FROM kb_chunks WHERE tenant_id = ? AND id IN (${placeholders})`)
       .all<KbChunkRow>(this.tenantId, ...ids);
     return rows.map(rowToChunk);
+  }
+
+  /**
+   * B2: dense (cosine) nearest-neighbour ranking, done in SQL over the pgvector
+   * `embedding` column. `<=>` is cosine distance (`1 − cosine similarity`), so
+   * ascending distance is descending similarity — the exact ordering the JS
+   * `cosineSimilarity` sort in `hybridSearch` used to produce. Restricted to
+   * `candidateChunkIds` so the kb_scope (collection / audience) filter still
+   * runs before ranking, mirroring how `searchKeyword` returns ranked ids over
+   * the same candidate set.
+   */
+  async nearest(queryVector: number[], limit: number, candidateChunkIds: string[]): Promise<string[]> {
+    if (candidateChunkIds.length === 0) return [];
+    const placeholders = candidateChunkIds.map(() => "?").join(",");
+    const rows = await this.db
+      .prepare(
+        `SELECT id FROM kb_chunks
+         WHERE tenant_id = ? AND id IN (${placeholders})
+         ORDER BY embedding <=> ?::vector
+         LIMIT ?`,
+      )
+      .all<{ id: string }>(this.tenantId, ...candidateChunkIds, JSON.stringify(queryVector), limit);
+    return rows.map((r) => r.id);
   }
 
   async searchKeyword(query: string, limit: number): Promise<string[]> {

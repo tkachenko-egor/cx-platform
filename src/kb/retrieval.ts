@@ -39,6 +39,11 @@ export interface HybridSearchOptions {
   onRerankRan?: (ran: boolean) => void;
 }
 
+/**
+ * B2: the dense half of `hybridSearch` now ranks in SQL (`KbChunkRepository.nearest`,
+ * pgvector `<=>`). This stays for `src/kb/semantic-cache.ts`, which compares a
+ * handful of cached query vectors in-process.
+ */
 export function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   let normA = 0;
@@ -67,8 +72,8 @@ function toFtsQuery(query: string): string | null {
 }
 
 /**
- * FR-7.4: dense (cosine over kb_chunks.embedding) + keyword (FTS5) fused via
- * Reciprocal Rank Fusion. FR-7.6/7.7: honors kb_scope's filter before either
+ * FR-7.4: dense (pgvector cosine over kb_chunks.embedding) + keyword (Postgres
+ * tsvector) fused via Reciprocal Rank Fusion. FR-7.6/7.7: honors kb_scope's filter before either
  * ranking runs — collectionIds when set (Phase 5 M1), else the legacy
  * audience filter, so already-published agents keep retrieving exactly as
  * before without a forced re-publish.
@@ -115,17 +120,20 @@ export async function hybridSearch(
   const wantRerank = Boolean(kbScope.rerank?.enabled && opts.reranker);
   const poolSize = wantRerank ? RERANK_CANDIDATE_POOL : BASE_CANDIDATE_POOL;
 
+  const allowedChunkIds = new Set(candidateChunks.map((c) => c.id));
+
   const [queryVector] = await embeddings.embed([query]);
-  const denseRanked = [...candidateChunks].sort((a, b) => cosineSimilarity(b.embedding, queryVector) - cosineSimilarity(a.embedding, queryVector)).slice(0, poolSize);
+  // B2: dense ordering is computed by pgvector (`embedding <=> $1`) rather than
+  // a JS cosine full scan — same ordering, over the same kb_scope-filtered set.
+  const denseRanked = await chunkRepo.nearest(queryVector, poolSize, [...allowedChunkIds]);
 
   const ftsQuery = toFtsQuery(query);
   const keywordIds = ftsQuery ? await chunkRepo.searchKeyword(ftsQuery, poolSize) : [];
-  const allowedChunkIds = new Set(candidateChunks.map((c) => c.id));
   const keywordRanked = keywordIds.filter((id) => allowedChunkIds.has(id));
 
   const scores = new Map<string, number>();
-  denseRanked.forEach((chunk, i) => {
-    scores.set(chunk.id, (scores.get(chunk.id) ?? 0) + 1 / (RRF_K + i + 1));
+  denseRanked.forEach((chunkId, i) => {
+    scores.set(chunkId, (scores.get(chunkId) ?? 0) + 1 / (RRF_K + i + 1));
   });
   keywordRanked.forEach((chunkId, i) => {
     scores.set(chunkId, (scores.get(chunkId) ?? 0) + 1 / (RRF_K + i + 1));
