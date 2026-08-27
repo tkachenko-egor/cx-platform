@@ -366,7 +366,16 @@ documented exemption rather than an accidental bypass.
 read tenant B's rows even when the WHERE clause is removed. The
 platform-admin path still works and is covered by its own test.
 
-## B6 — Durable session store
+## B6 — Durable session store → **done**
+
+Shipped: the in-process `Map` → `agent_sessions` (migration `004`, RLS'd).
+`getOrCreateSession` is async; the channel turn persists replay history +
+turn count, the agent runtime persists the tool-failure counter, as
+independent column upserts. Retention: `npm run prune-sessions` (30d default).
+Invariant #8 in `CLAUDE.md` rewritten from "known simplification" to "in the
+DB". Divergence: the interface *did* leak (callers relied on mutating a live
+object), so `runtime.ts` / `channel/turn.ts` / the desk routes changed too.
+**Phase B complete.**
 
 **Why:** invariant #8 names the in-memory store in
 `src/agents/sessions-store.ts` as a deliberate simplification blocking

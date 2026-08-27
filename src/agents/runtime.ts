@@ -11,7 +11,7 @@ import { getRerankProvider } from "../gateway/rerank";
 import { lookupCache, writeCache } from "../kb/semantic-cache";
 import { knowledgeBlock, sessionBlock, handoffBlock, renderTemplate, personaBlock, languageBlock, scopeBlock } from "./system-prompt";
 import { scanForHumanRequest, scanForNegativeSentiment, scanForReactionMention, scanForSevereSymptoms } from "./escalation";
-import { getOrCreateSession } from "./sessions-store";
+import { getOrCreateSession, saveSessionToolFailures } from "./sessions-store";
 import { executeTool, toGatewayToolDefinitions } from "../tools/registry";
 import type { AgentGuardrailConfig } from "../guardrails/types";
 import { checkUserInputGuardrails, checkRetrievedChunkGuardrails, checkOutputGuardrails } from "../guardrails/runner";
@@ -134,7 +134,8 @@ export async function runAgentTurn(
   const humanRequest = scanForHumanRequest(userText, agent.escalationConfig.humanRequestKeywords);
   const reactionMention = scanForReactionMention(userText, agent.escalationConfig.reactionKeywords);
   const sentiment = scanForNegativeSentiment(userText, agent.escalationConfig.negativeSentimentKeywords);
-  const convoSession = getOrCreateSession(conversationId);
+  const convoSession = await getOrCreateSession(deps.db, tenant, conversationId);
+  const initialToolFailures = convoSession.consecutiveToolFailures;
 
   // Phase 2 M3b: skip the cache lookup entirely (not just the write) for
   // anything the deterministic scanners already flagged — a severe-symptom
@@ -360,6 +361,13 @@ export async function runAgentTurn(
   // stays as conservative as the read side.
   if (agent.semanticCacheEnabled && !cacheHit && toolResultTexts.length === 0 && !handoffRequested && escalationReasons.length === 0) {
     await writeCache(deps.db, tenant, agent.key, userText, finalText, citableDocs, deps.embeddings);
+  }
+
+  // B6: only the tool-failure counter is this function's to persist (the
+  // channel turn owns history/turnCount). Skip the write on the common
+  // no-tool turn where it didn't move.
+  if (convoSession.consecutiveToolFailures !== initialToolFailures) {
+    await saveSessionToolFailures(deps.db, tenant, conversationId, convoSession.consecutiveToolFailures);
   }
 
   return {

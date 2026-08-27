@@ -1,14 +1,19 @@
 import type { ChatMessage } from "../gateway/types";
+import type { SqlDatabase } from "../db/pg";
+import type { TenantContext } from "../tenancy/context";
+import { AgentSessionRepository } from "../db/repositories/agent-session-repository";
 
 /**
- * The full gateway-shape turn history (including tool_use/tool_result
- * blocks the model needs for continuity) lives here, in-process — the
- * a deliberate simplification: it's fine for a single-process Phase 1
- * deployment, and NFR-3.1's "conversation state in the database, not
- * process memory" is explicitly not in this phase's scope. The
- * customer/human-desk-visible transcript is persisted separately via
- * MessageRepository regardless — this store only exists to give the model
- * its own continuity.
+ * B6: the full gateway-shape turn history (including tool_use/tool_result
+ * blocks the model needs for continuity) is persisted in `agent_sessions`
+ * (was an in-process `Map` — NFR-3.1). The customer/human-desk transcript is
+ * still persisted separately via `MessageRepository`; this store only gives
+ * the model its own replay context.
+ *
+ * There's no live object to mutate any more: callers `getOrCreateSession`,
+ * mutate the returned plain object, then call the matching `save*` helper.
+ * History/turnCount and the tool-failure counter persist independently so the
+ * channel turn and the agent runtime don't clobber each other.
  */
 export interface SessionEntry {
   history: ChatMessage[];
@@ -17,13 +22,16 @@ export interface SessionEntry {
   consecutiveToolFailures: number;
 }
 
-const store = new Map<string, SessionEntry>();
+export async function getOrCreateSession(db: SqlDatabase, tenant: TenantContext, conversationId: string): Promise<SessionEntry> {
+  return new AgentSessionRepository(db, tenant).load(conversationId);
+}
 
-export function getOrCreateSession(conversationId: string): SessionEntry {
-  let entry = store.get(conversationId);
-  if (!entry) {
-    entry = { history: [], turnCount: 0, consecutiveToolFailures: 0 };
-    store.set(conversationId, entry);
-  }
-  return entry;
+/** Persist the channel turn's fields (replay history + turn count). */
+export async function saveSessionHistory(db: SqlDatabase, tenant: TenantContext, conversationId: string, entry: Pick<SessionEntry, "history" | "turnCount">): Promise<void> {
+  await new AgentSessionRepository(db, tenant).saveHistory(conversationId, entry.history, entry.turnCount);
+}
+
+/** Persist the agent runtime's tool-failure counter. */
+export async function saveSessionToolFailures(db: SqlDatabase, tenant: TenantContext, conversationId: string, count: number): Promise<void> {
+  await new AgentSessionRepository(db, tenant).saveToolFailures(conversationId, count);
 }

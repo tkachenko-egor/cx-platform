@@ -9,6 +9,7 @@
     "start": "next start",
     "seed": "tsx scripts/seed.ts",
     "ingest-kb": "tsx scripts/ingest-kb.ts",
+    "prune-sessions": "tsx scripts/prune-agent-sessions.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

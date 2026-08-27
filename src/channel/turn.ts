@@ -13,7 +13,7 @@ import type { RuntimeDeps, AgentTurnCallbacks, EscalationReason } from "../agent
 import { runAgentTurn } from "../agents/runtime";
 import { detectCycle, appendToPath } from "../agents/loop-prevention";
 import type { HandoffPackage } from "../agents/handoff";
-import { getOrCreateSession } from "../agents/sessions-store";
+import { getOrCreateSession, saveSessionHistory, type SessionEntry } from "../agents/sessions-store";
 import { withConversationLock } from "../agents/conversation-lock";
 import { conversationTurnCapExceeded } from "./rate-limit";
 import { setConversationState } from "../core/state-transition";
@@ -65,7 +65,13 @@ export async function processInboundTurn(
   const slaPolicies = new SlaPolicyRepository(db, tenant);
   const reviewQueue = new ReviewQueueRepository(db, tenant);
 
-  return withConversationLock(input.conversationId, async (): Promise<ProcessTurnResult> => {
+  // B6: the model-continuity session lives in `agent_sessions` now. Load it
+  // inside the lock, mutate the plain object through the turn as before, and
+  // persist once on the way out — including on a thrown turn, so the
+  // turn-count increment isn't lost.
+  let session: SessionEntry | undefined;
+  try {
+    return await withConversationLock(input.conversationId, async (): Promise<ProcessTurnResult> => {
     const conversation = await conversations.get(input.conversationId);
     if (!conversation) throw new Error(`Conversation ${input.conversationId} not found`);
 
@@ -77,7 +83,7 @@ export async function processInboundTurn(
     const matchedTags = scanAutoTags(input.text, await new AutoTagRuleRepository(db, tenant).list());
     if (matchedTags.length > 0) await conversations.addTags(input.conversationId, matchedTags);
 
-    const session = getOrCreateSession(input.conversationId);
+    session = await getOrCreateSession(db, tenant, input.conversationId);
 
     if (conversation.state !== "bot_active") {
       // Still recorded for the model's own continuity (src/agents/sessions-store.ts)
@@ -256,7 +262,10 @@ export async function processInboundTurn(
       loopCapHit: finalResult.loopCapHit,
       escalationReasons: finalResult.escalationReasons,
     };
-  });
+    });
+  } finally {
+    if (session) await saveSessionHistory(db, tenant, input.conversationId, session);
+  }
 }
 
 /** Finds-or-creates the conversation a channel adapter should hand to processInboundTurn. */

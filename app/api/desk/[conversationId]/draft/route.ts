@@ -4,6 +4,7 @@ import { MessageRepository } from "../../../../../src/db/repositories/message-re
 import { RunRepository } from "../../../../../src/db/repositories/run-repository";
 import { AgentDefRepository } from "../../../../../src/db/repositories/agent-def-repository";
 import { getOrCreateSession } from "../../../../../src/agents/sessions-store";
+// draft generation reads the model's replay history but never persists — only committing (POST .../reply) writes back.
 import { runAgentTurn } from "../../../../../src/agents/runtime";
 import { requireRole, AuthError } from "../../../../../src/auth/require-role";
 import { DEFAULT_AGENT_KEY } from "../../../../../src/channel/turn";
@@ -42,7 +43,7 @@ export async function POST(_req: Request, context: RouteContext<"/api/desk/[conv
   const lastUserMessage = [...messages].reverse().find((m) => m.role === "user");
   if (!lastUserMessage) return Response.json({ error: "No customer message to reply to" }, { status: 400 });
 
-  const session = getOrCreateSession(conversationId);
+  const session = await getOrCreateSession(db, tenant, conversationId);
   const last = session.history[session.history.length - 1];
   const draftFromLast = last?.role === "user";
   const historyForDraft = draftFromLast ? session.history.slice(0, -1) : session.history;
