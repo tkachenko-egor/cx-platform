@@ -80,7 +80,21 @@ export class ModelGateway {
           fallbackUsed,
           errorType: null,
         });
-        emitTrace({ runId, tenantId: tenant.tenantId, type: "llm_call", data: { alias: aliasName, ...target, fallbackUsed, latencyMs: Date.now() - startedAt } });
+        emitTrace({
+          runId,
+          tenantId: tenant.tenantId,
+          type: "llm_call",
+          data: {
+            alias: aliasName,
+            ...target,
+            fallbackUsed,
+            latencyMs: Date.now() - startedAt,
+            // A6: token/cost on the trace event so the exported GenAI span carries them (already persisted via llmCalls.record above).
+            promptTokens: response.usage.promptTokens,
+            completionTokens: response.usage.completionTokens,
+            costUsd: response.usage.costUsd,
+          },
+        });
         return response;
       } catch (err) {
         const gatewayError = err instanceof GatewayError ? err : new GatewayError("ProviderUnavailable", String(err));

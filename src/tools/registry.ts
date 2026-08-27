@@ -10,6 +10,7 @@ import { checkReturnEligibilityInputSchema, checkReturnEligibilityToolDef, runCh
 import { cancelOrderInputSchema, cancelOrderToolDef, runCancelOrder } from "./commerce/cancel-order";
 import { parseHttpToolConfig, runHttpTool } from "./http-tool-executor";
 import { validateAgainstJsonSchema } from "./json-schema-lite";
+import { emitTrace } from "../tracing/trace";
 
 /** agent_defs.tool_settings: each tool owns its own slice, keyed by tool key. */
 export type AgentToolSettings = Record<string, Record<string, unknown>>;
@@ -153,6 +154,10 @@ function logToolCall(
       latencyMs: input.latencyMs,
       idempotencyKey: input.idempotencyKey,
     });
+    // A6: same event stream the LLM call uses, so an exported trace has a
+    // span per tool call alongside the model span. Tool key + outcome +
+    // latency only — never the arguments or the result.
+    emitTrace({ runId: input.runId, tenantId: tenant.tenantId, type: "tool_call", data: { toolKey: input.toolKey, status: input.status, latencyMs: input.latencyMs } });
   } catch {
     // Logging must never break the tool loop.
   }
