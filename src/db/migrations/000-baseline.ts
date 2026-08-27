@@ -15,7 +15,8 @@ import type { Migration } from "../migrate";
  * Deliberately left as `text`: commerce dates (order_date, ship_date, …,
  * expiry_date) and kb_articles.effective — eligibility logic compares these as
  * strings against `src/core/clock.ts`'s `today()` (invariant #6).
- * `kb_chunks.embedding` stays `jsonb` until B2 swaps it for `vector(N)`.
+ * `kb_chunks.embedding` starts here as `jsonb`; migration `001` converts it to
+ * a pgvector `vector` (B2). New DBs still run `000` then `001` in order.
  */
 const SQL = `
 CREATE EXTENSION IF NOT EXISTS vector;

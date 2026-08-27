@@ -79,7 +79,14 @@ to be quoted (Postgres folds unquoted identifiers) — 6 sites; (b) `pg`
 returns aggregates as strings — neutralised with global type parsers in
 `pg.ts`; (c) `getEphemeralDb` keeps `createDb` synchronous via a deferred
 `#gate` so ~100 test call sites didn't move.
-**B2 is next.**
+
+**Phase B — B2: done** on branch `b2-pgvector-dense-retrieval`.
+`kb_chunks.embedding` `jsonb` → pgvector `vector` (migration `001`); the dense
+half of `hybridSearch` ranks in SQL via `KbChunkRepository.nearest`
+(`embedding <=> $1::vector`) instead of a JS `cosineSimilarity` full scan.
+Column left unsized (dimension is provider-dependent), exact KNN, no ANN
+index — see the B2 section below. Gate green: `npm test` 267, `eval` 15/15
+(zero movement — ordering is identical). **B3 is next.**
 
 Where the implementation diverged from the plan below:
 
@@ -524,9 +531,9 @@ in the test loop, so B4 has no separate existence.
    Postgres DDL). `migrate.ts` is async, one tx per migration. **`CLAUDE.md`
    updated**: migrations-only, no `schema.sql`.
 4. **Type upgrade taken:** `jsonb`, `boolean`, `timestamptz`,
-   `double precision`, pgvector extension present (embedding stays `jsonb`
-   until B2). Commerce dates + `kb_articles.effective` deliberately stay
-   `text` (string-compared against `today()`, invariant #6).
+   `double precision`, pgvector extension present (embedding stayed `jsonb`
+   until B2, now `vector`). Commerce dates + `kb_articles.effective`
+   deliberately stay `text` (string-compared against `today()`, invariant #6).
 5. **Dialect fixes:** `json_extract(metadata,'$.x')` → `metadata->>'x'`;
    `macros … LIKE` → `ILIKE`; `SELECT … AS "camelCase"` quoted (6 sites —
    Postgres folds unquoted identifiers to lowercase). No `INSERT OR REPLACE`
@@ -550,21 +557,46 @@ improvement, not a regression), `npm run seed`.
 `seed-fixtures.ts` (`agents.publish`, `toolDefs.upsert`) — invisible with
 synchronous SQLite, a race with real async. Now awaited.
 
-## B2 — pgvector for dense retrieval
+## B2 — pgvector for dense retrieval → **DONE**
 
-**Files:** `src/kb/retrieval.ts`, `src/kb/ingest.ts`, schema/migration.
+**What shipped** (branch `b2-pgvector-dense-retrieval`):
 
-**Steps:** `CREATE EXTENSION vector`; `kb_chunks.embedding` → `vector(N)`
-with an HNSW index. Retire `cosineSimilarity()` and the full-scan sort in
-`hybridSearch()` — dense ordering moves into SQL (`ORDER BY embedding <=>
-$1 LIMIT 20`). **If A1 landed:** the rerank stage stays exactly where it is,
-now fed by the indexed candidate pool. `KbChunkRepository` grows a
-`nearest(queryVector, limit)` method.
+1. **Migration `001-pgvector-kb-chunks-embedding.ts`** — `kb_chunks.embedding`
+   `jsonb` → pgvector `vector`, via `ALTER COLUMN … TYPE vector USING
+   embedding::text::vector` (a jsonb array renders as `[1,2,3]`, exactly
+   pgvector's text input). Idempotent (guarded on `data_type = 'jsonb'`).
+   Extension was already `CREATE`d in `000-baseline`.
+2. **`KbChunkRepository.nearest(queryVector, limit, candidateChunkIds)`** —
+   dense ranking in SQL: `ORDER BY embedding <=> $1::vector`, restricted to the
+   passed candidate ids so the kb_scope (collection / audience) filter still
+   runs before ranking, exactly mirroring how `searchKeyword` returns ranked
+   ids over the same set. `rowToChunk` gained a `parseVector` (pgvector hands
+   `vector` back as text); the `replaceForArticle` INSERT casts `?::vector`.
+3. **`hybridSearch()`** — the JS `cosineSimilarity` full-table sort is gone;
+   the dense half is now `chunkRepo.nearest(...)`. `<=>` cosine distance =
+   `1 − cosine similarity`, so the ordering is *identical*, not "modulo ANN".
+   The A1 rerank stage is untouched — still fed by the RRF-fused pool.
 
-**Acceptance:** KB tests pass against pgvector; fixture-corpus ordering
-matches pre-migration (modulo ANN recall); `npm run eval` no regression.
+**Divergences from the plan above:**
 
-**Effort:** M.
+- **Unsized `vector` column, no HNSW index.** The embedding dimension is
+  provider-dependent (32 for the test stub, 1536 for OpenAI
+  `text-embedding-3-small`) and pgvector's ANN indexes need a fixed typmod, so
+  a baked-in `vector(N)` would break one deployment or the other. Exact `<=>`
+  KNN is correct (zero recall loss) and faster than the prior JS scan at this
+  corpus size. A deployment that has locked its embedding model adds an HNSW
+  index in a one-line follow-up migration (`CREATE INDEX … USING hnsw
+  ((embedding::vector(1536)) vector_cosine_ops)`).
+- **`cosineSimilarity()` kept, not retired** — still used by
+  `src/kb/semantic-cache.ts` (out of B2's file scope; a handful of cached
+  query vectors compared in-process).
+- **`src/kb/ingest.ts` untouched** — embedding serialization is entirely
+  inside `KbChunkRepository`; the existing `JSON.stringify(array)` form is
+  valid pgvector input, only the `::vector` cast in the INSERT was needed.
+
+**Gate:** `npm test` 267/267, `typecheck`, `lint` (0 errors), `npm run eval`
+15/15 (no movement vs B1 — dense ordering is byte-identical), `npm run seed`
+(migration `001` verified applied + column converted on the real dev DB).
 
 ## B3 — Postgres full-text search (per-language config)
 
