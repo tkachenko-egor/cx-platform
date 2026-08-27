@@ -52,6 +52,32 @@ describe("tenant scoping", () => {
     expect((await new SessionRepository(db, tenantA).getByTokenHash("shared-token-hash"))?.userId).toBe(userA.id);
   });
 
+  it("B5: RLS is a hard backstop — a scoped handle can't cross tenants even with no WHERE clause", async () => {
+    const db = createDb(":memory:");
+    const tenants = new TenantRepository(db);
+    const tenantA = await tenants.create("Tenant A", "tenant-a");
+    const tenantB = await tenants.create("Tenant B", "tenant-b");
+
+    await new ModelAliasRepository(db, tenantA).upsert({ alias: "support-main", provider: "anthropic", model: "model-a" });
+    await new ModelAliasRepository(db, tenantB).upsert({ alias: "support-main", provider: "anthropic", model: "model-b" });
+
+    // a tenant-B handle running a deliberately unscoped SELECT sees only tenant B
+    const bScoped = db.forTenant(tenantB.tenantId);
+    const seen = await bScoped.prepare(`SELECT tenant_id, model FROM model_aliases`).all<{ tenant_id: string; model: string }>();
+    expect(seen).toEqual([{ tenant_id: tenantB.tenantId, model: "model-b" }]);
+
+    // ...and can't write a row tagged for another tenant (WITH CHECK)
+    await expect(
+      bScoped
+        .prepare(`INSERT INTO model_aliases (id, tenant_id, alias, provider, model, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+        .run("forced-id", tenantA.tenantId, "x", "anthropic", "m", new Date().toISOString(), new Date().toISOString()),
+    ).rejects.toThrow();
+
+    // the unscoped root handle is the documented exemption — seed / platform-admin path still sees everything
+    const all = await db.prepare(`SELECT tenant_id FROM model_aliases`).all();
+    expect(all).toHaveLength(2);
+  });
+
   it("TenantRepository.list/getById/update support platform-level tenant management", async () => {
     const db = createDb(":memory:");
     const tenants = new TenantRepository(db);

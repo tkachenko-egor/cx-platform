@@ -95,7 +95,15 @@ by `src/kb/text-search-config.ts` (→ `'english'` default, `'simple'` for
 languages Postgres has no stemmer for). Migration `002` drops the hardcoded
 `fts` generated column for a query-time `to_tsvector(<config>, text)` + an
 `'english'` expression index. Gate green: `npm test` 270, `eval` 15/15
-(english byte-identical). **B5 is next.**
+(english byte-identical).
+
+**Phase B — B5: done** on branch `b5-row-level-security` (stacked on B3).
+RLS + `FORCE` on all 34 `tenant_id` tables; `TenantScopedRepository`'s `db` is
+a `SqlDatabase.forTenant()` handle that runs every query in a tx with
+`SET LOCAL ROLE cx_tenant` (non-superuser — `cx` is a superuser and would
+bypass RLS) + `set_config('app.tenant_id', …)`. Unscoped paths stay on the
+root superuser handle (the deliberate exemption). Migration `003`. Gate green:
+`npm test` 271, `eval` 15/15. **B6 (optional) is next / last.**
 
 Where the implementation diverged from the plan below:
 
@@ -645,21 +653,50 @@ gated this on "only if it doesn't obscure the fusion".
 (migration `002` verified on the dev DB: `fts` column + old index gone,
 `idx_kb_chunks_fts_english` present).
 
-## B5 — Row-level security as a tenancy backstop
+## B5 — Row-level security as a tenancy backstop → **DONE**
 
-**Files:** schema/migration, `src/db/client.ts`, `src/tenancy/repository.ts`.
+**What shipped** (branch `b5-row-level-security`, stacked on B3):
 
-**Steps:** RLS policies on every tenant-scoped table; `SET LOCAL
-app.tenant_id = $1` issued on each pooled-connection checkout, from the
-tenant context. The platform-owner path (migration 029) gets a **deliberate,
-documented** exemption (a `BYPASSRLS` role or an explicit policy carve-out),
-not an accidental bypass.
+1. **Migration `003-row-level-security.ts`** — `ENABLE` + `FORCE ROW LEVEL
+   SECURITY` on all 34 `tenant_id` tables (discovered via `information_schema`,
+   so it's self-maintaining) and one `tenant_isolation` policy per table:
+   `USING` / `WITH CHECK` `nullif(current_setting('app.tenant_id', true), '')
+   IS NULL OR tenant_id = current_setting('app.tenant_id', true)`. Idempotent
+   (`DROP POLICY IF EXISTS` first).
+2. **The superuser problem.** The app's login role `cx` is a **superuser**, and
+   superusers bypass RLS even under `FORCE`. So the migration also creates a
+   `cx_tenant` (`NOLOGIN NOSUPERUSER`) role with DML grants + matching
+   `ALTER DEFAULT PRIVILEGES`. A scoped query's transaction does
+   `SET LOCAL ROLE cx_tenant` **and** `set_config('app.tenant_id', …, true)` —
+   both unwind at COMMIT, so the pooled client is clean afterward.
+3. **`SqlDatabase.forTenant(tenantId)`** (`src/db/pg.ts`) — a handle onto the
+   same pool whose `prepare` / `exec` / `tx` each run inside `#txScoped`
+   (the role + GUC transaction above). The root handle leaves `#tenantId`
+   undefined and keeps the exact prior fast path. One `pool.on("error")`
+   listener guard so `forTenant` handles don't stack listeners.
+4. **`TenantScopedRepository`** (`src/tenancy/repository.ts`) — constructor does
+   `this.db = db.forTenant(tenant.tenantId)`. **Nothing else in ~35 repos
+   changed** — they only ever use `this.db.prepare` / `.tx`.
 
-**Acceptance:** a test proves tenant A's repo can't read tenant B's rows
-*even with the WHERE clause removed*. The platform-admin path still works,
-covered by its own test.
+**The exemption is staying `cx`.** Migrations, `npm run seed`,
+`TenantRepository`, and `src/auth/platform-admin-lookup.ts` all run on the
+root handle → never drop the role, never set the GUC → superuser, sees
+everything. No second connection string, no `BYPASSRLS` grant. `tenants`
+itself has no `tenant_id` so it carries no policy.
 
-**Effort:** M–L (the connection-checkout hook is the fiddly part).
+**Divergence from the plan:** it named `src/db/client.ts` and a
+"pooled-connection checkout" hook; the checkout hook doesn't fit the
+`SqlDatabase` abstraction (single-statement autocommit), so the role/GUC ride
+a per-query transaction in `pg.ts` instead. `client.ts` was untouched. The
+`BYPASSRLS` / carve-out choice landed as "root stays superuser".
+
+**Cost:** each scoped read is now `BEGIN; SET LOCAL ROLE; set_config; SELECT;
+COMMIT`. Fine for a Phase-1 single-instance deployment on local/CI Postgres.
+
+**Gate:** `npm test` 271/271, `typecheck`, `lint` (0 errors), `npm run eval`
+15/15 (zero movement), `npm run seed` (migration `003` verified on the dev DB:
+`cx_tenant` is `rolsuper=f`, 34 tables `rowsecurity`, a non-matching
+`app.tenant_id` under `cx_tenant` sees 0 rows).
 
 ## B6 — Durable session store *(optional)*
 

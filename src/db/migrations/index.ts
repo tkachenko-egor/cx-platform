@@ -2,6 +2,7 @@ import type { Migration } from "../migrate";
 import { migration000Baseline } from "./000-baseline";
 import { migration001PgvectorKbChunksEmbedding } from "./001-pgvector-kb-chunks-embedding";
 import { migration002KbChunksFtsPerLanguage } from "./002-kb-chunks-fts-per-language";
+import { migration003RowLevelSecurity } from "./003-row-level-security";
 
 /**
  * B1 squashed the SQLite schema + 30 incremental migrations into a single
@@ -13,4 +14,5 @@ export const ALL_MIGRATIONS: Migration[] = [
   migration000Baseline,
   migration001PgvectorKbChunksEmbedding,
   migration002KbChunksFtsPerLanguage,
+  migration003RowLevelSecurity,
 ];

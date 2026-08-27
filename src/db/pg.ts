@@ -87,13 +87,30 @@ export class SqlDatabase implements SqlExecutor {
   #pool: pg.Pool;
   #raw: SqlExecutor;
   #gate: Promise<void> = Promise.resolve();
+  /** B5: when set, every query/tx from this handle runs inside a transaction that first issues `set_config('app.tenant_id', …)`, so the row-level-security policies enforce tenant isolation as a backstop behind the repository WHERE clauses. Set via `forTenant()`; the root handle leaves it undefined (unscoped — migrations, seed, `TenantRepository`, the platform-admin lookup). */
+  #tenantId?: string;
 
-  constructor(pool: pg.Pool) {
+  constructor(pool: pg.Pool, tenantId?: string) {
     this.#pool = pool;
     this.#raw = makeExecutor(pool);
+    this.#tenantId = tenantId;
     // A pooled client dropped while idle (server restart, disposable test DB
-    // torn down) emits here; without a listener pg crashes the process.
-    pool.on("error", () => {});
+    // torn down) emits here; without a listener pg crashes the process. One
+    // listener per pool is enough — `forTenant()` handles share the pool.
+    if (pool.listenerCount("error") === 0) pool.on("error", () => {});
+  }
+
+  /**
+   * B5: a handle onto the same pool that scopes every query to `tenantId` via
+   * an `app.tenant_id` GUC + the RLS policies from migration 003. Repository
+   * base class calls this in its constructor; callers keep passing the root
+   * (unscoped) handle. Same-tenant re-scoping is a no-op.
+   */
+  forTenant(tenantId: string): SqlDatabase {
+    if (this.#tenantId === tenantId) return this;
+    const scoped = new SqlDatabase(this.#pool, tenantId);
+    scoped.#gate = this.#gate;
+    return scoped;
   }
 
   /** Runs `fn` against the un-gated engine and makes every later call wait for
@@ -102,6 +119,22 @@ export class SqlDatabase implements SqlExecutor {
     const ctx: BootstrapContext = { ...this.#raw, tx: (f) => this.#txRaw(f) };
     this.#gate = fn(ctx);
     return this;
+  }
+
+  /**
+   * B5: `fn` runs in a tx that first drops to the non-superuser `cx_tenant`
+   * role and sets the `app.tenant_id` GUC, so the RLS policies from migration
+   * 003 enforce tenant isolation. Both are `SET LOCAL` — they unwind at
+   * COMMIT/ROLLBACK, so the pooled client is clean for the next borrower.
+   */
+  async #txScoped<T>(fn: (q: SqlExecutor) => Promise<T>): Promise<T> {
+    await this.#gate;
+    const tenantId = this.#tenantId!;
+    return this.#txRaw(async (q) => {
+      await q.exec(`SET LOCAL ROLE cx_tenant`);
+      await q.prepare(`SELECT set_config('app.tenant_id', ?, true)`).run(tenantId);
+      return fn(q);
+    });
   }
 
   async #txRaw<T>(fn: (q: SqlExecutor) => Promise<T>): Promise<T> {
@@ -122,6 +155,13 @@ export class SqlDatabase implements SqlExecutor {
   prepare(sql: string): PreparedStatement {
     const stmt = this.#raw.prepare(sql);
     const gate = this.#gate;
+    if (this.#tenantId !== undefined) {
+      return {
+        get: <T>(...p: unknown[]) => this.#txScoped((q) => q.prepare(sql).get<T>(...p)),
+        all: <T>(...p: unknown[]) => this.#txScoped((q) => q.prepare(sql).all<T>(...p)),
+        run: (...p: unknown[]) => this.#txScoped((q) => q.prepare(sql).run(...p)),
+      };
+    }
     return {
       async get<T>(...p: unknown[]) {
         await gate;
@@ -139,13 +179,19 @@ export class SqlDatabase implements SqlExecutor {
   }
 
   async exec(sql: string): Promise<void> {
+    if (this.#tenantId !== undefined) {
+      await this.#txScoped((q) => q.exec(sql));
+      return;
+    }
     await this.#gate;
     await this.#raw.exec(sql);
   }
 
   /** Runs `fn` inside a single pinned client + BEGIN/COMMIT. Every statement in
-   *  `fn` must go through the passed executor, not `this`. */
+   *  `fn` must go through the passed executor, not `this`. On a `forTenant()`
+   *  handle the transaction also carries the `app.tenant_id` GUC. */
   async tx<T>(fn: (q: SqlExecutor) => Promise<T>): Promise<T> {
+    if (this.#tenantId !== undefined) return this.#txScoped(fn);
     await this.#gate;
     return this.#txRaw(fn);
   }

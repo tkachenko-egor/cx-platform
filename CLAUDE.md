@@ -18,7 +18,17 @@ mode, cost tracking, tracing). Full requirements:
    constructor, not as a per-method argument. Don't add a repository method
    that accepts `tenantId` as a parameter instead of relying on
    `this.tenantId` — that reopens the "forgot to filter" bug class this
-   pattern exists to close. **Repository methods are `async`** and run on
+   pattern exists to close. **Postgres RLS is the enforced backstop** (B5,
+   migration `003`): `this.db` inside a scoped repo is a
+   `SqlDatabase.forTenant()` handle that runs every query in a transaction
+   with `SET LOCAL ROLE cx_tenant` + `set_config('app.tenant_id', …)`, so the
+   `FORCE`d `tenant_isolation` policy blocks cross-tenant reads/writes even
+   if a `WHERE tenant_id = ?` is missing. Unscoped cross-tenant access (only
+   `TenantRepository`, `src/auth/platform-admin-lookup.ts`, migrations, seed)
+   goes through the **root** `SqlDatabase` handle, which stays superuser `cx`
+   and is exempt — don't route tenant-scoped work that way. A new
+   `tenant_id` table needs its own policy + a `cx_tenant` DML grant.
+   **Repository methods are `async`** and run on
    Postgres via the `SqlDatabase` surface in `src/db/pg.ts` (Phase B1 — `pg`
    pool underneath; `?` placeholders are translated to `$n`, `jsonb` columns
    come back parsed, `timestamptz` comes back as ISO strings). Every call
